@@ -219,6 +219,43 @@ test('PBI-062 publish, JetStream publish with ack, request/reply, templates and 
   await jsm.streams.delete(stream)
   await nc.close()
 })
+test('PBI-119 a long reply is fully visible: the editor and the reply each scroll in their box', async ({
+  page
+}) => {
+  const subject = `${unique('BIG').toLowerCase()}.svc`
+  const { nc } = await nats()
+  const responder = nc.subscribe(subject, {
+    callback: (_e, m) => {
+      const lines = Array.from({ length: 80 }, (_, i) => `line ${i + 1}`)
+      m.respond(lines.join('\n'))
+    }
+  })
+  for (const size of [
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 }
+  ]) {
+    await page.setViewportSize(size)
+    await openStudio(page)
+    await go(page, 'Publish')
+    const form = page.locator('form').filter({ has: page.getByLabel('Send as') })
+    await form.getByLabel('Subject', { exact: true }).fill(subject)
+    await form.getByLabel('Send as').selectOption('request')
+    await form.getByLabel('Payload').fill('go')
+    await form.getByRole('button', { name: 'Send request' }).click()
+    await expect(page.getByText(/Reply in [\d.]+ ms/)).toBeVisible()
+    const body = page.getByTestId('payload-body').last()
+    await expect(body).toContainText('line 80')
+    // The reply box ends inside the window, and its last line is reachable by scrolling it.
+    const box = await body.boundingBox()
+    expect(box!.y + box!.height).toBeLessThanOrEqual(size.height)
+    expect(box!.height).toBeGreaterThan(150)
+    await body.evaluate((el) => (el.scrollTop = el.scrollHeight))
+    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    await expect(body).toBeInViewport({ ratio: 1 })
+  }
+  responder.unsubscribe()
+  await nc.close()
+})
 
 test('PBI-061 subject tree: hierarchy, counts, search and actions', async ({ page }) => {
   const stream = unique('TREE')

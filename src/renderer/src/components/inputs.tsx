@@ -217,7 +217,9 @@ export function ConfigEditor<T extends object>({
               onClick={() => (m === 'json' ? toJson() : setMode('form'))}
               className={cx(
                 'rounded px-2.5 py-0.5 text-xs font-medium disabled:opacity-50',
-                mode === m ? 'bg-panel text-fg shadow-sm' : 'text-muted hover:text-fg'
+                mode === m
+                  ? 'border border-line bg-panel text-fg'
+                  : 'border border-transparent text-muted hover:text-fg'
               )}
             >
               {m === 'form' ? 'Form' : 'JSON'}

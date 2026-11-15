@@ -23,7 +23,8 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 8. Monitoring and metrics | 080 to 081 | | 1 | 1 |
 | 9. Productivity and UX | 090 to 093 | | 4 | |
 | 10. Packaging and distribution | 100 to 101 | | 1 | 1 |
-| **Total (46)** | | **27** | **17** | **2** |
+| 11. Visual design | 110 | | 1 | |
+| **Total (47)** | | **27** | **18** | **2** |
 
 ## MVP slice and build order
 
@@ -625,3 +626,26 @@ These apply to every PBI and are part of the definition of done.
 - Users must sign in (OIDC) before any NATS access.
 - Read-only mode can be enforced on the server per connection.
 - Differences from the desktop app are documented.
+
+---
+
+## Epic 11: Visual design
+
+### PBI-110: Visual redesign based on a Linear-style developer-tool dashboard
+**Priority:** v1 · **Size:** L · **Depends on:** PBI-003
+
+**Story:** As a user who spends hours in the studio, I want a refined, dark-first look with dense tables and one accent colour, so that it feels like a modern developer tool and is easy on the eyes.
+
+**Reference:** [Linear inspired developer tool dashboard](https://superdesign.dev/library/linear-inspired-developer-tool-dashboard) (a community mockup, not Linear itself). The design is prepared first (with the `/design` command), and this item implements it.
+
+**Direction (to be confirmed by the design)**
+- Dark-first: a near-black base with an indigo accent. The light theme stays and gets the same treatment.
+- Regions are separated by borders, not shadows. Dense tables with sticky headers. Strong colour is kept for status (green, amber, red).
+
+**Acceptance criteria**
+- A design document or prototype exists and has been approved before the code changes start.
+- The new look is applied through the colour tokens in `src/renderer/src/main.css` and the shared components in `src/renderer/src/components/ui.tsx`, so no screen needs its own styling.
+- Light and dark themes both pass the contrast checks: text at least 4.5:1, chart and status colours validated with the dataviz palette validator.
+- The layout problems found in the screenshot review are fixed: the cramped payload column when the message panel is open, tabs clipped at the right edge, table columns cut off at 1440 px, the cut-off reply on the Publish page, and the "Revision undefined" text in the object store detail.
+- The end-to-end tests pass unchanged, except for selectors the design intentionally changes, and the screenshots are retaken and attached to the pull request.
+- Usable at 1280 x 720 and with keyboard focus visible everywhere.

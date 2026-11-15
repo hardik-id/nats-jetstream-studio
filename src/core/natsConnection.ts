@@ -188,8 +188,33 @@ export async function connectWithin(
   throw new natsErrors.TimeoutError()
 }
 
+/** What was configured for an attempt, which decides how a dropped connection is explained. */
+export interface ConnectContext {
+  /** The TLS handshake is the first thing on the wire (`handshakeFirst`). */
+  tlsFirst: boolean
+  /** The attempt presents credentials (anything but "none"). */
+  credentials: boolean
+}
+
+export function connectContext(cfg: Pick<ConnectionConfig, 'auth' | 'tls'>): ConnectContext {
+  return { tlsFirst: cfg.tls?.handshakeFirst === true, credentials: cfg.auth !== 'none' }
+}
+
+/**
+ * A reset or a hang-up, as opposed to a reason. The server refuses a login or a TLS handshake by
+ * writing the reason and closing the socket. When the client still has data in flight (it sends
+ * CONNECT and PING back to back) the close turns into a TCP reset, and Windows throws away what
+ * was received but not yet read when a reset arrives, so the reason is lost and only the reset
+ * is left. Linux and macOS deliver the reason first, which is why this only shows on Windows.
+ */
+const DROPPED =
+  /ECONNRESET|ECONNABORTED|EPIPE|socket hang up|read ECONN|connection (was )?(reset|closed)/i
+
 /** Works out why a connection attempt failed, in terms a user can act on. */
-export function classifyConnectError(err: unknown): { kind: TestFailureKind; message: string } {
+export function classifyConnectError(
+  err: unknown,
+  context?: ConnectContext
+): { kind: TestFailureKind; message: string } {
   const chain: (Error & { code?: string })[] = []
   let current = err as (Error & { code?: string; cause?: unknown }) | undefined
   while (current && chain.length < 6) {
@@ -224,10 +249,39 @@ export function classifyConnectError(err: unknown): { kind: TestFailureKind; mes
   if (chain.some((e) => e instanceof natsErrors.TimeoutError) || /timeout|ETIMEDOUT/i.test(text)) {
     return { kind: 'timeout', message: 'Timed out waiting for the server' }
   }
-  if (/ECONNREFUSED|connection refused/i.test(text)) {
+  // The client words a hang-up without a reason as "connection refused" too, but then there is no
+  // socket error behind it; a real refusal always carries ECONNREFUSED as its cause.
+  const hungUp = chain.length === 1 && !chain[0].code && /^connection refused$/i.test(last)
+  if (!hungUp && /ECONNREFUSED|connection refused/i.test(text)) {
     return { kind: 'refused', message: 'Connection refused: nothing is listening on that address' }
   }
+  if (context && (DROPPED.test(text) || hungUp)) {
+    // The reason the server gave was lost with the reset (see DROPPED). Name the most likely one.
+    if (context.tlsFirst)
+      return {
+        kind: 'tls',
+        message: `TLS error: the server closed the connection during the TLS handshake (${last})`
+      }
+    if (context.credentials)
+      return {
+        kind: 'auth',
+        message:
+          'Authentication failed: the server closed the connection while logging in, which is how it rejects credentials'
+      }
+  }
   return { kind: 'other', message: last }
+}
+
+/**
+ * Turns reconnecting on for a connection that was opened without it. The client reads the option
+ * only when the connection drops, and the public API has no setter, so the option object it
+ * shares with the connection is changed. The result is checked, so a client version that keeps
+ * the option elsewhere fails loudly here instead of silently never reconnecting.
+ */
+function enableReconnect(nc: NatsConnection): void {
+  const shared = (nc as unknown as { options?: { reconnect?: boolean } }).options
+  if (!shared) throw new Error('Cannot enable reconnecting: unsupported NATS client version')
+  shared.reconnect = true
 }
 
 /** One live connection to a NATS server plus the JetStream handles built on it. */
@@ -265,7 +319,13 @@ export class ManagedConnection {
     timeoutMs?: number
   ): Promise<ManagedConnection> {
     const backoff = new ReconnectBackoff()
-    const nc = await connect(buildConnectOptions(cfg, secrets, timeoutMs, backoff))
+    const opts = buildConnectOptions(cfg, secrets, timeoutMs, backoff)
+    // While the first connection is made the client must not reconnect. When the server hangs up
+    // during the login without the client having processed a reason (a reset, see DROPPED), a client
+    // that may reconnect starts a reconnect loop that waits on the very attempt it belongs to, and
+    // connect() then reports a timeout after the whole deadline instead of the failure.
+    const nc = await connect({ ...opts, reconnect: false })
+    enableReconnect(nc)
     backoff.reset()
     const conn = new ManagedConnection(cfg, nc, hooks, backoff)
     hooks.onState(conn.state)
@@ -384,7 +444,7 @@ export class ManagedConnection {
     }
     // The client gave up, which it only does for errors that retrying cannot fix.
     const reason = err
-      ? classifyConnectError(err).message
+      ? classifyConnectError(err, connectContext(this.cfg)).message
       : 'The connection was closed by the server'
     this.setState({ status: 'error', error: reason })
   }

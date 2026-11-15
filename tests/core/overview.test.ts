@@ -189,8 +189,11 @@ describe('PBI-022 cluster topology on a real three-node cluster', () => {
 
   it('shows every server, its routes and the JetStream meta leader', async () => {
     let view = await h.service.clusterInfo(sys)
-    // The meta group needs a moment to elect a leader after start-up.
-    for (let i = 0; i < 40 && !(view.servers.length === 3 && view.meta?.leader); i++) {
+    // The meta group needs a moment to elect a leader and to list its peers after start-up; wait
+    // for everything asserted below, not only for the leader (a slow runner showed one replica).
+    const settled = (): boolean =>
+      view.servers.length === 3 && !!view.meta?.leader && view.meta.replicas.length === 2
+    for (let i = 0; i < 40 && !settled(); i++) {
       await new Promise((r) => setTimeout(r, 500))
       view = await h.service.clusterInfo(sys)
     }

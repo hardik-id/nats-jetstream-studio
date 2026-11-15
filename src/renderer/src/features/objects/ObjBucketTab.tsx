@@ -79,7 +79,7 @@ export function ObjBucketTab({
   const info = selected ? (query.data ?? []).find((o) => o.name === selected) : undefined
   const previewable = info !== undefined && info.size <= PREVIEW_LIMIT
   const preview = useQuery({
-    queryKey: ['objPreview', connId, bucket, selected, info?.revision],
+    queryKey: ['objPreview', connId, bucket, selected, info?.digest],
     queryFn: () => gateway.objPreview(connId, bucket, selected!, PREVIEW_LIMIT),
     enabled: previewable,
     staleTime: 60_000
@@ -341,7 +341,9 @@ export function ObjBucketTab({
                 ['Size', formatBytes(info.size)],
                 ['Modified', formatTime(info.mtime)],
                 ['Chunks', formatCount(info.chunks)],
-                ['Revision', String(info.revision)],
+                ...(info.revision === undefined
+                  ? []
+                  : [['Revision', String(info.revision)] as [string, ReactNode]]),
                 ['Description', info.description],
                 [
                   'Digest',

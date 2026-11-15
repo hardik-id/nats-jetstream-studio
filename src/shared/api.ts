@@ -603,7 +603,8 @@ export interface ObjectInfoDto {
   chunks: number
   digest: string
   mtime: string
-  revision: number
+  /** Stream sequence of the object meta entry. Absent in listings: the server does not store it. */
+  revision?: number
   headers: Header[]
   metadata?: Record<string, string>
 }

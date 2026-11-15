@@ -103,6 +103,76 @@ function toLocalInput(date: Date): string {
  * Pages through the messages of a stream (PBI-040 to PBI-048). Reading never creates a consumer
  * or acknowledges anything, so it is safe on any stream, including work queues.
  */
+const DETAIL_MIN_WIDTH = 440
+const DETAIL_DEFAULT_WIDTH = 480
+const DETAIL_STEP = 24
+
+/** The detail panel's frame: a separator on its left edge resizes it by pointer or arrow keys. */
+function ResizableDetail({
+  width,
+  onWidth,
+  onCommit,
+  children
+}: {
+  width: number
+  onWidth: (w: number) => void
+  onCommit: (w: number) => void
+  children: ReactNode
+}): ReactNode {
+  const frame = useRef<HTMLDivElement>(null)
+  // The panel may take at most 70% of the row, so the table always keeps room.
+  const maxWidth = (): number => {
+    const row = frame.current?.parentElement?.clientWidth || 1600
+    return Math.max(DETAIL_MIN_WIDTH, Math.floor(row * 0.7))
+  }
+  const clamp = (w: number): number =>
+    Math.min(maxWidth(), Math.max(DETAIL_MIN_WIDTH, Math.round(w)))
+  const current = Math.max(DETAIL_MIN_WIDTH, Math.round(width))
+  const drag = useRef<{ x: number; width: number; last: number } | null>(null)
+  return (
+    <div
+      ref={frame}
+      className="relative shrink-0"
+      style={{ width: current, maxWidth: '70%', minWidth: DETAIL_MIN_WIDTH }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize message detail"
+        aria-valuenow={current}
+        aria-valuemin={DETAIL_MIN_WIDTH}
+        tabIndex={0}
+        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          drag.current = { x: e.clientX, width: current, last: current }
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current
+          if (!d) return
+          d.last = clamp(d.width + (d.x - e.clientX))
+          onWidth(d.last)
+        }}
+        onPointerUp={() => {
+          const d = drag.current
+          drag.current = null
+          if (d) onCommit(d.last)
+        }}
+        onKeyDown={(e) => {
+          const delta =
+            e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
+          if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
+          else if (e.key === 'End') onCommit(maxWidth())
+          else if (delta) onCommit(clamp(current + delta))
+          else return
+          e.preventDefault()
+        }}
+      />
+      {children}
+    </div>
+  )
+}
+
 export function MessageBrowser({
   connId,
   info,
@@ -513,6 +583,20 @@ export function MessageBrowser({
     }
   }
 
+  // TODO(PBI-115): ask the shell store for the collapsed sidebar rail while the detail panel is
+  // open (when `detail` becomes non-null) and restore the previous state when it closes.
+  const [storedWidth, setStoredWidth] = useSetting<number>(
+    'messages.detailWidth',
+    DETAIL_DEFAULT_WIDTH
+  )
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const detailWidth = dragWidth ?? storedWidth
+  const setDetailWidth = setDragWidth
+  const saveDetailWidth = (w: number): void => {
+    void setStoredWidth(w)
+    setDragWidth(null)
+  }
+
   const columns: Column<MessageDto>[] = useMemo(
     () => [
       {
@@ -547,35 +631,35 @@ export function MessageBrowser({
           />
         )
       },
-      { id: 'seq', header: 'Seq', width: '88px', align: 'right', cell: (m) => m.seq },
-      {
-        id: 'time',
-        header: 'Time',
-        width: '190px',
-        title: (m) => `${m.time} UTC`,
-        cell: (m) => <span className="tabular">{formatTime(m.time)}</span>
-      },
+      { id: 'seq', header: 'Seq', width: '72px', align: 'right', cell: (m) => m.seq },
       {
         id: 'subject',
         header: 'Subject',
-        width: 'minmax(160px, 1.2fr)',
+        width: 'minmax(140px, 1fr)',
         mono: true,
         title: (m) => m.subject,
         cell: (m) => m.subject
       },
       {
-        id: 'size',
-        header: 'Size',
-        width: '84px',
-        align: 'right',
-        cell: (m) => formatBytes(m.size)
-      },
-      {
         id: 'preview',
         header: 'Payload',
-        width: 'minmax(200px, 3fr)',
+        width: 'minmax(160px, 2fr)',
         mono: true,
         cell: (m) => <span className="text-muted">{payloadPreview(m.payload, m.size)}</span>
+      },
+      {
+        id: 'time',
+        header: 'Time',
+        width: '170px',
+        title: (m) => `${m.time} UTC`,
+        cell: (m) => <span className="tabular">{formatTime(m.time)}</span>
+      },
+      {
+        id: 'size',
+        header: 'Size',
+        width: '76px',
+        align: 'right',
+        cell: (m) => formatBytes(m.size)
       }
     ],
     [messages, checked]
@@ -941,7 +1025,7 @@ export function MessageBrowser({
           )}
         </div>
         {detail && (
-          <div className="w-[46%] max-w-[760px] min-w-[380px] shrink-0">
+          <ResizableDetail width={detailWidth} onWidth={setDetailWidth} onCommit={saveDetailWidth}>
             <MessageDetail
               message={detail}
               decoders={decoders}
@@ -994,7 +1078,7 @@ export function MessageBrowser({
                 </>
               }
             />
-          </div>
+          </ResizableDetail>
         )}
       </div>
 

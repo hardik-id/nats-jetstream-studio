@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type StreamConfigDto } from '@shared/api'
+import type { StreamConfigDto } from '@shared/api'
 import { startNatsServer, type TestServer } from '../helpers/natsServer'
-import { createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import { createHarness, gatewayErr, uniqueName, waitFor, type Harness } from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -12,15 +12,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await h.dispose()
 })
-
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 
 describe('PBI-030 streams list', () => {
   it('returns the columns the list shows', async () => {

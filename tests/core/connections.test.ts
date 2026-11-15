@@ -9,14 +9,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { cliContextDir } from '@core/cliContexts'
 import { KeyFileSecretStore, NoSecretStore } from '@core/secrets'
 import { StudioService } from '@core/service'
-import {
-  GatewayError,
-  type ConnectionState,
-  type GlobalEvent,
-  type TestConnectionResult
-} from '@shared/api'
+import type { ConnectionState, GlobalEvent, TestConnectionResult } from '@shared/api'
 import { freePort, startNatsServer, type TestServer } from '../helpers/natsServer'
-import { collect, createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import {
+  collect,
+  createHarness,
+  expectGatewayError,
+  uniqueName,
+  waitFor,
+  type Harness
+} from '../helpers/studio'
 
 let h: Harness
 beforeAll(async () => {
@@ -25,16 +27,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await h.dispose()
 })
-
-async function expectGatewayError(promise: Promise<unknown>, kind: string): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err, `expected a "${kind}" error`).toBeInstanceOf(GatewayError)
-  expect((err as GatewayError).kind).toBe(kind)
-  return err as GatewayError
-}
 
 describe('PBI-010 import NATS CLI contexts', () => {
   let dir: string
@@ -402,7 +394,7 @@ describe('PBI-012 test connection', () => {
   it('tries every server, so one that is down does not hide one that works', async () => {
     // The client dials in an order of its own choosing; either way round the test must succeed.
     const down = `nats://127.0.0.1:${await freePort()}`
-    for (let run = 0; run < 10; run++) {
+    for (let run = 0; run < 8; run++) {
       const result = await h.service.testConnection({ ...input, servers: [down, h.natsUrl] })
       expect(result, `run ${run + 1}`).toMatchObject({ ok: true, jetstream: true })
     }

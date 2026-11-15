@@ -1,7 +1,9 @@
 # Checks that need a real Windows desktop
 
-Everything so far was built and run on Linux (WSL). CI runs the tests on Windows and macOS, but a
-few things can only be seen by a person, or by a session, on a real desktop. This is the list.
+Everything so far was built and run on Linux (WSL). CI runs the tests on Windows and macOS (on
+pushes to `main`, on manual runs of the workflow, and on pull requests that carry the label
+`all-platforms`), but a few things can only be seen by a person, or by a session, on a real
+desktop. This is the list.
 
 ## Set up
 

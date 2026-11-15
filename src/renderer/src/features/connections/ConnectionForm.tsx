@@ -188,7 +188,8 @@ function Form({
     if (ms !== testTimeoutMs) timeoutSave.current = setStoredTimeout(ms)
   }
   // Pressing Cancel or the close button takes the focus out of the field before the dialog
-  // closes. That must not count as leaving the field, or cancelling would store what was typed.
+  // closes. That must not count as leaving the field, or cancelling would store what was typed;
+  // what was typed is dropped instead, so the field never shows a value that is not stored.
   const dismissing = useRef(false)
   useEffect(() => {
     const onMouseDown = (e: MouseEvent): void => {
@@ -591,8 +592,12 @@ function Form({
                 value={timeoutText}
                 invalid={!!timeoutError}
                 onChange={(e) => changeTimeout(e.target.value)}
+                onFocus={() => {
+                  dismissing.current = false
+                }}
                 onBlur={() => {
-                  if (!dismissing.current) commitTimeout()
+                  if (dismissing.current) setTimeoutDraft(null)
+                  else commitTimeout()
                 }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return

@@ -1,9 +1,16 @@
 import { headers, type NatsConnection } from '@nats-io/transport-node'
 import type { JetStreamManager } from '@nats-io/jetstream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type TailEvent, type TailMessage } from '@shared/api'
+import type { TailEvent, TailMessage } from '@shared/api'
 import { fromBase64, textToBase64, utf8Decode } from '@shared/encoding'
-import { collect, createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import {
+  collect,
+  createHarness,
+  gatewayErr,
+  uniqueName,
+  waitFor,
+  type Harness
+} from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -18,14 +25,6 @@ afterAll(async () => {
   await h.dispose()
 })
 
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 const messagesOf = (events: TailEvent[]): TailMessage[] =>
   events.flatMap((e) => (e.type === 'messages' ? e.messages : []))
 

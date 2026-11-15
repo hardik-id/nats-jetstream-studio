@@ -12,9 +12,9 @@ import {
   type KeyPair
 } from '@nats-io/jwt'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type ConnectionInput, type ConnectionState } from '@shared/api'
+import type { ConnectionInput, ConnectionState } from '@shared/api'
 import { startNatsServer, type TestServer } from '../helpers/natsServer'
-import { createHarness, waitFor, type Harness } from '../helpers/studio'
+import { createHarness, expectGatewayError, waitFor, type Harness } from '../helpers/studio'
 
 /**
  * Credentials-file login (a user JWT plus its NKey seed), checked against a real nats-server that
@@ -84,16 +84,6 @@ function expectNoSecrets(text: string, creds: Creds, where: string): void {
       leaked = text.includes(secret.slice(i, i + 12))
     expect(leaked, `${where} contains part of the ${label}`).toBe(false)
   }
-}
-
-async function expectGatewayError(promise: Promise<unknown>, kind: string): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err, `expected a "${kind}" error`).toBeInstanceOf(GatewayError)
-  expect((err as GatewayError).kind).toBe(kind)
-  return err as GatewayError
 }
 
 /** The server must turn these credentials away, and nothing the studio says may give them away. */
@@ -283,6 +273,8 @@ describe('PBI-014 credentials file stays where it is', () => {
 })
 
 // Last in this file: these tests stop and start the server that the tests above connect to.
+// Each restart is followed by a reconnect, which takes seconds where a refused connection is
+// slow to be reported (Windows), so the two tests that restart get more time than the default.
 describe('PBI-015 a credentials file that changes while the studio is connected', () => {
   /** Connects with a credentials file of its own and follows the state of that connection. */
   async function connectWith(file: string): Promise<{
@@ -353,7 +345,7 @@ describe('PBI-015 a credentials file that changes while the studio is connected'
     } finally {
       await conn.done()
     }
-  })
+  }, 90_000)
 
   it('keeps the last credentials that worked while the file is missing or damaged', async () => {
     const file = join(dir, 'fragile.creds')
@@ -378,7 +370,7 @@ describe('PBI-015 a credentials file that changes while the studio is connected'
     } finally {
       await conn.done()
     }
-  })
+  }, 90_000)
 
   it('still refuses to open a connection whose credentials file is missing', async () => {
     const saved = await h.service.saveConnection(

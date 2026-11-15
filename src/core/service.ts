@@ -1414,7 +1414,7 @@ export class StudioService implements GatewayMethods {
       chunks: info.chunks,
       digest: info.digest,
       mtime: info.mtime,
-      revision: info.revision,
+      revision: typeof info.revision === 'number' ? info.revision : undefined,
       headers: headersToList(info.headers),
       metadata: info.metadata
     }

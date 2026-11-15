@@ -237,6 +237,9 @@ describe('PBI-071 object store buckets', () => {
       size: 1_500_000
     })
     expect(info.chunks).toBeGreaterThan(1)
+    // The server does not store a revision in the object meta, so a listing carries none
+    // (never the string 'undefined' in the UI).
+    expect(info.revision).toBeUndefined()
     expect(info.digest).toMatch(/^SHA-256=/)
     expect(Math.abs(new Date(info.mtime).getTime() - Date.now())).toBeLessThan(60_000)
 

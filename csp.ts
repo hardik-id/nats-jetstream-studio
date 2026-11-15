@@ -7,11 +7,20 @@ const POLICY = (scripts: string): string =>
  * Adds the Content-Security-Policy tag to index.html.
  * Built pages only run scripts from the app itself. The development server needs one inline
  * script for hot reload, so inline scripts are allowed there and nowhere else.
+ * The policy has no data: fonts, so the bundled font files are never inlined into the CSS.
  */
 export function cspPlugin(): Plugin {
   let dev = false
   return {
     name: 'studio-csp',
+    config() {
+      return {
+        build: {
+          assetsInlineLimit: (file: string) =>
+            /\.(woff2?|ttf|otf)$/.test(file) ? false : undefined
+        }
+      }
+    },
     configResolved(config) {
       dev = config.command === 'serve'
     },

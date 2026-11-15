@@ -4,58 +4,75 @@
 
 :root {
   color-scheme: light;
-  --bg: #f3f5f8;
-  --panel: #ffffff;
-  --raised: #f7f9fb;
-  --hover: #edf1f6;
-  --line: #dbe1e9;
-  --fg: #131a26;
-  --muted: #566173;
-  --faint: #8590a1;
-  --accent: #1d5fd6;
+  /* Surfaces, from back to front, and the 1 px borders that separate regions. */
+  --bg: #ffffff;
+  --panel: #f7f7f8;
+  --raised: #efeff1;
+  --hover: #e9e9ec;
+  --line: #e4e4e7;
+  /* Text. */
+  --fg: #16171a;
+  --muted: #52555c;
+  --faint: #63676f;
+  /* The one accent. --accent is the fill (primary button, focus ring, progress, checkboxes);
+     --accent-text is the accent used as text (links, selected items, the accent badge). */
+  --accent: #5059c9;
+  --accent-text: #5059c9;
   --accent-fg: #ffffff;
-  --accent-soft: #e2ecfd;
-  --danger: #c62828;
-  --danger-soft: #fde8e8;
-  --warn: #9a5b00;
-  --warn-soft: #fdf1d3;
-  --ok: #0a7a55;
-  --ok-soft: #d8f5e8;
-  --code: #f0f3f7;
-  --json-key: #7a3e9d;
-  --json-string: #0a7a55;
-  --json-number: #1d5fd6;
-  --json-literal: #b4530a;
+  --accent-soft: #eaebf9;
+  /* Status. Soft variants are ~12% tints of the status colour on --bg. */
+  --danger: #b83636;
+  --danger-soft: #f8e7e7;
+  --warn: #8a5a00;
+  --warn-soft: #f1ebe0;
+  --ok: #1b7347;
+  --ok-soft: #e4efea;
+  /* Code and payloads. */
+  --code: #f7f7f8;
+  --json-key: #4a52c0;
+  --json-string: #8a5a00;
+  --json-number: #1b7347;
+  --json-literal: #0a6e8f;
   /* Charts: one series colour, recessive grid and axis. */
   --series-1: #2a78d6;
   --chart-grid: #e6eaf0;
   --chart-axis: #c5ccd6;
+  /* Fonts, bundled with the app (see main.tsx); never loaded from the network. */
+  --font-ui:
+    'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-code:
+    'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0b1019;
-  --panel: #111826;
-  --raised: #161f30;
-  --hover: #1c2740;
-  --line: #263149;
-  --fg: #e4e9f1;
-  --muted: #9ba7ba;
-  --faint: #6c7890;
-  --accent: #6b9bf5;
-  --accent-fg: #08101f;
-  --accent-soft: #1a2a4b;
-  --danger: #f58080;
-  --danger-soft: #3a1619;
-  --warn: #f5c04a;
-  --warn-soft: #392b0c;
-  --ok: #45d6a0;
-  --ok-soft: #0d2f25;
-  --code: #0d1422;
-  --json-key: #c99bf0;
-  --json-string: #6fdcb0;
-  --json-number: #8ab4ff;
-  --json-literal: #f0a868;
+  --bg: #0b0c0e;
+  --panel: #121316;
+  --raised: #1a1b1f;
+  --hover: #17181c;
+  --line: #23252a;
+  --fg: #e8e9eb;
+  --muted: #a6a9b0;
+  --faint: #8a8e97;
+  /* #5e6ad2 is a fill with white text on it; as text on these surfaces it is only ~4:1, so
+     text uses a lighter indigo. */
+  --accent: #5e6ad2;
+  --accent-text: #a9aeff;
+  --accent-fg: #ffffff;
+  --accent-soft: #1c1e3a;
+  /* Soft variants are ~14% tints of the status colour on --bg. */
+  --danger: #ff7b7b;
+  --danger-soft: #2d1c1d;
+  --warn: #f0bc5e;
+  --warn-soft: #2b2519;
+  --ok: #5fd394;
+  --ok-soft: #172821;
+  --code: #0b0c0e;
+  --json-key: #a9aeff;
+  --json-string: #f0bc5e;
+  --json-number: #5fd394;
+  --json-literal: #5cc6e8;
   --series-1: #3987e5;
   --chart-grid: #1f2a40;
   --chart-axis: #33405c;
@@ -73,6 +90,9 @@
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
+  /* text-accent (and hover:text-accent) use --accent-text, which stays readable as text where
+     the accent fill would not. */
+  --text-color-accent: var(--accent-text);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-warn: var(--warn);
@@ -80,10 +100,8 @@
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
   --color-code: var(--code);
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono:
-    ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
 }
 
 html,
@@ -109,6 +127,12 @@ body {
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
+  }
+
+  /* Numbers in tables line up. */
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
   }
 }
 

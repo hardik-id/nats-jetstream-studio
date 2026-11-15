@@ -417,6 +417,56 @@ describe('PBI-012 test connection', () => {
     expect(result).toMatchObject({ ok: false, kind: 'tls' })
   })
 
+  describe('when the server hangs up with a reset instead of a reason', () => {
+    // On Windows a reset discards the -ERR the server wrote just before closing, so the client only
+    // sees ECONNRESET. A fake server that resets right after INFO produces the same thing anywhere.
+    const INFO =
+      'INFO {"server_id":"x","server_name":"x","version":"2.10.0","proto":1,"host":"127.0.0.1","port":1,"max_payload":1048576,"headers":true,"auth_required":true}\r\n'
+    let fake: Server
+    let fakeUrl: string
+    beforeAll(async () => {
+      fake = createServer((socket) => {
+        socket.on('error', () => {})
+        socket.write(INFO)
+        socket.once('data', () => socket.resetAndDestroy())
+      })
+      await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', resolve))
+      fakeUrl = `nats://127.0.0.1:${(fake.address() as { port: number }).port}`
+    })
+    afterAll(() => new Promise<void>((resolve) => fake.close(() => resolve())))
+
+    it('names a login the server dropped as an authentication failure', async () => {
+      const result = await h.service.testConnection({ ...input, servers: [fakeUrl] })
+      expect(result).toMatchObject({ ok: false, kind: 'auth' })
+      if (!result.ok) expect(result.message).toMatch(/Authentication failed/)
+    })
+
+    it('names a TLS handshake the server dropped as a TLS failure', async () => {
+      const result = await h.service.testConnection({
+        ...input,
+        servers: [fakeUrl],
+        tls: { handshakeFirst: true }
+      })
+      expect(result).toMatchObject({ ok: false, kind: 'tls' })
+    })
+
+    it('does not blame credentials when none were sent', async () => {
+      const result = await h.service.testConnection({
+        name: 't',
+        auth: 'none',
+        servers: [fakeUrl]
+      })
+      expect(result).toMatchObject({ ok: false, kind: 'other' })
+    })
+
+    it('explains a failed connect the same way', async () => {
+      const saved = await h.service.saveConnection({ ...input, servers: [fakeUrl] })
+      const err = await expectGatewayError(h.service.connect(saved.id), 'nats')
+      expect(err.message).toMatch(/Authentication failed/)
+      await h.service.deleteConnection(saved.id)
+    })
+  })
+
   describe('against servers that never answer', () => {
     // Each accepts the TCP connection and then says nothing, like a host behind a firewall that
     // swallows the traffic.

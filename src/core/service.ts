@@ -79,6 +79,7 @@ import { MessageReader, pickReadMode, type StreamBounds } from './messageReader'
 import {
   buildConnectOptions,
   classifyConnectError,
+  connectContext,
   connectWithin,
   ManagedConnection
 } from './natsConnection'
@@ -446,7 +447,7 @@ export class StudioService implements GatewayMethods {
       const ge = toGatewayError(err)
       if (ge.kind === 'secret_required' || ge.kind === 'validation')
         return { ok: false, kind: 'other', message: ge.message }
-      return { ok: false, ...classifyConnectError(err) }
+      return { ok: false, ...classifyConnectError(err, connectContext(input)) }
     }
     try {
       const rttMs = await nc.rtt()
@@ -516,7 +517,10 @@ export class StudioService implements GatewayMethods {
           this.setState({ id, status: 'disconnected', reconnects: 0 })
           throw ge
         }
-        const message = ge.kind === 'validation' ? ge.message : classifyConnectError(err).message
+        const message =
+          ge.kind === 'validation'
+            ? ge.message
+            : classifyConnectError(err, connectContext(this.config(id))).message
         this.setState({ id, status: 'error', error: message, reconnects: 0 })
         throw gatewayError(ge.kind === 'validation' ? 'validation' : 'nats', message)
       }

@@ -95,7 +95,14 @@ test('PBI-010 NATS CLI contexts are found and can be connected to', async () => 
   // Connecting opens the overview, which shows what the server reports about itself.
   await expect(page.getByTestId('active-connection')).toContainText('e2e-local')
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
-  await expect(page.getByText(/studio-test-\d+ · NATS \d+\.\d+/).first()).toBeVisible()
+  // The top bar also shows this text, but only from 1024px of window width up, and a window
+  // opened on a small screen (the Windows runner) is narrower. The overview subtitle always shows it.
+  await expect(
+    page
+      .getByText(/studio-test-\d+ · NATS \d+\.\d+/)
+      .filter({ visible: true })
+      .first()
+  ).toBeVisible()
   await expect(page.getByTestId('usage-File storage')).toBeVisible()
 })
 

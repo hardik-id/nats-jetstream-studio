@@ -63,6 +63,21 @@ describe('PBI-060 live tail', () => {
     expect(Math.abs(msgs[0].received - Date.now())).toBeLessThan(5000)
   })
 
+  it('says when the server has the subscription, and misses nothing published after that', async () => {
+    const subject = uniqueName('ready')
+    const events: TailEvent[] = []
+    const close = h.service.open('tail', { connId: id, subject }, (e) => events.push(e))
+    await waitFor(() => events.some((e) => e.type === 'ready'), 5000, 'the ready event')
+    // No pause here: once "ready" has arrived the very next publish must be delivered.
+    nc.publish(subject, 'straight away')
+    await waitFor(() => messagesOf(events).length === 1, 3000, 'the message')
+    close()
+    expect(events.filter((e) => e.type === 'ready')).toHaveLength(1)
+    expect(events.findIndex((e) => e.type === 'ready')).toBeLessThan(
+      events.findIndex((e) => e.type === 'messages')
+    )
+  })
+
   it('stops delivering once closed', async () => {
     const subject = uniqueName('stop')
     const events: TailEvent[] = []
@@ -183,13 +198,15 @@ describe('PBI-060 live tail', () => {
 
   it('names the subject when the user may not subscribe to it', async () => {
     const limited = await h.connect({ name: 'limited', user: 'limited', password: 'limited' })
-    const { events, close } = await collect(
-      h.service,
-      'tail',
-      { connId: limited, subject: 'secret.>' },
-      (e) => e.some((x) => x.type === 'error')
+    const events: TailEvent[] = []
+    const close = h.service.open('tail', { connId: limited, subject: 'secret.>' }, (e) =>
+      events.push(e)
     )
+    await waitFor(() => events.some((e) => e.type === 'error'), 10_000, 'the permission error')
+    // A refused subscription is never reported as listening, however long it stays open.
+    await new Promise((r) => setTimeout(r, 300))
     close()
+    expect(events.some((e) => e.type === 'ready')).toBe(false)
     const error = events.find((e) => e.type === 'error') as Extract<TailEvent, { type: 'error' }>
     expect(error.error.kind).toBe('permission')
     expect(error.error.subject).toBe('secret.>')

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { connect } from '@nats-io/transport-node'
 import { jetstreamManager, type JetStreamManager } from '@nats-io/jetstream'
 import { KvWatchInclude, type KvEntry, type KvStatus } from '@nats-io/kv'
 import type { ObjectInfo, ObjectStoreStatus } from '@nats-io/obj'
@@ -56,6 +55,7 @@ import {
   type TailMessage,
   type TestConnectionResult
 } from '@shared/api'
+import { clampTestTimeoutMs } from '@shared/connection'
 import { toBase64 } from '@shared/encoding'
 import { compileFilters } from '@shared/filters'
 import { evaluateConsumerHealth } from '@shared/health'
@@ -76,7 +76,12 @@ import {
 } from './convert'
 import { gatewayError, toGatewayError } from './errors'
 import { MessageReader, pickReadMode, type StreamBounds } from './messageReader'
-import { buildConnectOptions, classifyConnectError, ManagedConnection } from './natsConnection'
+import {
+  buildConnectOptions,
+  classifyConnectError,
+  connectWithin,
+  ManagedConnection
+} from './natsConnection'
 import { DEFAULT_SAMPLER_OPTIONS, MetricsSampler, type SamplerOptions } from './sampler'
 import type { SecretStore } from './secrets'
 import { SettingsStore } from './settings'
@@ -428,21 +433,15 @@ export class StudioService implements GatewayMethods {
       nkeySeed: input.nkeySeed || stored.nkeySeed
     }
     // A stored value that is not a sensible number must not hang or instantly fail every test.
-    const timeoutMs = Math.min(
-      60_000,
-      Math.max(500, Number(this.settings.get('testTimeoutMs') ?? 5000) || 5000)
-    )
+    const timeoutMs = clampTestTimeoutMs(this.settings.get('testTimeoutMs'))
     let nc
     try {
       const cfg =
         existing?.source === 'cli'
           ? existing
           : { ...input, servers: this.normalizedServers(input.servers) }
-      nc = await connect({
-        ...buildConnectOptions(cfg, secrets, timeoutMs),
-        reconnect: false,
-        maxReconnectAttempts: 0
-      })
+      // One deadline for connecting, however many servers the connection lists.
+      nc = await connectWithin(buildConnectOptions(cfg, secrets, timeoutMs), timeoutMs)
     } catch (err) {
       const ge = toGatewayError(err)
       if (ge.kind === 'secret_required' || ge.kind === 'validation')
@@ -1101,9 +1100,11 @@ export class StudioService implements GatewayMethods {
     let dropped = 0
     let nextId = 1
 
+    let failed = false
     const sub = conn.nc.subscribe(args.subject, {
       callback: (err, msg) => {
         if (err) {
+          failed = true
           emit({ type: 'error', error: toGatewayError(err).toJSON() })
           return
         }
@@ -1129,9 +1130,31 @@ export class StudioService implements GatewayMethods {
       buffer = []
       dropped = 0
     }, TAIL_FLUSH_MS)
-    const offReconnect = conn.onReconnect(() => emit({ type: 'gap' }))
+    // Subscribing only queues the request. The server has it once it has answered a flush sent
+    // after it, and only then is it true that nothing published from now on is missed.
+    let ready = false
+    let closed = false
+    const announce = (): void => {
+      conn.nc.flush().then(
+        () => {
+          // A subscription the server refused has reported its error by now.
+          if (closed || ready || failed) return
+          ready = true
+          emit({ type: 'ready' })
+        },
+        () => {
+          // The connection dropped first. The reconnect below asks again.
+        }
+      )
+    }
+    announce()
+    const offReconnect = conn.onReconnect(() => {
+      emit({ type: 'gap' })
+      if (!ready) announce()
+    })
 
     return () => {
+      closed = true
       clearInterval(timer)
       offReconnect()
       try {

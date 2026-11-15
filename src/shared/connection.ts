@@ -11,6 +11,36 @@ export const CONNECTION_COLORS = [
   '#4b5563'
 ]
 
+/**
+ * How long a connection test may take, in milliseconds: the value used when nothing is stored and
+ * the range that is accepted. The form and the service both read these, so they cannot disagree.
+ */
+export const TEST_TIMEOUT_DEFAULT_MS = 5000
+export const TEST_TIMEOUT_MIN_MS = 1000
+export const TEST_TIMEOUT_MAX_MS = 60_000
+
+/**
+ * The test timeout to use for a stored value. Anything that is not a number gives the default and
+ * a number outside the range is moved to its nearest end, so a damaged setting can neither hang a
+ * test nor fail it at once.
+ */
+export function clampTestTimeoutMs(value: unknown): number {
+  const ms = typeof value === 'number' ? value : NaN
+  if (!Number.isFinite(ms)) return TEST_TIMEOUT_DEFAULT_MS
+  return Math.min(TEST_TIMEOUT_MAX_MS, Math.max(TEST_TIMEOUT_MIN_MS, Math.round(ms)))
+}
+
+/**
+ * Reads what was typed into the timeout field: whole or decimal seconds inside the range, as
+ * milliseconds. Null when the text is anything else.
+ */
+export function parseTestTimeoutSeconds(text: string): number | null {
+  const trimmed = text.trim()
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null
+  const ms = Number(trimmed) * 1000
+  return ms >= TEST_TIMEOUT_MIN_MS && ms <= TEST_TIMEOUT_MAX_MS ? Math.round(ms) : null
+}
+
 /** Adds the scheme when missing and returns a message when the URL cannot be used. */
 export function normalizeServerUrl(input: string): { url: string } | { error: string } {
   const text = input.trim()

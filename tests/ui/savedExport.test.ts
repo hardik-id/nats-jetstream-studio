@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Favorite } from '@renderer/lib/favorites'
-import type { SavedFilter } from '@renderer/lib/messages'
+import { MAX_FAVORITES, type Favorite } from '@renderer/lib/favorites'
+import { MAX_SAVED_FILTER_NAME, MAX_SAVED_FILTERS, type SavedFilter } from '@renderer/lib/messages'
 import {
   buildSavedExport,
+  describeImport,
   describeSaved,
   mergeSavedExport,
   parseSavedExport,
@@ -50,6 +51,33 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
       savedFilters: [],
       favorites: []
     })
+  })
+
+  it('imports its own export when a subject has "*" or ">" inside a token', () => {
+    // NATS reads a wildcard only in a token that is exactly "*" or ">". Inside a longer token
+    // the characters are ordinary text, the studio can store such subjects, and so it has to
+    // take them back from a file it wrote itself.
+    const filters: SavedFilter[] = [
+      { name: 'Hot CPUs', subject: 'alerts.cpu>90', filters: { payloadContains: 'host' } },
+      { name: 'Starred', subject: 'notes.a*b.>', filters: {} },
+      { name: 'Odd tokens', subject: '*a.>b.c*.**', filters: {} }
+    ]
+    const favorites: Favorite[] = [
+      { kind: 'subject', stream: 'ALERTS', subject: 'alerts.cpu>90' },
+      { kind: 'subject', stream: 'NOTES', subject: 'notes.a*b.draft' },
+      { kind: 'subject', stream: 'NOTES', subject: 'notes.*.>' }
+    ]
+    const text = serializeSavedExport(buildSavedExport(filters, favorites))
+    const parsed = parseSavedExport(text)
+    expect(parsed).toEqual({ version: 1, savedFilters: filters, favorites })
+
+    // And all the way back into a connection that has nothing yet.
+    const merged = mergeSavedExport({ savedFilters: [], favorites: [] }, parsed)
+    expect(merged.savedFilters).toEqual(filters)
+    expect(merged.favorites).toEqual(favorites)
+    expect(merged).toMatchObject({ importedFilters: 3, replacedFilters: 0, importedFavorites: 3 })
+    // Exporting what was imported gives the same file again.
+    expect(serializeSavedExport(buildSavedExport(merged.savedFilters, merged.favorites))).toBe(text)
   })
 
   it('copies only the fields it knows, out and in', () => {
@@ -209,11 +237,94 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
         file({
           favorites: [
             { kind: 'stream', stream: 'S' },
-            { kind: 'subject', stream: 'S', subject: 'a.*b' }
+            { kind: 'subject', stream: 'S', subject: 'a.>.b' }
           ]
         })
       )
-    ).toThrow('Favourite 2 has an invalid subject. Wildcards must be a whole token.')
+    ).toThrow('Favourite 2 has an invalid subject. ">" is only allowed as the last token.')
+    expect(() =>
+      parseSavedExport(favoriteFile({ kind: 'subject', stream: 'S', subject: 'a..b' }))
+    ).toThrow('Favourite 1 has an invalid subject. Subject cannot have empty tokens.')
+  })
+
+  it('refuses a name that is too long and lists that are too large, and says so', () => {
+    const ok = { name: 'A', subject: '', filters: {} }
+    const longest = 'n'.repeat(MAX_SAVED_FILTER_NAME)
+    expect(MAX_SAVED_FILTER_NAME).toBe(120)
+    expect(parseSavedExport(filterFile({ ...ok, name: longest })).savedFilters[0].name).toBe(
+      longest
+    )
+    // The length is counted after trimming, as the name is stored.
+    expect(
+      parseSavedExport(filterFile({ ...ok, name: `  ${longest}  ` })).savedFilters[0].name
+    ).toBe(longest)
+    expect(() =>
+      parseSavedExport(file({ savedFilters: [ok, { ...ok, name: longest + 'n' }] }))
+    ).toThrow('Saved filter 2 has a name of 121 characters. A name can have at most 120.')
+    // The message does not repeat a name of any length back to the user.
+    const huge = (): void => {
+      parseSavedExport(filterFile({ ...ok, name: 'x'.repeat(5000) }))
+    }
+    expect(huge).toThrow('Saved filter 1 has a name of 5,000 characters.')
+    expect(huge).not.toThrow(/xxxxx/)
+
+    const manyFilters = (n: number): unknown[] =>
+      Array.from({ length: n }, (_, i) => ({ ...ok, name: `F${i}` }))
+    const manyFavorites = (n: number): unknown[] =>
+      Array.from({ length: n }, (_, i) => ({ kind: 'stream', stream: `S${i}` }))
+    expect(MAX_SAVED_FILTERS).toBe(500)
+    expect(MAX_FAVORITES).toBe(2000)
+    expect(parseSavedExport(file({ savedFilters: manyFilters(500) })).savedFilters).toHaveLength(
+      500
+    )
+    expect(parseSavedExport(file({ favorites: manyFavorites(2000) })).favorites).toHaveLength(2000)
+    expect(() => parseSavedExport(file({ savedFilters: manyFilters(501) }))).toThrow(
+      'This file has 501 saved filters. At most 500 can be imported.'
+    )
+    expect(() => parseSavedExport(file({ favorites: manyFavorites(2001) }))).toThrow(
+      'This file has 2,001 favourites. At most 2,000 can be imported.'
+    )
+    // The size is checked before the entries, so nonsense in a huge list is never looked at.
+    expect(() => parseSavedExport(file({ favorites: Array(50_000).fill(null) }))).toThrow(
+      'This file has 50,000 favourites. At most 2,000 can be imported.'
+    )
+  })
+
+  it('refuses an import that would take a connection over its limits', () => {
+    const filter = (i: number): SavedFilter => ({ name: `F${i}`, subject: '', filters: {} })
+    const star = (i: number): Favorite => ({ kind: 'stream', stream: `S${i}` })
+    const range = <T>(from: number, to: number, make: (i: number) => T): T[] =>
+      Array.from({ length: to - from }, (_, i) => make(from + i))
+
+    const existing = { savedFilters: range(0, 400, filter), favorites: range(0, 1990, star) }
+    // 400 + 100 new = 500 and 1,990 + 10 new = 2,000: exactly at the limits.
+    const fits = mergeSavedExport(
+      existing,
+      buildSavedExport(range(350, 500, filter), range(1980, 2000, star))
+    )
+    expect(fits.savedFilters).toHaveLength(500)
+    expect(fits.favorites).toHaveLength(2000)
+    expect(fits).toMatchObject({ importedFilters: 150, replacedFilters: 50, importedFavorites: 10 })
+
+    expect(() => mergeSavedExport(existing, buildSavedExport(range(350, 501, filter), []))).toThrow(
+      'This import would give the connection 501 saved filters. It can have at most 500.'
+    )
+    expect(() => mergeSavedExport(existing, buildSavedExport([], range(1980, 2001, star)))).toThrow(
+      'This import would give the connection 2,001 favourites. It can have at most 2,000.'
+    )
+    // Nothing was changed by the refused imports.
+    expect(existing.savedFilters).toHaveLength(400)
+    expect(existing.favorites).toHaveLength(1990)
+
+    // A connection that is already over a limit can still import what does not add to that list.
+    const over = { savedFilters: range(0, 510, filter), favorites: range(0, 2005, star) }
+    const replaced = mergeSavedExport(
+      over,
+      buildSavedExport([{ ...filter(3), subject: 'new.>' }], [star(7)])
+    )
+    expect(replaced.savedFilters).toHaveLength(510)
+    expect(replaced.savedFilters[3].subject).toBe('new.>')
+    expect(replaced).toMatchObject({ importedFilters: 1, replacedFilters: 1, importedFavorites: 0 })
   })
 
   it('merges: a saved filter replaces one with the same name, favourites are not duplicated', () => {
@@ -238,6 +349,8 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
       FILTERS[2]
     ])
     expect(merged.importedFilters).toBe(3)
+    // "EU paid" was there before; "Mine" is not in the file, so it is neither.
+    expect(merged.replacedFilters).toBe(1)
     expect(merged.favorites).toEqual([...existing.favorites, FAVORITES[0], FAVORITES[2]])
     expect(merged.importedFavorites).toBe(2)
     // The lists that were passed in are not changed.
@@ -252,6 +365,8 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
     const merged = mergeSavedExport({ savedFilters: [], favorites: [] }, twice)
     expect(merged.savedFilters).toEqual([{ ...FILTERS[0], subject: 'orders.eu.later' }])
     expect(merged.importedFilters).toBe(1)
+    // The file overwrote its own first entry, not a filter the connection had.
+    expect(merged.replacedFilters).toBe(0)
     expect(merged.favorites).toEqual([FAVORITES[0], FAVORITES[1]])
     expect(merged.importedFavorites).toBe(2)
   })
@@ -263,8 +378,10 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
     expect(again.savedFilters).toEqual(FILTERS)
     expect(again.favorites).toEqual(FAVORITES)
     expect(again.importedFavorites).toBe(0)
+    expect(again).toMatchObject({ importedFilters: 3, replacedFilters: 3 })
     expect(mergeSavedExport(once, buildSavedExport([], FAVORITES))).toMatchObject({
       importedFilters: 0,
+      replacedFilters: 0,
       importedFavorites: 0
     })
   })
@@ -275,5 +392,17 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
     expect(describeSaved(3, 0)).toBe('3 saved filters')
     expect(describeSaved(0, 1)).toBe('1 favourite')
     expect(describeSaved(0, 0)).toBe('')
+    expect(describeSaved(1200, 2000)).toBe('1,200 saved filters and 2,000 favourites')
+
+    const imported = (
+      importedFilters: number,
+      replacedFilters: number,
+      favorites: number
+    ): string => describeImport({ importedFilters, replacedFilters, importedFavorites: favorites })
+    expect(imported(3, 1, 2)).toBe('Imported 3 saved filters (1 replaced) and 2 favourites')
+    expect(imported(3, 0, 2)).toBe('Imported 3 saved filters and 2 favourites')
+    expect(imported(1, 1, 0)).toBe('Imported 1 saved filter (1 replaced)')
+    expect(imported(2, 2, 1)).toBe('Imported 2 saved filters (2 replaced) and 1 favourite')
+    expect(imported(0, 0, 4)).toBe('Imported 4 favourites')
   })
 })

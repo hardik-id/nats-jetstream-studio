@@ -12,9 +12,9 @@ import {
   type KeyPair
 } from '@nats-io/jwt'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type ConnectionInput } from '@shared/api'
+import { GatewayError, type ConnectionInput, type ConnectionState } from '@shared/api'
 import { startNatsServer, type TestServer } from '../helpers/natsServer'
-import { createHarness, type Harness } from '../helpers/studio'
+import { createHarness, waitFor, type Harness } from '../helpers/studio'
 
 /**
  * Credentials-file login (a user JWT plus its NKey seed), checked against a real nats-server that
@@ -278,6 +278,114 @@ describe('PBI-014 credentials file stays where it is', () => {
     expect(checked).toContain('connections.json')
     expectNoSecrets(JSON.stringify(await h.service.listConnections()), alice, 'the connection list')
 
+    await h.service.deleteConnection(saved.id)
+  })
+})
+
+// Last in this file: these tests stop and start the server that the tests above connect to.
+describe('PBI-015 a credentials file that changes while the studio is connected', () => {
+  /** Connects with a credentials file of its own and follows the state of that connection. */
+  async function connectWith(file: string): Promise<{
+    id: string
+    /** Stops the server, starts it again and waits until the studio has reconnected. */
+    bounceServer: () => Promise<void>
+    done: () => Promise<void>
+  }> {
+    const saved = await h.service.saveConnection(credsInput('rotating', { ...alice, file }))
+    const states: ConnectionState[] = []
+    const closeEvents = h.service.open('events', {}, (e) => {
+      if (e.type === 'connection' && e.state.id === saved.id) states.push(e.state)
+    })
+    await h.service.connect(saved.id)
+    let reconnects = 0
+    return {
+      id: saved.id,
+      bounceServer: async () => {
+        states.length = 0
+        await server.kill()
+        await waitFor(
+          () => states.some((s) => s.status === 'reconnecting'),
+          10_000,
+          'reconnecting state'
+        )
+        await server.restart()
+        reconnects++
+        await waitFor(
+          () => states.some((s) => s.status === 'connected' && s.reconnects === reconnects),
+          20_000,
+          'reconnected state'
+        )
+      },
+      done: async () => {
+        closeEvents()
+        await h.service.deleteConnection(saved.id)
+      }
+    }
+  }
+
+  it('logs in with the new credentials when it reconnects', async () => {
+    // A copy of its own, so that the file the other tests use stays as it is.
+    const file = join(dir, 'rotating.creds')
+    writeFileSync(file, readFileSync(alice.file))
+    const conn = await connectWith(file)
+    try {
+      expect((await h.service.serverInfo(conn.id)).user).toBe(alice.user)
+
+      // Rotation: the same path now holds the JWT and the seed of another user of the account.
+      const bob = await writeCreds('bob', account)
+      writeFileSync(file, readFileSync(bob.file))
+      // The connection that is open was authenticated before, so nothing changes for it yet.
+      expect((await h.service.serverInfo(conn.id)).user).toBe(alice.user)
+
+      await conn.bounceServer()
+      const info = await h.service.serverInfo(conn.id)
+      expect(info.user).toBe(bob.user)
+      expect(info.user).not.toBe(alice.user)
+      expect(info.account).toBe(account.getPublicKey())
+      // And it is a working login, not just a name: JetStream answers for the account.
+      expect((await h.service.accountInfo(conn.id)).enabled).toBe(true)
+
+      // A second rotation, this time with Windows line ends, is picked up the same way.
+      const carol = await writeCreds('carol', account)
+      writeFileSync(file, readFileSync(carol.file, 'utf8').replace(/\n/g, '\r\n'))
+      await conn.bounceServer()
+      expect((await h.service.serverInfo(conn.id)).user).toBe(carol.user)
+    } finally {
+      await conn.done()
+    }
+  })
+
+  it('keeps the last credentials that worked while the file is missing or damaged', async () => {
+    const file = join(dir, 'fragile.creds')
+    writeFileSync(file, readFileSync(alice.file))
+    const conn = await connectWith(file)
+    try {
+      // The file is gone when the studio has to log in again.
+      rmSync(file)
+      await conn.bounceServer()
+      expect((await h.service.serverInfo(conn.id)).user).toBe(alice.user)
+
+      // A file caught half-written, as during a rotation that is not atomic.
+      writeFileSync(file, readFileSync(alice.file, 'utf8').slice(0, 60))
+      await conn.bounceServer()
+      expect((await h.service.serverInfo(conn.id)).user).toBe(alice.user)
+
+      // Once the file is whole again it is used again.
+      const dave = await writeCreds('dave', account)
+      writeFileSync(file, readFileSync(dave.file))
+      await conn.bounceServer()
+      expect((await h.service.serverInfo(conn.id)).user).toBe(dave.user)
+    } finally {
+      await conn.done()
+    }
+  })
+
+  it('still refuses to open a connection whose credentials file is missing', async () => {
+    const saved = await h.service.saveConnection(
+      credsInput('missing', { ...alice, file: join(dir, 'no-such.creds') })
+    )
+    const err = await expectGatewayError(h.service.connect(saved.id), 'validation')
+    expect(err.message).toMatch(/^Credentials file cannot be read/)
     await h.service.deleteConnection(saved.id)
   })
 })

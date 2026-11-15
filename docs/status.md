@@ -25,8 +25,8 @@ the React compiler). Type-check: clean.
 | 002 | Typed IPC bridge and gateway | Tested | One protocol for IPC and WebSocket; fake gateway for UI tests. |
 | 003 | App shell and layout | Tested | |
 | 010 | Import NATS CLI contexts | Tested | Contexts that use `nsc` or `user_jwt` are listed with a warning; they cannot connect. |
-| 011 | Add, edit, delete a connection | Tested | User/password, token, NKey, TLS (CA, client certificate, handshake-first) and credentials files (JWT, operator mode) are all tested against live servers. Credentials files with Windows line endings are accepted. |
-| 012 | Test connection | Tested | The timeout (5 seconds by default, 1 to 60) is set in the connection form under "Connection test"; it applies to every connection test. |
+| 011 | Add, edit, delete a connection | Tested | User/password, token, NKey, TLS (CA, client certificate, handshake-first) and credentials files (JWT, operator mode) are all tested against live servers. Credentials files with Windows line endings are accepted. A credentials file is read again at every reconnect, so a rotated file is picked up. |
+| 012 | Test connection | Tested | The timeout (5 seconds by default, 1 to 60) is set in the connection form under "Connection test"; it applies to every connection test, as one deadline for connecting however many servers are listed, and is stored on Enter or when the field is left. |
 | 013 | Multiple simultaneous connections | Tested | |
 | 014 | Secure secret storage | Tested | Desktop uses Electron `safeStorage`. On this Linux/WSL machine no keychain is present, so the "no keychain" path is what ran here; the keychain path on Windows and macOS was not run. |
 | 015 | Auto-reconnect and status | Tested | Retries at about 0, 0.25, 0.5, 1, 2, 4, 8 seconds, then every 8 seconds. |
@@ -62,7 +62,7 @@ the React compiler). Type-check: clean.
 | 080 | Time-series charts | Tested | History for up to 500 streams and 2,000 consumers per connection. |
 | 081 | Alerts and notifications | Tested | Desktop notifications use the standard Notification API; a headless browser cannot show one, so that last step was not observed. |
 | 090 | Command palette | Tested | |
-| 091 | Saved filters and favourites | Tested | Saved filters and favourites export to and import from one JSON file, from the "Saved" menu of the message browser. |
+| 091 | Saved filters and favourites | Tested | Saved filters and favourites export to and import from one JSON file, from the "Saved" menu of the message browser. An import is limited to 500 saved filters (names up to 120 characters) and 2,000 favourites. |
 | 092 | Audit log | Tested | |
 | 093 | Keyboard navigation, session restore | Tested | No formal screen-reader audit was done. |
 | 100 | Installers and auto-update | **Partly verified** | See below. |

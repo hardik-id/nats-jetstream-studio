@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import type { AppInfo, ConnectionSummary } from '@shared/api'
+import { errorMessage } from '../components/ui'
 import { useGateway } from '../gateway'
+import { toast } from '../state/toasts'
 
 /** True while the tab that renders this component is the visible one. Hidden tabs do not poll. */
 export const TabActiveContext = createContext(true)
@@ -37,9 +39,20 @@ export function useAppInfo(): AppInfo | undefined {
 
 /**
  * A value stored by the gateway (saved filters, favourites, templates...).
- * Returns the value, a setter that saves it, and whether the first load has finished.
+ *
+ * Returns the value, a setter, whether the stored value has been read, and the error when
+ * reading it failed. Until it has been read the value is `fallback`, which says nothing about
+ * what is stored: a caller that builds the next value from the current one (adding to a list,
+ * merging an import) must wait for `loaded`, or it replaces the stored value with its fallback.
+ *
+ * The setter shows the new value at once and resolves to true when it has been stored. When the
+ * write fails it says so in a toast, shows again what is really stored and resolves to false. It
+ * never rejects, so a caller that does not wait for the result needs no error handling.
  */
-export function useSetting<T>(key: string, fallback: T): [T, (value: T) => void, boolean] {
+export function useSetting<T>(
+  key: string,
+  fallback: T
+): [value: T, set: (value: T) => Promise<boolean>, loaded: boolean, loadError: unknown] {
   const gateway = useGateway()
   const client = useQueryClient()
   const query = useQuery({
@@ -47,13 +60,38 @@ export function useSetting<T>(key: string, fallback: T): [T, (value: T) => void,
     queryFn: () => gateway.getSetting(key) as Promise<T | null>,
     staleTime: Infinity
   })
-  const mutation = useMutation({
+  const { mutateAsync } = useMutation({
     mutationFn: (value: T) => gateway.setSetting(key, value),
-    onMutate: (value) => client.setQueryData(['setting', key], value)
+    onMutate: async (value) => {
+      const queryKey = ['setting', key]
+      // A read that is still on its way must not put the old value back when it arrives.
+      await client.cancelQueries({ queryKey })
+      const previous = client.getQueryData<T | null>(queryKey)
+      client.setQueryData(queryKey, value)
+      return { previous }
+    },
+    onError: (err, _value, context) => {
+      const queryKey = ['setting', key]
+      // Nothing was stored, so the value that was shown before is the best answer until the
+      // stored one has been read again. Without one (the first read never finished) start over.
+      if (context?.previous === undefined) {
+        void client.resetQueries({ queryKey })
+      } else {
+        client.setQueryData(queryKey, context.previous)
+        void client.invalidateQueries({ queryKey })
+      }
+      toast.error(`This change could not be saved. ${errorMessage(err)}`)
+    }
   })
-  const { mutate } = mutation
-  const set = useCallback((value: T) => mutate(value), [mutate])
-  return [query.data ?? fallback, set, query.isSuccess]
+  const set = useCallback(
+    (value: T) =>
+      mutateAsync(value).then(
+        () => true,
+        () => false
+      ),
+    [mutateAsync]
+  )
+  return [query.data ?? fallback, set, query.isSuccess, query.isError ? query.error : null]
 }
 
 /** Keeps the latest value of something in a ref, for callbacks that should not re-subscribe. */

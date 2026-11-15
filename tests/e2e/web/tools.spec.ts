@@ -174,6 +174,9 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await page.getByRole('button', { name: 'Saved' }).click()
   const download = page.waitForEvent('download')
   await exportItem.click()
+  // The confirmation goes away by itself after a few seconds, so it is checked first, before
+  // the download is saved and read.
+  await expect(toast(page, 'Exported 1 saved filter and 2 favourites')).toBeVisible()
   const exported = await download
   expect(exported.suggestedFilename()).toBe('saved-filters-Local_dev.json')
   const file = testInfo.outputPath('saved-filters-Local_dev.json')
@@ -186,7 +189,6 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
       { kind: 'consumer', stream: 'ORDERS', consumer: 'billing' }
     ]
   })
-  await expect(toast(page, 'Exported 1 saved filter and 2 favourites')).toBeVisible()
 
   // Starts on the Messages tab of ORDERS and leaves no saved filter and no favourite behind.
   const removeEverything = async (): Promise<void> => {

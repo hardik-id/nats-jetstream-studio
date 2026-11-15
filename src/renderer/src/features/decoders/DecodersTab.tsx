@@ -42,11 +42,12 @@ export function DecodersTab({ connId }: { connId: string }): ReactNode {
     }
   }
 
-  const setMapping = (index: number, patch: Partial<ProtoSettings['mappings'][number]>): void =>
-    setSettings({
+  const setMapping = (index: number, patch: Partial<ProtoSettings['mappings'][number]>): void => {
+    void setSettings({
       ...settings,
       mappings: settings.mappings.map((m, i) => (i === index ? { ...m, ...patch } : m))
     })
+  }
 
   return (
     <Page

@@ -1,8 +1,9 @@
 import type { ContentFilters, HeaderFilter } from '@shared/api'
 import { validateFilters } from '@shared/filters'
+import { formatCount } from '@shared/format'
 import { validateSubject } from '@shared/subject'
-import { favoriteKey, type Favorite } from './favorites'
-import type { SavedFilter } from './messages'
+import { favoriteKey, MAX_FAVORITES, type Favorite } from './favorites'
+import { MAX_SAVED_FILTER_NAME, MAX_SAVED_FILTERS, type SavedFilter } from './messages'
 
 /**
  * The saved filters and favourites of one connection as a JSON file (PBI-091), to move them to
@@ -94,6 +95,11 @@ function parseSavedFilter(value: unknown, index: number): SavedFilter {
   if (!isText(value.name) || value.name.trim() === '')
     throw new Error(`Saved filter ${index + 1} has no name.`)
   const name = value.name.trim()
+  if (name.length > MAX_SAVED_FILTER_NAME)
+    throw new Error(
+      `Saved filter ${index + 1} has a name of ${formatCount(name.length)} characters. ` +
+        `A name can have at most ${MAX_SAVED_FILTER_NAME}.`
+    )
   const where = `Saved filter "${name}"`
   if (!isText(value.subject)) throw new Error(`${where} has no "subject" text.`)
   const subject = value.subject.trim()
@@ -148,6 +154,17 @@ export function parseSavedExport(text: string): SavedExport {
     )
   if (!Array.isArray(doc.savedFilters)) throw new Error('"savedFilters" must be a list.')
   if (!Array.isArray(doc.favorites)) throw new Error('"favorites" must be a list.')
+  // Checked before the entries are read, so a huge list is refused without walking through it.
+  if (doc.savedFilters.length > MAX_SAVED_FILTERS)
+    throw new Error(
+      `This file has ${formatCount(doc.savedFilters.length)} saved filters. ` +
+        `At most ${formatCount(MAX_SAVED_FILTERS)} can be imported.`
+    )
+  if (doc.favorites.length > MAX_FAVORITES)
+    throw new Error(
+      `This file has ${formatCount(doc.favorites.length)} favourites. ` +
+        `At most ${formatCount(MAX_FAVORITES)} can be imported.`
+    )
   return {
     version: 1,
     savedFilters: doc.savedFilters.map(parseSavedFilter),
@@ -160,6 +177,8 @@ export interface SavedMerge {
   favorites: Favorite[]
   /** Saved filters taken from the file, counting the ones that replaced an existing filter. */
   importedFilters: number
+  /** How many of those took the place of a saved filter that was already there. */
+  replacedFilters: number
   /** Favourites from the file that were not there before. */
   importedFavorites: number
 }
@@ -168,17 +187,22 @@ export interface SavedMerge {
  * Adds an imported document to what a connection already has. A saved filter replaces an
  * existing one with the same name (in place, so the menu keeps its order); a favourite that is
  * already there is left alone.
+ *
+ * Throws an Error that says why when the import would leave the connection with more saved
+ * filters or favourites than it can have.
  */
 export function mergeSavedExport(
   existing: { savedFilters: SavedFilter[]; favorites: Favorite[] },
   imported: SavedExport
 ): SavedMerge {
+  const existingNames = new Set(existing.savedFilters.map((s) => s.name))
   const byName = new Map(existing.savedFilters.map((s) => [s.name, s]))
   const importedNames = new Set<string>()
   for (const filter of imported.savedFilters) {
     byName.set(filter.name, filter)
     importedNames.add(filter.name)
   }
+  const replacedFilters = [...importedNames].filter((name) => existingNames.has(name)).length
 
   const favorites = [...existing.favorites]
   const keys = new Set(favorites.map(favoriteKey))
@@ -188,20 +212,49 @@ export function mergeSavedExport(
     keys.add(key)
     favorites.push(favorite)
   }
+  const importedFavorites = favorites.length - existing.favorites.length
+
+  // Only what the file adds can push a list over its limit; replacing never does.
+  if (importedNames.size > replacedFilters && byName.size > MAX_SAVED_FILTERS)
+    throw new Error(
+      `This import would give the connection ${formatCount(byName.size)} saved filters. ` +
+        `It can have at most ${formatCount(MAX_SAVED_FILTERS)}.`
+    )
+  if (importedFavorites > 0 && favorites.length > MAX_FAVORITES)
+    throw new Error(
+      `This import would give the connection ${formatCount(favorites.length)} favourites. ` +
+        `It can have at most ${formatCount(MAX_FAVORITES)}.`
+    )
 
   return {
     savedFilters: [...byName.values()],
     favorites,
     importedFilters: importedNames.size,
-    importedFavorites: favorites.length - existing.favorites.length
+    replacedFilters,
+    importedFavorites
   }
 }
 
+const countOf = (n: number, one: string): string => `${formatCount(n)} ${one}${n === 1 ? '' : 's'}`
+
 /** "2 saved filters and 1 favourite", for confirmations. Empty when both counts are zero. */
 export function describeSaved(filters: number, favorites: number): string {
-  const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
   return [
-    ...(filters ? [count(filters, 'saved filter')] : []),
-    ...(favorites ? [count(favorites, 'favourite')] : [])
+    ...(filters ? [countOf(filters, 'saved filter')] : []),
+    ...(favorites ? [countOf(favorites, 'favourite')] : [])
   ].join(' and ')
+}
+
+/**
+ * "Imported 3 saved filters (1 replaced) and 2 favourites": what an import did, including how
+ * many saved filters that were already there it replaced.
+ */
+export function describeImport(
+  merge: Pick<SavedMerge, 'importedFilters' | 'replacedFilters' | 'importedFavorites'>
+): string {
+  const replaced = merge.replacedFilters ? ` (${formatCount(merge.replacedFilters)} replaced)` : ''
+  return `Imported ${[
+    ...(merge.importedFilters ? [countOf(merge.importedFilters, 'saved filter') + replaced] : []),
+    ...(merge.importedFavorites ? [countOf(merge.importedFavorites, 'favourite')] : [])
+  ].join(' and ')}`
 }

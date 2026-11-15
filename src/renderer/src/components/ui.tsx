@@ -615,11 +615,13 @@ export function ConfirmDialog({
 // ───────────── Menu ─────────────
 
 export interface MenuItem {
+  /** Shown on one line and cut short with an ellipsis when it is wider than the menu. */
   label: string
   icon?: ReactNode
   onSelect: () => void
   danger?: boolean
   disabled?: boolean
+  /** The tooltip. Without one the tooltip is the label, so a label that was cut can be read. */
   title?: string
 }
 
@@ -673,12 +675,14 @@ export function Menu({
             align === 'right' ? 'right-0' : 'left-0'
           )}
         >
-          {items.map((item) => (
+          {/* Keyed by position: labels can repeat, for example a saved filter that is named like
+              one of the fixed entries, and the list is rebuilt whenever it changes. */}
+          {items.map((item, index) => (
             <button
-              key={item.label}
+              key={index}
               role="menuitem"
               disabled={item.disabled}
-              title={item.title}
+              title={item.title ?? item.label}
               onClick={(e) => {
                 e.stopPropagation()
                 setOpen(false)
@@ -690,7 +694,7 @@ export function Menu({
               )}
             >
               {item.icon}
-              {item.label}
+              <span className="min-w-0 truncate">{item.label}</span>
             </button>
           ))}
         </div>

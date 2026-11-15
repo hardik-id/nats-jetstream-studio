@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, FolderOpen, XCircle } from 'lucide-react'
 import {
@@ -9,7 +9,12 @@ import {
   type TestConnectionResult
 } from '@shared/api'
 import {
+  clampTestTimeoutMs,
   CONNECTION_COLORS,
+  parseTestTimeoutSeconds,
+  TEST_TIMEOUT_DEFAULT_MS,
+  TEST_TIMEOUT_MAX_MS,
+  TEST_TIMEOUT_MIN_MS,
   validateConnectionInput,
   type ConnectionErrors
 } from '@shared/connection'
@@ -114,16 +119,6 @@ function toInput(form: FormState, id: string | undefined): ConnectionInput {
   }
 }
 
-const DEFAULT_TEST_TIMEOUT_MS = 5000
-
-/** Whole or decimal seconds from 1 to 60, as milliseconds. Null when the text is anything else. */
-function parseTestTimeout(text: string): number | null {
-  const trimmed = text.trim()
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null
-  const seconds = Number(trimmed)
-  return seconds >= 1 && seconds <= 60 ? Math.round(seconds * 1000) : null
-}
-
 /** Add or edit a connection (PBI-011), with "Test" (PBI-012) and secret handling (PBI-014). */
 export function ConnectionForm({
   id,
@@ -161,25 +156,48 @@ function Form({
   const [testing, setTesting] = useState(false)
   const [test, setTest] = useState<TestConnectionResult | null>(null)
   const [error, setError] = useState<unknown>(null)
-  // The test timeout is one setting for the whole studio, not part of this connection, so it is
-  // saved as soon as it is valid and does not wait for "Save".
-  const [testTimeoutMs, setTestTimeoutMs] = useSetting<number>(
+  // The test timeout is one setting for the whole studio, not part of this connection, so it does
+  // not wait for "Save". It is stored when the field is left or Enter is pressed, and never while
+  // it is being typed: "30" would be stored as 3 seconds on the way. What was typed is dropped
+  // when the dialog is closed from the field (Cancel, the close button, Escape).
+  const [storedTimeout, setStoredTimeout] = useSetting<number>(
     'testTimeoutMs',
-    DEFAULT_TEST_TIMEOUT_MS
+    TEST_TIMEOUT_DEFAULT_MS
   )
+  const testTimeoutMs = clampTestTimeoutMs(storedTimeout)
+  /** The text in the field while it differs from the stored value; null shows the stored value. */
   const [timeoutDraft, setTimeoutDraft] = useState<string | null>(null)
-  const timeoutText =
-    timeoutDraft ??
-    String((Number.isFinite(testTimeoutMs) ? testTimeoutMs : DEFAULT_TEST_TIMEOUT_MS) / 1000)
+  const timeoutText = timeoutDraft ?? String(testTimeoutMs / 1000)
   const timeoutError =
-    timeoutDraft !== null && parseTestTimeout(timeoutDraft) === null
-      ? 'Enter a number of seconds from 1 to 60'
+    timeoutDraft !== null && parseTestTimeoutSeconds(timeoutDraft) === null
+      ? `Enter a number of seconds from ${TEST_TIMEOUT_MIN_MS / 1000} to ${TEST_TIMEOUT_MAX_MS / 1000}`
       : null
+  /** The write of the timeout that is on its way, so that a test started right after it waits. */
+  const timeoutSave = useRef<Promise<unknown>>(Promise.resolve())
   const changeTimeout = (text: string): void => {
     setTimeoutDraft(text)
-    const ms = parseTestTimeout(text)
-    if (ms !== null && ms !== testTimeoutMs) setTestTimeoutMs(ms)
+    // A verdict reached with another timeout no longer says anything about this one.
+    setTest(null)
   }
+  const commitTimeout = (): void => {
+    if (timeoutDraft === null) return
+    const ms = parseTestTimeoutSeconds(timeoutDraft)
+    // Text that is not a valid timeout stays in the field with its error, and nothing is stored.
+    if (ms === null) return
+    setTimeoutDraft(null)
+    if (ms !== testTimeoutMs) timeoutSave.current = setStoredTimeout(ms)
+  }
+  // Pressing Cancel or the close button takes the focus out of the field before the dialog
+  // closes. That must not count as leaving the field, or cancelling would store what was typed.
+  const dismissing = useRef(false)
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent): void => {
+      const target = e.target instanceof Element ? e.target : null
+      dismissing.current = target?.closest('[data-close], [data-dismiss]') != null
+    }
+    document.addEventListener('mousedown', onMouseDown, true)
+    return () => document.removeEventListener('mousedown', onMouseDown, true)
+  }, [])
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((f) => ({ ...f, [key]: value }))
     setTest(null)
@@ -248,6 +266,8 @@ function Form({
     setTesting(true)
     setTest(null)
     try {
+      // A timeout that was just changed has to be stored before the test reads it.
+      await timeoutSave.current
       setTest(await gateway.testConnection(input))
     } catch (err) {
       setTest({ ok: false, kind: 'other', message: (err as Error).message })
@@ -288,7 +308,9 @@ function Form({
               Test connection
             </Button>
           )}
-          <Button onClick={onClose}>Cancel</Button>
+          <Button data-dismiss onClick={onClose}>
+            Cancel
+          </Button>
           <Button variant="primary" busy={saving} onClick={() => void save()}>
             Save
           </Button>
@@ -558,7 +580,7 @@ function Form({
           <Field
             className="mt-3"
             label="Test timeout (seconds)"
-            hint="How long a test waits before it gives up. Applies to every connection test and is saved as you type."
+            hint="How long a test waits before it gives up. Applies to every connection test and is saved when you press Enter or leave the field."
             error={timeoutError}
           >
             {(fid) => (
@@ -569,6 +591,16 @@ function Form({
                 value={timeoutText}
                 invalid={!!timeoutError}
                 onChange={(e) => changeTimeout(e.target.value)}
+                onBlur={() => {
+                  if (!dismissing.current) commitTimeout()
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  // Enter stores the timeout. It must not submit the form as well, which would
+                  // save the connection and close the dialog.
+                  e.preventDefault()
+                  commitTimeout()
+                }}
               />
             )}
           </Field>

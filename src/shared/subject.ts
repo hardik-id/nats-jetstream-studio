@@ -13,7 +13,13 @@ export function subjectMatches(pattern: string, subject: string): boolean {
   return p.length === s.length
 }
 
-/** Returns a message when the subject (or wildcard filter) is not valid, otherwise null. */
+/**
+ * Returns a message when the subject (or wildcard filter) is not valid, otherwise null.
+ *
+ * As in NATS, a wildcard is a whole token that is exactly `*` or `>`. Inside a longer token the
+ * two characters are ordinary text: `a*b` and `cpu>90` are literal tokens, and they are accepted
+ * here even when wildcards are not.
+ */
 export function validateSubject(subject: string, allowWildcards = true): string | null {
   if (!subject) return 'Subject is required'
   if (/\s/.test(subject)) return 'Subject cannot contain whitespace'
@@ -26,8 +32,6 @@ export function validateSubject(subject: string, allowWildcards = true): string 
       if (i !== tokens.length - 1) return '">" is only allowed as the last token'
     } else if (token === '*') {
       if (!allowWildcards) return 'Wildcards are not allowed here'
-    } else if (token.includes('*') || token.includes('>')) {
-      return 'Wildcards must be a whole token'
     }
   }
   return null

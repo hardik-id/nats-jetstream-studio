@@ -35,7 +35,7 @@ const HEALTH_BADGE_TEXT: Partial<Record<HealthFlag, string>> = {
 }
 
 /** Status badges for one consumer: Paused, one per problem found, or Healthy. */
-function HealthBadges({ c }: { c: ConsumerInfoDto }): ReactNode {
+export function HealthBadges({ c }: { c: ConsumerInfoDto }): ReactNode {
   const flags = c.health ?? []
   if (!c.paused && flags.length === 0)
     return (
@@ -43,18 +43,34 @@ function HealthBadges({ c }: { c: ConsumerInfoDto }): ReactNode {
         Healthy
       </Badge>
     )
+  // One badge, then "+N" for the rest: the cell stays one line and nothing is clipped. The full
+  // list is in the tooltip.
+  const items: { key: string; status: 'neutral' | 'warn'; text: string; hint: string }[] = [
+    ...(c.paused
+      ? [{ key: 'paused', status: 'neutral' as const, text: 'Paused', hint: 'Delivery is paused' }]
+      : []),
+    ...flags.map((f) => ({
+      key: f,
+      status: 'warn' as const,
+      text: HEALTH_BADGE_TEXT[f] ?? HEALTH_LABELS[f],
+      hint: HEALTH_LABELS[f]
+    }))
+  ]
+  const [first, ...rest] = items
+  const all = items.map((i) => i.hint).join(', ')
   return (
-    <span className="flex min-w-0 items-center gap-1">
-      {c.paused && (
-        <Badge status="neutral" title="Delivery is paused">
-          Paused
-        </Badge>
+    <span className="flex items-center gap-1" title={all}>
+      <Badge status={first.status} title={all}>
+        {first.text}
+      </Badge>
+      {rest.length > 0 && (
+        <span
+          className="text-xs whitespace-nowrap text-muted"
+          aria-label={`and ${rest.length} more: ${all}`}
+        >
+          +{rest.length}
+        </span>
       )}
-      {flags.map((f) => (
-        <Badge key={f} status="warn" title={HEALTH_LABELS[f]}>
-          {HEALTH_BADGE_TEXT[f] ?? HEALTH_LABELS[f]}
-        </Badge>
-      ))}
     </span>
   )
 }

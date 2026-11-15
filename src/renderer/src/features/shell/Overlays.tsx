@@ -12,6 +12,7 @@ const SHORTCUTS: [keys: string[], what: string][] = [
   [['↑', '↓'], 'Move through the rows of a table'],
   [['PgUp', 'PgDn', 'Home', 'End'], 'Jump through a table'],
   [['Enter'], 'Open the selected row'],
+  [['Space'], 'Tick the selected message in the message browser'],
   [['Esc'], 'Close a dialog, the search box or the message panel'],
   [['Alt', '↑ / ↓'], 'Previous or next message while the message panel is open'],
   [['Ctrl/⌘', 'Enter'], 'Send, in the publish form']

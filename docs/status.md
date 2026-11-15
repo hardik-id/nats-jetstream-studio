@@ -1,16 +1,16 @@
 # Implementation status
 
-All 46 backlog items in [backlog.md](backlog.md) have been implemented. This page says how each
+All 60 backlog items in [backlog.md](backlog.md) have been implemented. This page says how each
 was checked and what was **not** verified.
 
 ## How it was tested
 
 | Suite | Command | Size | What it uses |
 | --- | --- | --- | --- |
-| Unit | `npm test` (project `unit`) | 23 tests | Pure logic: subjects, durations, JSONPath, filters, health rules, reconnect backoff |
-| Gateway | `npm test` (project `core`) | 200 tests | The real `StudioService` against real `nats-server` processes (2.15.3), including a three-node cluster, TLS servers, a JWT (operator mode) server and a mock OIDC provider |
-| UI | `npm test` (project `ui`) | 32 tests | React components against the in-memory fake gateway |
-| End-to-end | `npm run test:e2e` | 38 tests | The real UI in Chromium against web mode, and the Electron app (also run against the packaged Linux build) |
+| Unit | `npm test` (project `unit`) | 27 tests | Pure logic: subjects, durations, JSONPath, filters, health rules, reconnect backoff |
+| Gateway | `npm test` (project `core`) | 212 tests | The real `StudioService` against real `nats-server` processes (2.15.3), including a three-node cluster, TLS servers, a JWT (operator mode) server and a mock OIDC provider |
+| UI | `npm test` (project `ui`) | 59 tests | React components against the in-memory fake gateway |
+| End-to-end | `npm run test:e2e` | 39 tests | The real UI in Chromium against web mode, and the Electron app (also run against the packaged Linux build) |
 
 Lint: 0 errors. One informational warning remains (the virtual list library cannot be optimised by
 the React compiler). Type-check: clean.
@@ -67,6 +67,20 @@ the React compiler). Type-check: clean.
 | 093 | Keyboard navigation, session restore | Tested | No formal screen-reader audit was done. |
 | 100 | Installers and auto-update | **Partly verified** | See below. |
 | 101 | Web and server mode | Tested | Token and OIDC sign-in, Docker image built and run. |
+| 110 | Visual redesign (Linear-style dashboard) | Done | Delivered through PBI-111 to PBI-123; see those rows. |
+| 111 | Colour tokens, fonts and focus ring | Done | Inter and JetBrains Mono are bundled. Contrast ratios were recorded in the pull request. |
+| 112 | Shared controls | Done | Buttons, inputs, status badges and the segmented tabs live in `ui.tsx`. |
+| 113 | Dense data table | Done | Sticky header, 36 px rows, sideways scroll inside the table. |
+| 114 | Top bar | Done | 44 px bar with breadcrumb, search button and connection state. |
+| 115 | Sidebar with collapsible icon rail | Done | The message browser asks for the rail while its detail panel is open (PBI-123). |
+| 116 | Tab bar with overflow menu | Done | 36 px tabs, "+N" menu for tabs that do not fit. |
+| 117 | Message browser layout and detail panel | Done | Resizable detail panel, at least 440 px. |
+| 118 | Payload and JSON colours | Done | The format switch uses the segmented control (PBI-123). |
+| 119 | Publish page layout | Done | A long reply scrolls inside its box. |
+| 120 | Object store detail metadata | Done | "Revision undefined" fixed. |
+| 121 | List pages: header, filter and summary cards | Done | Several health flags show as one badge and "+N" (PBI-123). |
+| 122 | Chart colours | Done | Series, grid and axis colours come from tokens. |
+| 123 | Redesign final pass | Done | Every screen was checked in dark and light at 1280 x 720 and 1440 x 900, and a keyboard-only walk-through was done. Not run: Windows desktop (the minimum content width of 1024 px is set with `useContentSize`, see `docs/handoff-windows.md`). |
 
 ## PBI-100: what was and was not verified
 

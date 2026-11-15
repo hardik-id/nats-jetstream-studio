@@ -445,7 +445,9 @@ test('PBI-044 Protobuf payloads are decoded with registered .proto files', async
   await expect(detail.getByRole('tab', { name: 'Protobuf shop.Order' })).toHaveCount(0)
   await expect(detail.getByRole('tab', { name: 'Hex' })).toHaveAttribute('aria-selected', 'true')
 
-  // Remove the registration again.
+  // Remove the registration again. An open detail panel collapses the sidebar to its rail
+  // (PBI-123), so close it first.
+  await detail.getByRole('button', { name: 'Close message detail' }).click()
   await go(page, 'Decoders')
   await page.getByRole('button', { name: 'Remove mapping 1' }).click()
   await page.getByRole('button', { name: 'Remove order.proto' }).click()

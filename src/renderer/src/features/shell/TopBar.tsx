@@ -81,7 +81,7 @@ export function TopBar(): ReactNode {
       {conn && (
         <nav
           aria-label="Breadcrumb"
-          className="flex min-w-0 items-center gap-1.5"
+          className="flex min-w-0 flex-1 items-center gap-1.5"
           data-testid="active-connection"
         >
           <span
@@ -89,7 +89,7 @@ export function TopBar(): ReactNode {
             style={{ backgroundColor: conn.color }}
             aria-hidden
           />
-          <span className="truncate font-medium">{conn.name}</span>
+          <span className="max-w-48 shrink-0 truncate font-medium">{conn.name}</span>
           {conn.envLabel && (
             <Badge tone={conn.envLabel.toLowerCase().startsWith('prod') ? 'danger' : 'neutral'}>
               {conn.envLabel}
@@ -98,7 +98,7 @@ export function TopBar(): ReactNode {
           {stream && (
             <>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
-              <span className="truncate font-medium" aria-current="page">
+              <span className="max-w-56 shrink-0 truncate font-medium" aria-current="page">
                 {stream}
               </span>
             </>
@@ -112,7 +112,7 @@ export function TopBar(): ReactNode {
               Read-only
             </Badge>
           )}
-          <span className="hidden truncate text-faint lg:inline">
+          <span className="hidden min-w-0 truncate text-faint lg:inline">
             {connected && conn.state.serverName
               ? `${conn.state.serverName} · NATS ${conn.state.version}`
               : conn.state.status === 'error'

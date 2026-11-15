@@ -115,7 +115,11 @@ test('PBI-030/040 streams and messages load over IPC', async () => {
   await page.getByRole('tab', { name: 'Messages' }).click()
   await expect(page.getByTestId('message-range')).toContainText(/50 messages, #\d+ to #\d+/)
   await page.getByRole('table', { name: 'Messages in ORDERS' }).getByRole('row').nth(2).click()
-  await expect(page.getByRole('complementary', { name: 'Message detail' })).toContainText('orders.')
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await expect(detail).toContainText('orders.')
+  // An open detail panel collapses the sidebar to its rail (PBI-123); close it for the next tests.
+  await detail.getByRole('button', { name: 'Close message detail' }).click()
+  await expect(detail).toHaveCount(0)
 })
 
 test('PBI-014 secrets are stored through the OS keychain API, never in plain text', async () => {

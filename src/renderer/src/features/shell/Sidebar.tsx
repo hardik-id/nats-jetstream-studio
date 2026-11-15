@@ -11,6 +11,8 @@ import {
   Monitor,
   Moon,
   MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plug,
   Plus,
@@ -20,17 +22,23 @@ import {
   Trash2,
   Unplug
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ConnectionStatus, ConnectionSummary } from '@shared/api'
 import { Badge, Button, ConfirmDialog, cx, Menu, type MenuItem } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useConnectActions } from '../../lib/connect'
 import { favoriteKey, favoriteLabel, favoriteTab, useFavorites } from '../../lib/favorites'
-import { useAppInfo, useConnections } from '../../lib/hooks'
+import { useAppInfo, useConnections, useSetting } from '../../lib/hooks'
 import { useAlertFeed } from '../../state/alerts'
 import { useTabs } from '../../state/tabs'
 import { toast } from '../../state/toasts'
-import { useOverlays, useUi, type ThemeChoice } from '../../state/ui'
+import {
+  SIDEBAR_RAIL_SETTING,
+  useOverlays,
+  useRailRequested,
+  useUi,
+  type ThemeChoice
+} from '../../state/ui'
 import { isNavActive, NAV, openNav, TabIcon } from './nav'
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -66,7 +74,25 @@ export function Sidebar(): ReactNode {
   const client = useQueryClient()
   const appInfo = useAppInfo()
   const { data: connections = [], isLoading } = useConnections()
-  const { theme, setTheme, sidebarWidth } = useUi()
+  const { theme, setTheme } = useUi()
+  const [railChoice, setRailChoice] = useSetting<boolean>(SIDEBAR_RAIL_SETTING, false)
+  const railRequested = useRailRequested()
+  // A page (the message browser) may ask for the rail; the user's own choice comes back after.
+  const rail = railChoice || railRequested
+  const toggleRail = (): void => {
+    if (!railRequested) void setRailChoice(!railChoice)
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggleRail()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
   const overlays = useOverlays()
   const locked = appInfo?.connectionsLocked ?? false
 
@@ -97,36 +123,71 @@ export function Sidebar(): ReactNode {
       <Moon className="h-4 w-4" aria-hidden />
     )
 
+  const toggle = (
+    <Button
+      size="sm"
+      variant="ghost"
+      title={
+        railRequested
+          ? 'Collapsed while a detail panel is open'
+          : rail
+            ? 'Expand sidebar (Ctrl/⌘ B)'
+            : 'Collapse sidebar (Ctrl/⌘ B)'
+      }
+      aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'}
+      aria-pressed={rail}
+      disabled={railRequested}
+      icon={
+        rail ? (
+          <PanelLeftOpen className="h-4 w-4" aria-hidden />
+        ) : (
+          <PanelLeftClose className="h-4 w-4" aria-hidden />
+        )
+      }
+      onClick={toggleRail}
+    />
+  )
+
+  if (rail) {
+    return (
+      <Rail
+        toggle={toggle}
+        connections={connections}
+        locked={locked}
+        themeButton={
+          <Button
+            size="sm"
+            variant="ghost"
+            title={`Theme: ${theme}. Click to change.`}
+            aria-label={`Theme: ${theme}`}
+            icon={themeIcon}
+            onClick={() => setTheme(nextTheme[theme])}
+          />
+        }
+      />
+    )
+  }
+
   return (
     <nav
       aria-label="Connections"
-      style={{ width: sidebarWidth }}
-      className="flex h-full shrink-0 flex-col border-r border-line bg-panel"
+      className="flex h-full w-60 shrink-0 flex-col border-r border-line bg-panel"
     >
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
         <span className="mr-auto text-xs font-semibold tracking-wide text-muted uppercase">
           Connections
         </span>
         {!locked && (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              title="Re-read NATS CLI contexts"
-              aria-label="Re-read NATS CLI contexts"
-              icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => void refreshCli()}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              title="Add connection"
-              aria-label="Add connection"
-              icon={<Plus className="h-4 w-4" aria-hidden />}
-              onClick={() => overlays.set({ connectionForm: 'new' })}
-            />
-          </>
+          <Button
+            size="sm"
+            variant="ghost"
+            title="Re-read NATS CLI contexts"
+            aria-label="Re-read NATS CLI contexts"
+            icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => void refreshCli()}
+          />
         )}
+        {toggle}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -134,19 +195,23 @@ export function Sidebar(): ReactNode {
           <ConnectionNode key={conn.id} conn={conn} locked={locked} />
         ))}
         {!isLoading && connections.length === 0 && (
-          <p className="px-3 py-4 text-muted">
-            No connections yet.{' '}
-            {!locked && (
-              <button
-                className="text-accent hover:underline"
-                onClick={() => overlays.set({ connectionForm: 'new' })}
-              >
-                Add one
-              </button>
-            )}
-          </p>
+          <p className="px-3 py-4 text-muted">No connections yet.</p>
         )}
       </div>
+
+      {!locked && (
+        <div className="shrink-0 border-t border-line p-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full justify-start"
+            icon={<Plus className="h-4 w-4" aria-hidden />}
+            onClick={() => overlays.set({ connectionForm: 'new' })}
+          >
+            Add connection
+          </Button>
+        </div>
+      )}
 
       <footer className="flex h-10 shrink-0 items-center gap-1 border-t border-line px-2">
         <Button
@@ -175,6 +240,121 @@ export function Sidebar(): ReactNode {
         />
         {appInfo && <span className="ml-auto text-[11px] text-faint">v{appInfo.version}</span>}
       </footer>
+    </nav>
+  )
+}
+
+/** The 48 px icon rail: one button per connection, the sections of the current one, app actions. */
+function Rail({
+  toggle,
+  connections,
+  locked,
+  themeButton
+}: {
+  toggle: ReactNode
+  connections: ConnectionSummary[]
+  locked: boolean
+  themeButton: ReactNode
+}): ReactNode {
+  const { connect } = useConnectActions()
+  const overlays = useOverlays()
+  const tabs = useTabs()
+  const unseenAlerts = useAlertFeed((a) => Object.values(a.unseen).reduce((n, c) => n + c, 0))
+  const active = tabs.tabs.find((t) => t.id === tabs.activeId)?.spec
+  const isOnline = (c: ConnectionSummary): boolean =>
+    c.state.status === 'connected' || c.state.status === 'reconnecting'
+  const current =
+    connections.find((c) => c.id === active?.connId && isOnline(c)) ?? connections.find(isOnline)
+
+  return (
+    <nav
+      aria-label="Connections"
+      className="flex h-full w-12 shrink-0 flex-col items-center border-r border-line bg-panel"
+    >
+      <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-line">
+        {toggle}
+      </div>
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+        {connections.map((conn) => {
+          const online = isOnline(conn)
+          return (
+            <button
+              key={conn.id}
+              aria-label={`${conn.name}, ${STATUS_LABEL[conn.state.status]}`}
+              title={`${conn.name} (${STATUS_LABEL[conn.state.status]})`}
+              aria-current={current?.id === conn.id ? 'true' : undefined}
+              className={cx(
+                'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold hover:bg-hover',
+                current?.id === conn.id ? 'bg-hover text-fg' : 'text-muted'
+              )}
+              style={{ boxShadow: `inset 3px 0 0 ${conn.color}` }}
+              onClick={() => {
+                if (online) openNav(conn.id, 'overview')
+                else if (conn.state.status !== 'connecting')
+                  void connect(conn.id).then((ok) => ok && openNav(conn.id, 'overview'))
+              }}
+            >
+              {conn.name.slice(0, 1).toUpperCase()}
+              <span className="absolute right-0.5 bottom-0.5">
+                <StatusDot status={conn.state.status} />
+              </span>
+            </button>
+          )
+        })}
+        {current && (
+          <ul className="mt-1 flex w-full flex-col items-center gap-1 border-t border-line pt-2">
+            {NAV.map((item) => {
+              const isCurrent = isNavActive(current.id, item.kind, active)
+              return (
+                <li key={item.kind} className="relative">
+                  <button
+                    aria-label={item.label}
+                    title={`${item.label} (${current.name})`}
+                    aria-current={isCurrent ? 'page' : undefined}
+                    className={cx(
+                      'flex h-8 w-8 items-center justify-center rounded-md',
+                      isCurrent
+                        ? 'bg-accent-soft text-accent'
+                        : 'text-muted hover:bg-hover hover:text-fg'
+                    )}
+                    onClick={() => openNav(current.id, item.kind)}
+                  >
+                    <TabIcon kind={item.kind} className="h-4 w-4" />
+                  </button>
+                  {item.kind === 'alerts' && unseenAlerts > 0 && (
+                    <span
+                      role="img"
+                      aria-label={`${unseenAlerts} new alerts`}
+                      className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-warn"
+                    />
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="flex w-full shrink-0 flex-col items-center gap-1 border-t border-line py-2">
+        {!locked && (
+          <Button
+            size="sm"
+            variant="ghost"
+            title="Add connection"
+            aria-label="Add connection"
+            icon={<Plus className="h-4 w-4" aria-hidden />}
+            onClick={() => overlays.set({ connectionForm: 'new' })}
+          />
+        )}
+        {themeButton}
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          icon={<CircleHelp className="h-4 w-4" aria-hidden />}
+          onClick={() => overlays.set({ help: true })}
+        />
+      </div>
     </nav>
   )
 }

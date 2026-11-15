@@ -804,6 +804,7 @@ export function MessageBrowser({
           variant="ghost"
           icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
           title="Load this view again"
+          aria-label="Reload view"
           onClick={() => go(view, startMode)}
         />
         <Select

@@ -10,7 +10,17 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes
 } from 'react'
-import { AlertTriangle, Check, Copy, Loader2, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Info,
+  Loader2,
+  MinusCircle,
+  X,
+  XCircle
+} from 'lucide-react'
 import { GatewayError } from '@shared/api'
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -19,20 +29,28 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 
 // ───────────── Button ─────────────
 
-type ButtonVariant = 'primary' | 'default' | 'ghost' | 'danger'
+/** `default` is the secondary button (raised fill, 1 px border); `secondary` is an alias. */
+type ButtonVariant = 'primary' | 'default' | 'secondary' | 'ghost' | 'danger'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonBaseProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
+  /** `md` is 32 px high, `sm` (compact) is 28 px. */
   size?: 'sm' | 'md'
   icon?: ReactNode
   busy?: boolean
 }
 
+/** A button without text is icon-only (square), and then it must carry an `aria-label`. */
+type ButtonProps = ButtonBaseProps &
+  ({ children: ReactNode } | { children?: undefined; 'aria-label': string })
+
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-accent-fg border-transparent hover:brightness-110',
-  default: 'bg-panel text-fg border-line hover:bg-hover',
+  default: 'bg-raised text-fg border-line hover:bg-hover',
+  secondary: 'bg-raised text-fg border-line hover:bg-hover',
   ghost: 'bg-transparent text-muted border-transparent hover:bg-hover hover:text-fg',
-  danger: 'bg-danger text-white border-transparent hover:brightness-110 dark:text-[#1a0606]'
+  // Tinted: soft fill, danger text and border, a stronger tint on hover.
+  danger: 'bg-danger-soft text-danger border-danger/40 hover:border-danger/70 hover:brightness-110'
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -57,9 +75,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={cx(
         'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap select-none',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        size === 'sm' ? 'h-6 text-xs' : 'h-8 text-[13px]',
+        size === 'sm' ? 'h-7 text-xs' : 'h-8 text-[13px]',
         // Icon-only buttons are square; the padding classes must not both be present.
-        children ? (size === 'sm' ? 'px-2' : 'px-3') : size === 'sm' ? 'w-6' : 'w-8',
+        children ? (size === 'sm' ? 'px-2.5' : 'px-3') : size === 'sm' ? 'w-7' : 'w-8',
         VARIANTS[variant],
         className
       )}
@@ -74,7 +92,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 // ───────────── Form controls ─────────────
 
 const CONTROL =
-  'rounded-md border border-line bg-panel px-2 text-[13px] text-fg placeholder:text-faint disabled:cursor-not-allowed disabled:bg-raised disabled:text-muted'
+  'rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg placeholder:text-faint disabled:cursor-not-allowed disabled:bg-raised disabled:text-muted'
 
 /** Controls fill their container unless the caller gives a width; two width classes would fight. */
 const fill = (className: string | undefined): string | false =>
@@ -82,8 +100,14 @@ const fill = (className: string | undefined): string | false =>
 
 export const Input = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean; mono?: boolean }
->(function Input({ className, invalid, mono, ...rest }, ref) {
+  InputHTMLAttributes<HTMLInputElement> & {
+    invalid?: boolean
+    /** Subject and JSONPath fields use the mono font. */
+    mono?: boolean
+    /** 28 px high instead of 32 px. */
+    compact?: boolean
+  }
+>(function Input({ className, invalid, mono, compact, ...rest }, ref) {
   return (
     <input
       ref={ref}
@@ -91,7 +115,7 @@ export const Input = forwardRef<
       className={cx(
         CONTROL,
         fill(className),
-        'h-8',
+        compact ? 'h-7' : 'h-8',
         mono && 'font-mono text-xs',
         invalid && 'border-danger',
         className
@@ -122,15 +146,27 @@ export const TextArea = forwardRef<
   )
 })
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className, children, ...rest }, ref) {
-    return (
-      <select ref={ref} className={cx(CONTROL, fill(className), 'h-8 pr-6', className)} {...rest}>
-        {children}
-      </select>
-    )
-  }
-)
+export const Select = forwardRef<
+  HTMLSelectElement,
+  SelectHTMLAttributes<HTMLSelectElement> & { mono?: boolean; compact?: boolean }
+>(function Select({ className, children, mono, compact, ...rest }, ref) {
+  return (
+    <select
+      ref={ref}
+      className={cx(
+        CONTROL,
+        fill(className),
+        compact ? 'h-7' : 'h-8',
+        'pr-6',
+        mono && 'font-mono text-xs',
+        className
+      )}
+      {...rest}
+    >
+      {children}
+    </select>
+  )
+})
 
 export function Checkbox({
   label,
@@ -189,6 +225,15 @@ export function Field({
 // ───────────── Small pieces ─────────────
 
 type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger'
+/** Status variants always show an icon and a word, so colour is never the only signal. */
+export type BadgeStatus = 'ok' | 'warn' | 'danger' | 'info' | 'neutral'
+const STATUS: Record<BadgeStatus, { tone: Tone; Icon: typeof Info }> = {
+  ok: { tone: 'ok', Icon: CheckCircle2 },
+  warn: { tone: 'warn', Icon: AlertTriangle },
+  danger: { tone: 'danger', Icon: XCircle },
+  info: { tone: 'accent', Icon: Info },
+  neutral: { tone: 'neutral', Icon: MinusCircle }
+}
 const TONES: Record<Tone, string> = {
   neutral: 'bg-raised text-muted border-line',
   accent: 'bg-accent-soft text-accent border-transparent',
@@ -199,15 +244,34 @@ const TONES: Record<Tone, string> = {
 
 export function Badge({
   tone = 'neutral',
+  status,
   children,
   title,
   className
 }: {
   tone?: Tone
+  /** A status variant: coloured, with an icon in front of the word. Wins over `tone`. */
+  status?: BadgeStatus
   children: ReactNode
   title?: string
   className?: string
 }): ReactNode {
+  if (status) {
+    const { tone: statusTone, Icon } = STATUS[status]
+    return (
+      <span
+        title={title}
+        className={cx(
+          'inline-flex h-[18px] items-center gap-1 rounded border px-1.5 text-[11px] font-medium whitespace-nowrap',
+          TONES[statusTone],
+          className
+        )}
+      >
+        <Icon className="h-3 w-3 shrink-0" aria-hidden />
+        {children}
+      </span>
+    )
+  }
   return (
     <span
       title={title}
@@ -404,23 +468,28 @@ export function SubTabs<T extends string>({
   onChange: (id: T) => void
 }): ReactNode {
   return (
-    <div role="tablist" className="flex shrink-0 gap-1 border-b border-line px-3">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          role="tab"
-          aria-selected={tab.id === active}
-          onClick={() => onChange(tab.id)}
-          className={cx(
-            '-mb-px border-b-2 px-3 py-2 text-[13px] font-medium',
-            tab.id === active
-              ? 'border-accent text-fg'
-              : 'border-transparent text-muted hover:text-fg'
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
+    <div className="shrink-0 border-b border-line px-3 py-2">
+      <div
+        role="tablist"
+        className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-md border border-line bg-raised p-0.5"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={tab.id === active}
+            onClick={() => onChange(tab.id)}
+            className={cx(
+              'h-6 rounded px-3 text-[13px] font-medium whitespace-nowrap',
+              tab.id === active
+                ? 'border border-line bg-panel text-fg'
+                : 'border border-transparent text-muted hover:text-fg'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -468,7 +537,7 @@ export function Dialog({
         aria-labelledby={titleId}
         tabIndex={-1}
         style={{ width }}
-        className="flex max-h-[84vh] max-w-full flex-col rounded-lg border border-line bg-panel shadow-2xl outline-none"
+        className="flex max-h-[84vh] max-w-full flex-col rounded-lg border border-line bg-panel shadow-xl outline-none"
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation()

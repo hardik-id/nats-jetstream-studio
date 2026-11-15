@@ -3,10 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { startNatsServer, type TestServer } from '../helpers/natsServer'
+import { confPath, startNatsServer, type TestServer } from '../helpers/natsServer'
 import { createHarness, type Harness } from '../helpers/studio'
 
-/** The certificates are made with openssl; without it these tests are skipped, not failed. */
 function hasOpenssl(): boolean {
   try {
     execFileSync('openssl', ['version'], { stdio: 'ignore' })
@@ -16,8 +15,15 @@ function hasOpenssl(): boolean {
   }
 }
 
+/**
+ * The certificates are made with openssl. On a developer machine without it these tests are
+ * skipped; in CI (where `CI` is set) they always run, so a runner image that loses openssl fails
+ * in `beforeAll` instead of quietly dropping the TLS coverage.
+ */
+const skip = !process.env.CI && !hasOpenssl()
+
 /** PBI-011: TLS options, checked against servers with real certificates made for the test. */
-describe.skipIf(!hasOpenssl())('PBI-011 TLS connections', () => {
+describe.skipIf(skip)('PBI-011 TLS connections', () => {
   let h: Harness
   let dir: string
   const servers: TestServer[] = []
@@ -27,6 +33,8 @@ describe.skipIf(!hasOpenssl())('PBI-011 TLS connections', () => {
   }
 
   beforeAll(async () => {
+    if (!hasOpenssl())
+      throw new Error('openssl was not found on PATH. The TLS tests need it and must run in CI.')
     h = await createHarness()
     dir = mkdtempSync(join(tmpdir(), 'studio-tls-'))
     writeFileSync(file('san.ext'), 'subjectAltName=IP:127.0.0.1,DNS:localhost\n')
@@ -79,14 +87,15 @@ describe.skipIf(!hasOpenssl())('PBI-011 TLS connections', () => {
   }, 60_000)
 
   afterAll(async () => {
-    await h.dispose()
+    await h?.dispose()
     await Promise.all(servers.map((s) => s.stop()))
-    rmSync(dir, { recursive: true, force: true })
+    if (dir) rmSync(dir, { recursive: true, force: true })
   })
 
   const tlsServer = async (extra = ''): Promise<TestServer> => {
+    const conf = (name: string): string => confPath(file(name))
     const server = await startNatsServer(
-      `tls { cert_file: "${file('server.pem')}", key_file: "${file('server.key')}", ca_file: "${file('ca.pem')}" ${extra} }`
+      `tls { cert_file: "${conf('server.pem')}", key_file: "${conf('server.key')}", ca_file: "${conf('ca.pem')}" ${extra} }`
     )
     servers.push(server)
     return server

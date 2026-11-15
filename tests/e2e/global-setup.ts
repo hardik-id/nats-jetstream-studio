@@ -118,8 +118,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   return async () => {
     await stopTraffic()
     await handles.nc.close()
-    server.kill('SIGTERM')
+    // Wait until the studio server is gone before removing its data folder: on Windows a folder
+    // cannot be removed while a process still has files open in it.
+    await new Promise<void>((resolve) => {
+      if (server.exitCode !== null || server.signalCode !== null) return resolve()
+      server.once('exit', () => resolve())
+      server.kill('SIGTERM')
+    })
     await nats.stop()
-    rmSync(work, { recursive: true, force: true })
+    rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
 }

@@ -24,7 +24,32 @@ app (Electron) and, with the same UI, as a web app served by a small Node server
 - **Productivity**: command palette (Ctrl/Cmd+K), favourites, saved filters, audit log of every
   change, keyboard navigation, tabs restored on restart.
 
-## Getting started
+## Install
+
+Download the installer for your system from the
+[latest release](https://github.com/hardik-id/nats-jetstream-studio/releases/latest):
+
+| System | File |
+| --- | --- |
+| Windows | `nats-jetstream-studio-<version>-setup.exe` |
+| macOS | `nats-jetstream-studio-<version>-universal.dmg` |
+| Linux | `.AppImage` (make it executable and run it) or `.deb` |
+
+The installers are **not code-signed yet** ([Windows #17](https://github.com/hardik-id/nats-jetstream-studio/issues/17),
+[macOS #18](https://github.com/hardik-id/nats-jetstream-studio/issues/18)), so your system shows a
+warning the first time you open the app. The files are built by the public
+[release workflow](.github/workflows/release.yml) from a tagged commit.
+
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **macOS:** Gatekeeper says the app "cannot be verified" or "is damaged". Open **System Settings >
+  Privacy & Security** and click **Open Anyway**, or run
+  `xattr -cr "/Applications/NATS JetStream Studio.app"` once.
+- **Linux:** no warning.
+
+Automatic updates need a signed app on macOS, so until signing is set up, download new versions by
+hand.
+
+## Getting started from source
 
 ```bash
 npm install

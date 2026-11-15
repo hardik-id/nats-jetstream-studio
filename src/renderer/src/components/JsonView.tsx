@@ -1,18 +1,27 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { cx } from './ui'
 
 const CHUNK = 200
 
 /** A collapsible tree for JSON values. Large arrays and objects are shown in chunks. */
 export function JsonView({
   value,
-  expandDepth = 2
+  expandDepth = 2,
+  wrap = true
 }: {
   value: unknown
   expandDepth?: number
+  /** Wrap long lines (default). When off, lines stay on one row and the box scrolls sideways. */
+  wrap?: boolean
 }): ReactNode {
   return (
-    <div className="font-mono text-xs leading-5">
+    <div
+      className={cx(
+        'font-mono text-xs leading-[1.65]',
+        wrap ? 'break-all whitespace-pre-wrap' : 'w-max min-w-full whitespace-pre'
+      )}
+    >
       <Node value={value} depth={0} expandDepth={expandDepth} />
     </div>
   )
@@ -135,10 +144,7 @@ function Node({
 }
 
 function Primitive({ value }: { value: unknown }): ReactNode {
-  if (typeof value === 'string')
-    return (
-      <span className="json-string break-all whitespace-pre-wrap">{JSON.stringify(value)}</span>
-    )
+  if (typeof value === 'string') return <span className="json-string">{JSON.stringify(value)}</span>
   if (typeof value === 'number') return <span className="json-number">{String(value)}</span>
   return <span className="json-literal">{String(value)}</span>
 }

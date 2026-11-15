@@ -69,6 +69,7 @@ export function PayloadViewer({
           ? 'text'
           : 'hex'
   const [chosen, setChosen] = useState<View | null>(null)
+  const [wrap, setWrap] = useState(true)
   const available: View[] = [
     ...(parsed.decoded ? (['decoded'] as View[]) : []),
     ...(parsed.isJson ? (['json'] as View[]) : []),
@@ -125,6 +126,19 @@ export function PayloadViewer({
           ))}
         </div>
         <span className="ml-auto text-xs text-faint">{formatBytes(size)}</span>
+        {view !== 'hex' && (
+          <button
+            type="button"
+            aria-pressed={wrap}
+            onClick={() => setWrap((w) => !w)}
+            className={cx(
+              'rounded border px-2 py-0.5 text-xs font-medium',
+              wrap ? 'border-accent text-accent' : 'border-line text-muted hover:text-fg'
+            )}
+          >
+            Wrap
+          </button>
+        )}
         <CopyButton text={copyText} label="Copy payload" />
       </div>
 
@@ -157,18 +171,30 @@ export function PayloadViewer({
         {size === 0 ? (
           <span className="text-faint">Empty payload</span>
         ) : view === 'decoded' && !parsed.decoded?.error ? (
-          <JsonView value={parsed.decoded?.value} expandDepth={3} />
+          <JsonView value={parsed.decoded?.value} expandDepth={3} wrap={wrap} />
         ) : view === 'json' ? (
-          <JsonView value={parsed.json} expandDepth={3} />
+          <JsonView value={parsed.json} expandDepth={3} wrap={wrap} />
         ) : view === 'text' ? (
-          <pre className="font-mono text-xs leading-5 break-all whitespace-pre-wrap">
+          <pre
+            className={cx(
+              'font-mono text-xs leading-[1.65]',
+              wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'
+            )}
+          >
             {parsed.text ?? utf8Decode(parsed.bytes)}
           </pre>
         ) : view === 'base64' ? (
-          <pre className="font-mono text-xs leading-5 break-all whitespace-pre-wrap">{payload}</pre>
+          <pre
+            className={cx(
+              'font-mono text-xs leading-[1.65]',
+              wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'
+            )}
+          >
+            {payload}
+          </pre>
         ) : (
           <>
-            <pre className="font-mono text-xs leading-5">
+            <pre className="font-mono text-xs leading-[1.65]">
               {toHexDump(parsed.bytes.subarray(0, HEX_LIMIT))}
             </pre>
             {parsed.bytes.length > HEX_LIMIT && (

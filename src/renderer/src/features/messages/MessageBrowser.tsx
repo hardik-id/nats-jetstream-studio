@@ -30,6 +30,7 @@ import {
   Button,
   Dialog,
   EmptyState,
+  errorMessage,
   ErrorNote,
   Field,
   Input,
@@ -41,8 +42,9 @@ import {
 } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useDecoders } from '../../lib/decoders'
-import { safeFileName, saveText } from '../../lib/files'
-import { useConnection, useSetting } from '../../lib/hooks'
+import { useFavorites } from '../../lib/favorites'
+import { pickFile, safeFileName, saveText } from '../../lib/files'
+import { useConnection, useLatest, useSetting } from '../../lib/hooks'
 import {
   filterChips,
   natsPubCommand,
@@ -50,9 +52,19 @@ import {
   removeChip,
   serializeExport,
   toExported,
+  MAX_SAVED_FILTER_NAME,
+  MAX_SAVED_FILTERS,
   type ExportedMessage,
   type SavedFilter
 } from '../../lib/messages'
+import {
+  buildSavedExport,
+  describeImport,
+  describeSaved,
+  mergeSavedExport,
+  parseSavedExport,
+  serializeSavedExport
+} from '../../lib/savedExport'
 import { toast } from '../../state/toasts'
 import { draftFrom, FilterPanel } from './FilterPanel'
 import { DeleteMessageDialog, ExportAllDialog, RepublishDialog } from './MessageDialogs'
@@ -78,6 +90,8 @@ interface Outcome {
 }
 
 const FULL_PAYLOAD = 64 * 1024 * 1024
+/** An export of saved filters and favourites is a few kilobytes; anything huge is another file. */
+const MAX_SAVED_IMPORT_BYTES = 1024 * 1024
 
 /** datetime-local wants "YYYY-MM-DDTHH:MM:SS" in local time. */
 function toLocalInput(date: Date): string {
@@ -133,7 +147,34 @@ export function MessageBrowser({
   const [dialog, setDialog] = useState<
     null | 'delete' | 'republishOne' | 'republishMany' | 'exportAll' | 'saveFilter'
   >(null)
-  const [saved, setSaved] = useSetting<SavedFilter[]>(`conn:${connId}:savedFilters`, [])
+  const [saved, setSaved, savedLoaded, savedLoadError] = useSetting<SavedFilter[]>(
+    `conn:${connId}:savedFilters`,
+    []
+  )
+  const {
+    favorites,
+    replace: setFavorites,
+    loaded: favoritesLoaded,
+    loadError: favoritesLoadError
+  } = useFavorites(connId)
+  // Until a list has been read from the settings it is shown as empty, which says nothing about
+  // what is stored. Anything that writes a list built from the current one (saving a filter, an
+  // import) or that claims to hold everything (an export) has to wait, or it would replace what
+  // is stored with that empty list. This is the reason shown while it has to wait.
+  const savedBlocked = savedLoaded
+    ? null
+    : savedLoadError
+      ? `The saved filters of this connection could not be read. ${errorMessage(savedLoadError)}`
+      : 'The saved filters of this connection are still being read'
+  const listsBlocked =
+    savedBlocked ??
+    (favoritesLoaded
+      ? null
+      : favoritesLoadError
+        ? `The favourites of this connection could not be read. ${errorMessage(favoritesLoadError)}`
+        : 'The favourites of this connection are still being read')
+  // An import merges into the lists as they are when the file has been read.
+  const latestSaved = useLatest({ saved, favorites, blocked: listsBlocked })
 
   const runToken = useRef(0)
   const stopScan = useRef<(() => void) | null>(null)
@@ -425,6 +466,53 @@ export function MessageBrowser({
     }
   }
 
+  const exportSaved = (): void => {
+    if (listsBlocked) {
+      toast.error(`Nothing was exported. ${listsBlocked}.`)
+      return
+    }
+    saveText(
+      `saved-filters-${safeFileName(conn?.name ?? connId)}.json`,
+      serializeSavedExport(buildSavedExport(saved, favorites))
+    )
+    toast.ok(`Exported ${describeSaved(saved.length, favorites.length)}`)
+  }
+
+  const importSaved = async (): Promise<void> => {
+    try {
+      const file = await pickFile('.json,application/json')
+      if (!file) return
+      if (file.size > MAX_SAVED_IMPORT_BYTES)
+        throw new Error('This file is too large to be an export of saved filters and favourites.')
+      const imported = parseSavedExport(await file.text())
+      const current = latestSaved.current
+      if (current.blocked) throw new Error(`Nothing was imported. ${current.blocked}.`)
+      const merged = mergeSavedExport(
+        { savedFilters: current.saved, favorites: current.favorites },
+        imported
+      )
+      if (!merged.importedFilters && !merged.importedFavorites) {
+        toast.info('Nothing to import. The file has no saved filters and no new favourites.')
+        return
+      }
+      // One write per list, one after the other. A write that fails reports its own error and
+      // shows again what is stored, and the import stops there, so success is only announced
+      // when everything the file brought has really been stored.
+      if (merged.importedFilters && !(await setSaved(merged.savedFilters))) return
+      if (merged.importedFavorites && !(await setFavorites(merged.favorites))) {
+        if (merged.importedFilters)
+          toast.info(
+            `Only part of the file was imported: ${describeSaved(merged.importedFilters, 0)}. ` +
+              'Its favourites were not.'
+          )
+        return
+      }
+      toast.ok(describeImport(merged))
+    } catch (err) {
+      toast.error(err)
+    }
+  }
+
   const columns: Column<MessageDto>[] = useMemo(
     () => [
       {
@@ -496,9 +584,8 @@ export function MessageBrowser({
   const savedItems: MenuItem[] = [
     ...saved.map((s) => ({
       label: s.name,
-      title: filterChips(s.subject, s.filters)
-        .map((c) => c.label)
-        .join(', '),
+      // The whole name first: the menu cuts a long one short.
+      title: [s.name, ...filterChips(s.subject, s.filters).map((c) => c.label)].join('\n'),
       onSelect: () => {
         setSubjectDraft(s.subject)
         apply({ subject: s.subject, filters: s.filters })
@@ -506,9 +593,25 @@ export function MessageBrowser({
     })),
     {
       label: 'Save current filters...',
-      disabled: chips.length === 0,
-      title: chips.length === 0 ? 'Set a subject or a filter first' : undefined,
+      disabled: !!savedBlocked || chips.length === 0,
+      title: savedBlocked ?? (chips.length === 0 ? 'Set a subject or a filter first' : undefined),
       onSelect: () => setDialog('saveFilter')
+    },
+    {
+      label: 'Export filters and favourites...',
+      disabled: !!listsBlocked || (saved.length === 0 && favorites.length === 0),
+      title:
+        listsBlocked ??
+        (saved.length === 0 && favorites.length === 0
+          ? 'There are no saved filters or favourites to export'
+          : undefined),
+      onSelect: exportSaved
+    },
+    {
+      label: 'Import filters and favourites...',
+      disabled: !!listsBlocked,
+      title: listsBlocked ?? undefined,
+      onSelect: () => void importSaved()
     },
     ...(saved.length
       ? [{ label: 'Remove all saved filters', danger: true, onSelect: () => setSaved([]) }]
@@ -940,11 +1043,12 @@ export function MessageBrowser({
           existing={saved.map((s) => s.name)}
           onClose={() => setDialog(null)}
           onSave={(name) => {
-            setSaved([
+            void setSaved([
               ...saved.filter((s) => s.name !== name),
               { name, subject: view.subject, filters: view.filters }
-            ])
-            toast.ok(`Saved filter "${name}"`)
+            ]).then((stored) => {
+              if (stored) toast.ok(`Saved filter "${name}"`)
+            })
           }}
         />
       )}
@@ -963,8 +1067,11 @@ function SaveFilterDialog({
 }): ReactNode {
   const [name, setName] = useState('')
   const trimmed = name.trim()
+  const replaces = existing.includes(trimmed)
+  // The same limits as for an imported file, so that an export can always be imported again.
+  const full = !replaces && existing.length >= MAX_SAVED_FILTERS
   const submit = (): void => {
-    if (!trimmed) return
+    if (!trimmed || full) return
     onSave(trimmed)
     onClose()
   }
@@ -976,8 +1083,8 @@ function SaveFilterDialog({
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!trimmed} onClick={submit}>
-            {existing.includes(trimmed) ? 'Replace' : 'Save'}
+          <Button variant="primary" disabled={!trimmed || full} onClick={submit}>
+            {replaces ? 'Replace' : 'Save'}
           </Button>
         </>
       }
@@ -990,14 +1097,26 @@ function SaveFilterDialog({
       >
         <Field
           label="Name"
+          error={
+            full
+              ? `This connection already has ${formatCount(MAX_SAVED_FILTERS)} saved filters, which is the most it can have. Remove one, or use the name of one to replace it.`
+              : null
+          }
           hint={
-            existing.includes(trimmed)
+            replaces
               ? 'A saved filter with this name exists and will be replaced.'
               : 'Saved for this connection and available on every stream.'
           }
         >
           {(id) => (
-            <Input id={id} autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id={id}
+              autoFocus
+              maxLength={MAX_SAVED_FILTER_NAME}
+              value={name}
+              invalid={full}
+              onChange={(e) => setName(e.target.value)}
+            />
           )}
         </Field>
       </form>

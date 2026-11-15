@@ -1,9 +1,16 @@
 import { headers, type NatsConnection } from '@nats-io/transport-node'
 import type { JetStreamManager } from '@nats-io/jetstream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type TailEvent, type TailMessage } from '@shared/api'
+import type { TailEvent, TailMessage } from '@shared/api'
 import { fromBase64, textToBase64, utf8Decode } from '@shared/encoding'
-import { collect, createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import {
+  collect,
+  createHarness,
+  gatewayErr,
+  uniqueName,
+  waitFor,
+  type Harness
+} from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -18,14 +25,6 @@ afterAll(async () => {
   await h.dispose()
 })
 
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 const messagesOf = (events: TailEvent[]): TailMessage[] =>
   events.flatMap((e) => (e.type === 'messages' ? e.messages : []))
 
@@ -61,6 +60,21 @@ describe('PBI-060 live tail', () => {
     expect(msgs[2].reply).toBe('reply.here')
     expect(msgs.map((m) => m.id)).toEqual([1, 2, 3])
     expect(Math.abs(msgs[0].received - Date.now())).toBeLessThan(5000)
+  })
+
+  it('says when the server has the subscription, and misses nothing published after that', async () => {
+    const subject = uniqueName('ready')
+    const events: TailEvent[] = []
+    const close = h.service.open('tail', { connId: id, subject }, (e) => events.push(e))
+    await waitFor(() => events.some((e) => e.type === 'ready'), 5000, 'the ready event')
+    // No pause here: once "ready" has arrived the very next publish must be delivered.
+    nc.publish(subject, 'straight away')
+    await waitFor(() => messagesOf(events).length === 1, 3000, 'the message')
+    close()
+    expect(events.filter((e) => e.type === 'ready')).toHaveLength(1)
+    expect(events.findIndex((e) => e.type === 'ready')).toBeLessThan(
+      events.findIndex((e) => e.type === 'messages')
+    )
   })
 
   it('stops delivering once closed', async () => {
@@ -183,13 +197,15 @@ describe('PBI-060 live tail', () => {
 
   it('names the subject when the user may not subscribe to it', async () => {
     const limited = await h.connect({ name: 'limited', user: 'limited', password: 'limited' })
-    const { events, close } = await collect(
-      h.service,
-      'tail',
-      { connId: limited, subject: 'secret.>' },
-      (e) => e.some((x) => x.type === 'error')
+    const events: TailEvent[] = []
+    const close = h.service.open('tail', { connId: limited, subject: 'secret.>' }, (e) =>
+      events.push(e)
     )
+    await waitFor(() => events.some((e) => e.type === 'error'), 10_000, 'the permission error')
+    // A refused subscription is never reported as listening, however long it stays open.
+    await new Promise((r) => setTimeout(r, 300))
     close()
+    expect(events.some((e) => e.type === 'ready')).toBe(false)
     const error = events.find((e) => e.type === 'error') as Extract<TailEvent, { type: 'error' }>
     expect(error.error.kind).toBe('permission')
     expect(error.error.subject).toBe('secret.>')

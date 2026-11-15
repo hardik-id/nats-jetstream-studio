@@ -4,13 +4,21 @@ import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createUser } from '@nats-io/nkeys'
+import { connect } from '@nats-io/transport-node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { cliContextDir } from '@core/cliContexts'
 import { KeyFileSecretStore, NoSecretStore } from '@core/secrets'
 import { StudioService } from '@core/service'
-import { GatewayError, type ConnectionState, type GlobalEvent } from '@shared/api'
+import type { ConnectionState, GlobalEvent, TestConnectionResult } from '@shared/api'
 import { freePort, startNatsServer, type TestServer } from '../helpers/natsServer'
-import { collect, createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import {
+  collect,
+  createHarness,
+  expectGatewayError,
+  uniqueName,
+  waitFor,
+  type Harness
+} from '../helpers/studio'
 
 let h: Harness
 beforeAll(async () => {
@@ -19,16 +27,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await h.dispose()
 })
-
-async function expectGatewayError(promise: Promise<unknown>, kind: string): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err, `expected a "${kind}" error`).toBeInstanceOf(GatewayError)
-  expect((err as GatewayError).kind).toBe(kind)
-  return err as GatewayError
-}
 
 describe('PBI-010 import NATS CLI contexts', () => {
   let dir: string
@@ -393,6 +391,15 @@ describe('PBI-012 test connection', () => {
     expect(result).toMatchObject({ ok: false, kind: 'refused' })
   })
 
+  it('tries every server, so one that is down does not hide one that works', async () => {
+    // The client dials in an order of its own choosing; either way round the test must succeed.
+    const down = `nats://127.0.0.1:${await freePort()}`
+    for (let run = 0; run < 8; run++) {
+      const result = await h.service.testConnection({ ...input, servers: [down, h.natsUrl] })
+      expect(result, `run ${run + 1}`).toMatchObject({ ok: true, jetstream: true })
+    }
+  })
+
   it('names a name-resolution failure', async () => {
     const result = await h.service.testConnection({
       ...input,
@@ -410,28 +417,123 @@ describe('PBI-012 test connection', () => {
     expect(result).toMatchObject({ ok: false, kind: 'tls' })
   })
 
-  describe('against a server that never answers', () => {
-    let silent: Server
-    let port: number
+  describe('against servers that never answer', () => {
+    // Each accepts the TCP connection and then says nothing, like a host behind a firewall that
+    // swallows the traffic.
+    const silent: Server[] = []
+    const urls: string[] = []
     beforeAll(async () => {
-      port = await freePort()
-      silent = createServer(() => {})
-      await new Promise<void>((r) => silent.listen(port, '127.0.0.1', r))
+      for (let i = 0; i < 3; i++) {
+        const port = await freePort()
+        const server = createServer(() => {})
+        await new Promise<void>((r) => server.listen(port, '127.0.0.1', r))
+        silent.push(server)
+        urls.push(`nats://127.0.0.1:${port}`)
+      }
     })
     afterAll(() => {
-      silent.close()
+      for (const server of silent) server.close()
+    })
+    afterEach(async () => {
+      await h.service.setSetting('testTimeoutMs', null)
     })
 
-    it('gives up after the configured timeout', async () => {
-      await h.service.setSetting('testTimeoutMs', 400)
+    /** Runs a test with a timeout of one second and returns the result with the time it took. */
+    const timed = async (
+      servers: string[]
+    ): Promise<{ result: TestConnectionResult; elapsed: number }> => {
+      await h.service.setSetting('testTimeoutMs', 1000)
       const started = Date.now()
-      const result = await h.service.testConnection({
-        ...input,
-        servers: [`nats://127.0.0.1:${port}`]
-      })
-      await h.service.setSetting('testTimeoutMs', null)
+      const result = await h.service.testConnection({ ...input, servers })
+      return { result, elapsed: Date.now() - started }
+    }
+
+    it('gives up after the configured timeout', async () => {
+      const { result, elapsed } = await timed([urls[0]])
       expect(result).toMatchObject({ ok: false, kind: 'timeout' })
-      expect(Date.now() - started).toBeLessThan(3000)
+      expect(elapsed).toBeGreaterThanOrEqual(950)
+      expect(elapsed).toBeLessThan(2500)
+    })
+
+    it('gives up after the same time when several servers do not answer', async () => {
+      // The client dials the servers one after the other and gives each the whole timeout, so
+      // without a deadline of its own this test would take three seconds, not one.
+      const { result, elapsed } = await timed(urls)
+      expect(result).toEqual({
+        ok: false,
+        kind: 'timeout',
+        message: 'Timed out waiting for the server'
+      })
+      expect(elapsed).toBeGreaterThanOrEqual(950)
+      expect(elapsed).toBeLessThan(2500)
+
+      const two = await timed(urls.slice(0, 2))
+      expect(two.result).toMatchObject({ ok: false, kind: 'timeout' })
+      expect(two.elapsed).toBeLessThan(2000)
+    })
+
+    it('uses the nearest limit when the stored timeout is out of range', async () => {
+      // Half a second is below the range, so the test waits the minimum of one second.
+      await h.service.setSetting('testTimeoutMs', 500)
+      const started = Date.now()
+      const result = await h.service.testConnection({ ...input, servers: [urls[0]] })
+      const elapsed = Date.now() - started
+      expect(result).toMatchObject({ ok: false, kind: 'timeout' })
+      expect(elapsed).toBeGreaterThanOrEqual(950)
+      expect(elapsed).toBeLessThan(2500)
+    })
+
+    it('hangs up when a server answers only after the deadline has passed', async () => {
+      // A server of its own, so that every connection counted here was made by this test.
+      const real = await startNatsServer()
+      const sys = await connect({ servers: real.url, user: 'sys', pass: 'sys' })
+      /** The connections the studio made to the real server: how many are open, how many closed. */
+      const studioConnections = async (): Promise<{ open: number; closed: number }> => {
+        const reply = await sys.request(
+          '$SYS.REQ.SERVER.PING.CONNZ',
+          // state 2 lists closed connections as well as open ones.
+          JSON.stringify({ state: 2, limit: 1024 }),
+          { timeout: 2000 }
+        )
+        const all = reply
+          .json<{ data: { connections: { name?: string; stop?: string }[] } }>()
+          .data.connections.filter((c) => c.name === 'NATS JetStream Studio')
+        const closed = all.filter((c) => c.stop).length
+        return { open: all.length - closed, closed }
+      }
+      try {
+        // The client chooses the order to dial in. When it starts with the real server the test
+        // simply succeeds, so repeat until a run starts with a silent one and times out. With
+        // three silent servers that is three runs out of four.
+        let succeeded = 0
+        let timedOut = false
+        for (let run = 0; run < 20 && !timedOut; run++) {
+          const { result, elapsed } = await timed([...urls, real.url])
+          if (result.ok) {
+            succeeded++
+            continue
+          }
+          timedOut = true
+          expect(result).toMatchObject({ ok: false, kind: 'timeout' })
+          expect(elapsed).toBeLessThan(2500)
+        }
+        expect(timedOut, 'a run that started with a silent server').toBe(true)
+
+        // Behind the timed-out run the client is still dialling. It reaches the real server after
+        // at most two more silent ones, and that late connection has to be closed again: every
+        // connection the studio made is closed and none is left open.
+        await waitFor(
+          async () => {
+            const { open, closed } = await studioConnections()
+            return open === 0 && closed === succeeded + 1
+          },
+          10_000,
+          'the late connection to be opened and closed again'
+        )
+      } finally {
+        await sys.close()
+        await real.stop()
+      }
     })
   })
 

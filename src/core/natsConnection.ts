@@ -4,6 +4,7 @@ import {
   credsAuthenticator,
   nkeyAuthenticator,
   errors as natsErrors,
+  type Authenticator,
   type NatsConnection,
   type NodeConnectionOptions
 } from '@nats-io/transport-node'
@@ -92,12 +93,10 @@ export function buildConnectOptions(
       opts.authenticator = nkeyAuthenticator(new TextEncoder().encode(seed.trim()))
       break
     }
-    case 'creds': {
+    case 'creds':
       if (!cfg.credsFile) throw gatewayError('validation', 'Credentials file is not set')
-      const creds = readTextFile(cfg.credsFile, 'Credentials file')
-      opts.authenticator = credsAuthenticator(new TextEncoder().encode(creds))
+      opts.authenticator = credsFileAuthenticator(cfg.credsFile)
       break
-    }
   }
 
   const wantsTls = cfg.servers.some((s) => s.startsWith('tls://'))
@@ -112,12 +111,81 @@ export function buildConnectOptions(
   return opts
 }
 
+/**
+ * The client's creds parser only accepts "\n" line ends and a newline after the last line. The
+ * NATS CLI also reads files with Windows line ends or without that final newline, so both are
+ * normalised here: a file that works with `nats --creds` must work in the studio too.
+ */
+function normalizeCreds(text: string): Uint8Array {
+  return new TextEncoder().encode(text.replace(/\r\n?/g, '\n') + '\n')
+}
+
+/**
+ * Logs in with the JWT and seed of a credentials file, reading the file again for every login.
+ * The client asks for credentials each time it connects, and that includes every reconnect, so a
+ * file that was rotated while the studio was running is picked up by the next reconnect instead
+ * of the old JWT being presented for as long as the connection lives.
+ *
+ * The file must be readable when the connection is opened. Later, while it is missing, unreadable
+ * or half-written (a rotation in progress), the last content that worked is presented instead: an
+ * error thrown from here would surface inside the client's reconnect loop.
+ */
+function credsFileAuthenticator(path: string): Authenticator {
+  let lastGood = normalizeCreds(readTextFile(path, 'Credentials file'))
+  return (nonce) => {
+    try {
+      // One read per login, so the JWT and the seed always come from the same version of the file.
+      const current = normalizeCreds(readFileSync(path, 'utf8'))
+      const auth = credsAuthenticator(current)(nonce)
+      lastGood = current
+      return auth
+    } catch {
+      return credsAuthenticator(lastGood)(nonce)
+    }
+  }
+}
+
 function readTextFile(path: string, label: string): string {
   try {
     return readFileSync(path, 'utf8')
   } catch (err) {
     throw gatewayError('validation', `${label} cannot be read: ${(err as Error).message}`)
   }
+}
+
+/**
+ * Connects once, for a check, and gives up when `deadlineMs` has passed however many servers
+ * there are to dial. The client's own timeout applies to each server in turn, so by itself three
+ * servers that never answer would take three times as long.
+ */
+export async function connectWithin(
+  opts: NodeConnectionOptions,
+  deadlineMs: number
+): Promise<NatsConnection> {
+  const attempt = connect({
+    ...opts,
+    timeout: deadlineMs,
+    // No reconnecting once connected. The attempts are deliberately left unlimited: before the
+    // first connection the client tries each server once and drops it when it fails, but with a
+    // limit it also drops the server after the failed one without ever dialling it, so a test
+    // could report "refused" although the next server in the list was fine.
+    reconnect: false,
+    maxReconnectAttempts: -1
+  })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<'expired'>((resolve) => {
+    timer = setTimeout(() => resolve('expired'), deadlineMs)
+  })
+  try {
+    const first = await Promise.race([attempt, expired])
+    if (first !== 'expired') return first
+  } finally {
+    clearTimeout(timer)
+  }
+  // The client cannot be told to stop dialling. If it still gets through to a later server, hang
+  // up at once; if it fails, that failure has already been reported as a timeout.
+  attempt.then((late) => late.close()).catch(() => {})
+  throw new natsErrors.TimeoutError()
 }
 
 /** Works out why a connection attempt failed, in terms a user can act on. */

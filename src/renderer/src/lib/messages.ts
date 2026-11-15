@@ -61,6 +61,11 @@ export interface SavedFilter {
   filters: ContentFilters
 }
 
+/** The longest name a saved filter can have, when it is saved and when it is imported. */
+export const MAX_SAVED_FILTER_NAME = 120
+/** How many saved filters one connection can have. An import that would go beyond it is refused. */
+export const MAX_SAVED_FILTERS = 500
+
 /** Short labels for the active filters, shown as removable chips. */
 export function filterChips(
   subject: string,

@@ -8,11 +8,12 @@ import {
   type JetStreamClient,
   type JetStreamManager
 } from '@nats-io/jetstream'
-import { inject } from 'vitest'
+import { expect, inject } from 'vitest'
 import { KeyFileSecretStore } from '@core/secrets'
 import { StudioService, type StudioServiceOptions } from '@core/service'
 import {
   GATEWAY_METHODS,
+  GatewayError,
   type ConnectionInput,
   type GatewayStreams,
   type StreamChannel
@@ -90,6 +91,29 @@ export async function createHarness(opts: Partial<StudioServiceOptions> = {}): P
       rmSync(dataDir, { recursive: true, force: true })
     }
   }
+}
+
+/** Waits for a gateway call to fail and returns the GatewayError it failed with. */
+export async function gatewayErr(
+  promise: Promise<unknown>,
+  what = 'expected the call to fail with a GatewayError'
+): Promise<GatewayError> {
+  const err = await promise.then(
+    () => undefined,
+    (e) => e
+  )
+  expect(err, what).toBeInstanceOf(GatewayError)
+  return err as GatewayError
+}
+
+/** The same, for a call that has to fail with an error of one kind. */
+export async function expectGatewayError(
+  promise: Promise<unknown>,
+  kind: string
+): Promise<GatewayError> {
+  const err = await gatewayErr(promise, `expected a "${kind}" error`)
+  expect(err.kind).toBe(kind)
+  return err
 }
 
 /** A stream name that no other test uses. */

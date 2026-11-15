@@ -5,10 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AuditLog } from '@core/audit'
 import { KeyFileSecretStore } from '@core/secrets'
 import { StudioService } from '@core/service'
-import { GatewayError, type AlertEvent, type AlertRule, type GlobalEvent } from '@shared/api'
+import type { AlertEvent, AlertRule, GlobalEvent } from '@shared/api'
 import { textToBase64 } from '@shared/encoding'
 import { startNatsServer } from '../helpers/natsServer'
-import { createHarness, uniqueName, waitFor, type Harness } from '../helpers/studio'
+import { createHarness, gatewayErr, uniqueName, waitFor, type Harness } from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -26,14 +26,6 @@ afterAll(async () => {
 })
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 
 describe('PBI-080 time-series metrics', () => {
   it('samples stream totals and message rate while connected', async () => {
@@ -159,6 +151,9 @@ describe('PBI-080 time-series metrics', () => {
           .kind
       ).toBe('not_connected')
 
+      // Stay down for a while. With a quick restart the outage can fit between two samples and
+      // would not show as a gap at all.
+      await sleep(INTERVAL * 6)
       await server.restart()
       await waitFor(
         async () =>
@@ -173,7 +168,7 @@ describe('PBI-080 time-series metrics', () => {
       // The outage is visible as a gap between samples, not filled with invented points.
       const m = await h.service.metrics(saved.id, { kind: 'stream', stream: 'DOWN' }, 60_000)
       const gaps = m.t.slice(1).map((t, i) => t - m.t[i])
-      expect(Math.max(...gaps)).toBeGreaterThan(INTERVAL * 2)
+      expect(Math.max(...gaps)).toBeGreaterThan(INTERVAL * 4)
 
       await h.service.disconnect(saved.id)
       expect(

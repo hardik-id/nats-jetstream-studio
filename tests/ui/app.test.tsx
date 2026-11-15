@@ -208,6 +208,147 @@ describe('PBI-011 connection form', () => {
       within(dialog).queryByText(/No operating system keychain is available/)
     ).not.toBeInTheDocument()
   })
+
+  /** Every value the form asked the gateway to store as the test timeout, in order. */
+  const storedTimeouts = (gateway: ReturnType<typeof createFakeGateway>): unknown[] =>
+    gateway.calls
+      .filter((c) => c.method === 'setSetting' && c.args[0] === 'testTimeoutMs')
+      .map((c) => c.args[1])
+
+  it('PBI-012 stores the test timeout on Enter or when the field is left, never while typing', async () => {
+    const gateway = createFakeGateway()
+    gateway.settings.set('testTimeoutMs', 8000)
+    const onClose = vi.fn()
+    renderWithGateway(<ConnectionForm id={null} onClose={onClose} />, gateway)
+    const dialog = await screen.findByRole('dialog', { name: 'Add connection' })
+    const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+    // The stored value is shown in seconds, and the hint says what it applies to.
+    await waitFor(() => expect(field.value).toBe('8'))
+    expect(within(dialog).getByText(/Applies to every connection test/)).toBeInTheDocument()
+
+    // Typed one key at a time. On the way to "30" the field holds "3", which is a valid timeout
+    // too: neither that nor "30" may be stored while the field still has the focus.
+    await userEvent.clear(field)
+    await userEvent.type(field, '30')
+    expect(field.value).toBe('30')
+    expect(field).not.toHaveAttribute('aria-invalid')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(storedTimeouts(gateway)).toEqual([])
+    expect(gateway.settings.get('testTimeoutMs')).toBe(8000)
+
+    // Leaving the field stores what it holds, in milliseconds, once.
+    await userEvent.tab()
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(30000))
+    expect(storedTimeouts(gateway)).toEqual([30000])
+    await waitFor(() => expect(field.value).toBe('30'))
+
+    // Enter stores as well. It does not submit the form: nothing is validated or saved and the
+    // dialog stays open.
+    await userEvent.clear(field)
+    await userEvent.type(field, '2.5{Enter}')
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(2500))
+    expect(storedTimeouts(gateway)).toEqual([30000, 2500])
+    expect(within(dialog).queryByText('Name is required')).not.toBeInTheDocument()
+    expect(gateway.calls.some((c) => c.method === 'saveConnection')).toBe(false)
+    expect(onClose).not.toHaveBeenCalled()
+    // Confirming the same value again stores nothing new.
+    await userEvent.type(field, '{Enter}')
+    await userEvent.tab()
+    expect(storedTimeouts(gateway)).toEqual([30000, 2500])
+
+    // Out of range or not a number: an inline error, and neither Enter nor leaving stores it.
+    for (const bad of ['0', '0.9', '61', '600', '-5', 'abc', '1e1', '']) {
+      await userEvent.clear(field)
+      if (bad) await userEvent.type(field, bad)
+      await userEvent.type(field, '{Enter}')
+      await userEvent.tab()
+      expect(field.value).toBe(bad)
+      expect(within(dialog).getByRole('alert')).toHaveTextContent(
+        'Enter a number of seconds from 1 to 60'
+      )
+      expect(field).toHaveAttribute('aria-invalid', 'true')
+    }
+    expect(storedTimeouts(gateway)).toEqual([30000, 2500])
+    expect(onClose).not.toHaveBeenCalled()
+
+    // The limits themselves are accepted.
+    await userEvent.clear(field)
+    await userEvent.type(field, '60{Enter}')
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(60000))
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.clear(field)
+    await userEvent.type(field, '1')
+    await userEvent.tab()
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(1000))
+    expect(storedTimeouts(gateway)).toEqual([30000, 2500, 60000, 1000])
+  })
+
+  it('PBI-012 closing the dialog drops a timeout that was typed but not confirmed', async () => {
+    const closeWith: Record<string, (dialog: HTMLElement) => Promise<unknown>> = {
+      Cancel: (dialog) => userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' })),
+      'the close button': (dialog) =>
+        userEvent.click(within(dialog).getByRole('button', { name: 'Close' })),
+      Escape: () => userEvent.keyboard('{Escape}')
+    }
+    for (const [how, close] of Object.entries(closeWith)) {
+      const gateway = createFakeGateway()
+      gateway.settings.set('testTimeoutMs', 8000)
+      const onClose = vi.fn()
+      const { unmount } = renderWithGateway(<ConnectionForm id={null} onClose={onClose} />, gateway)
+      const dialog = await screen.findByRole('dialog', { name: 'Add connection' })
+      const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+      await waitFor(() => expect(field.value).toBe('8'))
+      await userEvent.clear(field)
+      await userEvent.type(field, '12')
+      await close(dialog)
+      expect(onClose, how).toHaveBeenCalled()
+      await new Promise((r) => setTimeout(r, 50))
+      expect(storedTimeouts(gateway), how).toEqual([])
+      expect(gateway.settings.get('testTimeoutMs'), how).toBe(8000)
+      unmount()
+    }
+  })
+
+  it('PBI-012 a changed timeout clears the last verdict and is stored before the next test', async () => {
+    const gateway = createFakeGateway()
+    renderWithGateway(<ConnectionForm id={null} onClose={() => {}} />, gateway)
+    const dialog = await screen.findByRole('dialog', { name: 'Add connection' })
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'Local')
+    const testButton = within(dialog).getByRole('button', { name: 'Test connection' })
+    await userEvent.click(testButton)
+    expect(await within(dialog).findByText(/Connected to/)).toBeInTheDocument()
+
+    // The verdict was reached with the old timeout, so it goes as soon as the timeout changes.
+    const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+    await userEvent.clear(field)
+    expect(within(dialog).queryByText(/Connected to/)).not.toBeInTheDocument()
+    await userEvent.type(field, '9')
+
+    // Pressing "Test connection" leaves the field: the new timeout is stored first, then used.
+    await userEvent.click(testButton)
+    expect(await within(dialog).findByText(/Connected to/)).toBeInTheDocument()
+    const order = gateway.calls
+      .filter((c) => c.method === 'testConnection' || c.args[0] === 'testTimeoutMs')
+      .filter((c) => c.method !== 'getSetting')
+      .map((c) => (c.method === 'setSetting' ? `store ${String(c.args[1])}` : 'test'))
+    expect(order).toEqual(['test', 'store 9000', 'test'])
+  })
+
+  it('PBI-012 the test timeout stays editable for a NATS CLI connection', async () => {
+    const gateway = createFakeGateway({
+      connections: [{ id: 'cli', name: 'from-cli', source: 'cli' }]
+    })
+    renderWithGateway(<ConnectionForm id="cli" onClose={() => {}} />, gateway)
+    const dialog = await screen.findByRole('dialog', { name: 'Edit connection: from-cli' })
+    expect(within(dialog).getByLabelText('Name')).toBeDisabled()
+    const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+    await waitFor(() => expect(field.value).toBe('5'))
+    expect(field).toBeEnabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, '30{Enter}')
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(30000))
+    expect(storedTimeouts(gateway)).toEqual([30000])
+  })
 })
 
 describe('shared components', () => {

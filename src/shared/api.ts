@@ -492,6 +492,8 @@ export interface TailMessage {
 }
 
 export type TailEvent =
+  /** The server has the subscription: messages published from now on are delivered. */
+  | { type: 'ready' }
   | { type: 'messages'; messages: TailMessage[]; dropped: number }
   | { type: 'gap' }
   | { type: 'error'; error: GatewayErrorData }

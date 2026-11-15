@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type KvWatchEvent, type ObjDownloadEvent } from '@shared/api'
+import type { KvWatchEvent, ObjDownloadEvent } from '@shared/api'
 import { fromBase64, textToBase64, toBase64, utf8Decode } from '@shared/encoding'
-import { collect, createHarness, uniqueName, type Harness } from '../helpers/studio'
+import { collect, createHarness, gatewayErr, uniqueName, type Harness } from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -13,15 +13,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await h.dispose()
 })
-
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 
 describe('PBI-070 key-value buckets', () => {
   it('creates, lists and deletes buckets with their settings', async () => {

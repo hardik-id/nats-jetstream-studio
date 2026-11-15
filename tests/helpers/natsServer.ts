@@ -38,6 +38,15 @@ export function natsServerBinary(): string {
   return found
 }
 
+/**
+ * A file path as it may be written inside a double-quoted string of a nats-server config file.
+ * There a backslash starts an escape sequence, so a Windows path such as `C:\Users\...` is a
+ * parse error; the server accepts forward slashes on every platform.
+ */
+export function confPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
 /** The accounts every core test can rely on. */
 export const DEFAULT_CONFIG = `
 accounts {
@@ -71,7 +80,7 @@ export async function startNatsServer(
   const jetstream =
     opts.jetstream === false
       ? ''
-      : `jetstream { store_dir: "${join(dir, 'js').replace(/\\/g, '/')}", max_mem: 256M, max_file: 1G ${opts.jetstreamExtra ?? ''} }`
+      : `jetstream { store_dir: "${confPath(join(dir, 'js'))}", max_mem: 256M, max_file: 1G ${opts.jetstreamExtra ?? ''} }`
   writeFileSync(
     conf,
     `listen: "127.0.0.1:${port}"\nserver_name: "studio-test-${port}"\n${jetstream}\n${config}\n`

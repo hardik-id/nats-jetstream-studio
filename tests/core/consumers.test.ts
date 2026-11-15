@@ -1,7 +1,7 @@
 import type { JetStreamClient, JetStreamManager } from '@nats-io/jetstream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GatewayError, type ConsumerConfigDto } from '@shared/api'
-import { createHarness, uniqueName, type Harness } from '../helpers/studio'
+import type { ConsumerConfigDto } from '@shared/api'
+import { createHarness, gatewayErr, uniqueName, type Harness } from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -15,15 +15,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await h.dispose()
 })
-
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
-}
 
 async function stream(messages = 0): Promise<string> {
   const name = uniqueName('CONS')

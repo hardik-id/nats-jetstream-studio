@@ -54,6 +54,9 @@ export function TailTab({
       ? initialSubject
       : null
   )
+  // True once the gateway reports that the server has the subscription. Until then a message
+  // published elsewhere can still be missed, so the page does not yet claim to be listening.
+  const [listening, setListening] = useState(false)
   const [paused, setPaused] = useState(false)
   const [rows, setRows] = useState<Row[]>([])
   const [waiting, setWaiting] = useState(0)
@@ -91,16 +94,22 @@ export function TailTab({
     setPaused(false)
     pausedRef.current = false
     tabs.patch(tabId, { subject })
+    setListening(false)
     setRunning(subject)
   }
-  const halt = (): void => setRunning(null)
+  const halt = (): void => {
+    setListening(false)
+    setRunning(null)
+  }
 
   // The subscription lives exactly as long as `running` names a subject.
   useEffect(() => {
     if (!running) return
     return gateway.open('tail', { connId, subject: running }, (event) => {
       const c = counters.current
-      if (event.type === 'messages') {
+      if (event.type === 'ready') {
+        setListening(true)
+      } else if (event.type === 'messages') {
         for (const m of event.messages) {
           buffer.current.push(m)
           c.seen.set(m.subject, (c.seen.get(m.subject) ?? 0) + 1)
@@ -121,6 +130,7 @@ export function TailTab({
         dirty.current = true
       } else if (event.type === 'error') {
         setError(new GatewayError(event.error))
+        setListening(false)
         setRunning(null)
       }
     })
@@ -250,7 +260,11 @@ export function TailTab({
     <Page
       scroll={false}
       title="Live tail"
-      subtitle={running ? `Subscribed to ${running}` : 'Watch messages on a subject as they arrive'}
+      subtitle={
+        running
+          ? `${listening ? 'Subscribed' : 'Subscribing'} to ${running}`
+          : 'Watch messages on a subject as they arrive'
+      }
       actions={
         <Button
           icon={<CopyPlus className="h-3.5 w-3.5" aria-hidden />}
@@ -401,7 +415,11 @@ export function TailTab({
           {rows.length === 0 ? (
             <EmptyState
               title={
-                running ? `Waiting for messages on ${running}` : 'Enter a subject and press Start'
+                running
+                  ? listening
+                    ? `Waiting for messages on ${running}`
+                    : `Subscribing to ${running}`
+                  : 'Enter a subject and press Start'
               }
             >
               {!running && (

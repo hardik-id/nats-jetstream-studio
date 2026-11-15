@@ -2,9 +2,9 @@ import { headers } from '@nats-io/transport-node'
 import type { JetStreamManager, StoredMsg } from '@nats-io/jetstream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { MessageReader, pickReadMode, type ReadMode } from '@core/messageReader'
-import { GatewayError, type MessageDto, type ScanEvent, type ScanRequest } from '@shared/api'
+import type { MessageDto, ScanEvent, ScanRequest } from '@shared/api'
 import { fromBase64, utf8Decode } from '@shared/encoding'
-import { collect, createHarness, uniqueName, type Harness } from '../helpers/studio'
+import { collect, createHarness, gatewayErr, uniqueName, type Harness } from '../helpers/studio'
 
 let h: Harness
 let id: string
@@ -27,14 +27,6 @@ async function all<T>(gen: AsyncGenerator<T>, max = Infinity): Promise<T[]> {
     if (out.length >= max) break
   }
   return out
-}
-async function gatewayErr(promise: Promise<unknown>): Promise<GatewayError> {
-  const err = await promise.then(
-    () => undefined,
-    (e) => e
-  )
-  expect(err).toBeInstanceOf(GatewayError)
-  return err as GatewayError
 }
 
 /**

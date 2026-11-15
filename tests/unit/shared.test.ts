@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { subjectMatches, subjectsOverlap, validateSubject, buildSubjectTree } from '@shared/subject'
+import {
+  clampTestTimeoutMs,
+  parseTestTimeoutSeconds,
+  TEST_TIMEOUT_DEFAULT_MS,
+  TEST_TIMEOUT_MAX_MS,
+  TEST_TIMEOUT_MIN_MS
+} from '@shared/connection'
 import { formatDuration, parseDuration } from '@shared/duration'
 import { compareVersions, versionAtLeast } from '@shared/semver'
 import { matchesJsonPath, parseJsonPathFilter } from '@shared/jsonpath'
@@ -32,9 +39,29 @@ describe('subject helpers', () => {
     expect(validateSubject('orders.>')).toBeNull()
     expect(validateSubject('orders..created')).toMatch(/empty/)
     expect(validateSubject('orders.>.x')).toMatch(/last token/)
-    expect(validateSubject('orders.a*')).toMatch(/whole token/)
     expect(validateSubject('orders.*', false)).toMatch(/not allowed/)
+    expect(validateSubject('orders.>', false)).toMatch(/not allowed/)
     expect(validateSubject('has space')).toMatch(/whitespace/)
+    expect(validateSubject('')).toMatch(/required/)
+  })
+
+  it('treats "*" and ">" inside a longer token as ordinary text, as NATS does', () => {
+    for (const subject of ['orders.a*', 'a*b', '*a.b', 'cpu>90', 'metrics.cpu>90.eu', '>x', '**'])
+      for (const allowWildcards of [true, false])
+        expect(validateSubject(subject, allowWildcards), subject).toBeNull()
+    // Such a token is a literal next to real wildcards too.
+    expect(validateSubject('metrics.cpu>90.*.>')).toBeNull()
+    expect(validateSubject('metrics.cpu>90.*', false)).toMatch(/not allowed/)
+    // Only a whole-token ">" has to come last.
+    expect(validateSubject('a.>b.c')).toBeNull()
+    expect(validateSubject('a.>.c')).toMatch(/last token/)
+
+    // The matching helpers agree: the token is compared as text, not expanded.
+    expect(subjectMatches('orders.a*', 'orders.a*')).toBe(true)
+    expect(subjectMatches('orders.a*', 'orders.abc')).toBe(false)
+    expect(subjectMatches('cpu>90', 'cpu>90')).toBe(true)
+    expect(subjectMatches('cpu>90', 'cpu.90')).toBe(false)
+    expect(subjectMatches('alerts.*', 'alerts.cpu>90')).toBe(true)
   })
 
   it('detects overlapping patterns', () => {
@@ -56,6 +83,60 @@ describe('subject helpers', () => {
     expect(orders.count).toBe(3)
     expect(orders.children.get('eu')!.total).toBe(7)
     expect(orders.children.get('eu')!.children.get('created')!.path).toBe('orders.eu.created')
+  })
+})
+
+describe('connection test timeout', () => {
+  it('has one default and one range, shared by the form and the service', () => {
+    expect(TEST_TIMEOUT_DEFAULT_MS).toBe(5000)
+    expect(TEST_TIMEOUT_MIN_MS).toBe(1000)
+    expect(TEST_TIMEOUT_MAX_MS).toBe(60_000)
+  })
+
+  it('clamps a stored value into the range and falls back to the default', () => {
+    expect(clampTestTimeoutMs(8000)).toBe(8000)
+    expect(clampTestTimeoutMs(1000)).toBe(1000)
+    expect(clampTestTimeoutMs(60_000)).toBe(60_000)
+    expect(clampTestTimeoutMs(2500.4)).toBe(2500)
+    // Out of range: the nearest end, so a test neither fails at once nor hangs.
+    expect(clampTestTimeoutMs(400)).toBe(1000)
+    expect(clampTestTimeoutMs(0)).toBe(1000)
+    expect(clampTestTimeoutMs(-5)).toBe(1000)
+    expect(clampTestTimeoutMs(600_000)).toBe(60_000)
+    expect(clampTestTimeoutMs(Infinity)).toBe(5000)
+    // Not a number at all: the default.
+    for (const value of [undefined, null, NaN, '8000', '', 'soon', {}, [], true])
+      expect(clampTestTimeoutMs(value), String(value)).toBe(5000)
+  })
+
+  it('reads typed seconds and accepts exactly what the clamp leaves unchanged', () => {
+    expect(parseTestTimeoutSeconds('5')).toBe(5000)
+    expect(parseTestTimeoutSeconds(' 2.5 ')).toBe(2500)
+    expect(parseTestTimeoutSeconds('1')).toBe(1000)
+    expect(parseTestTimeoutSeconds('60')).toBe(60_000)
+    expect(parseTestTimeoutSeconds('60.0')).toBe(60_000)
+    for (const text of [
+      '',
+      ' ',
+      '0',
+      '0.9',
+      '0.999',
+      '60.001',
+      '61',
+      '600',
+      '-5',
+      'abc',
+      '1e1',
+      '5s',
+      '.5',
+      '5.'
+    ])
+      expect(parseTestTimeoutSeconds(text), text).toBeNull()
+    // Whatever the form accepts, the service uses as it is.
+    for (const text of ['1', '1.5', '7', '59.999', '60']) {
+      const ms = parseTestTimeoutSeconds(text)!
+      expect(clampTestTimeoutMs(ms), text).toBe(ms)
+    }
   })
 })
 

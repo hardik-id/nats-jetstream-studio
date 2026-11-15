@@ -3,8 +3,19 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `labeled` so that adding the `all-platforms` label starts a run (see the platforms job).
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# On a pull request a newer push replaces the run in progress. Pushes to main and manual runs are
+# never cancelled or queued behind each other: each gets its own group, so every commit on main
+# keeps its own result.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The full check, on Linux.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -16,7 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      # Unit, core (against a real nats-server) and UI tests.
+      # Unit, gateway (against a real nats-server) and UI tests.
       - run: node scripts/nats-binary.mjs
       - run: npm test
       # End-to-end: the UI in Chromium and the desktop app under a virtual display.
@@ -25,5 +36,35 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: test-results
+          name: test-results-linux
+          path: test-results
+
+  # The same tests and the desktop app on Windows and macOS. Those runners are billed at a multiple
+  # of the Linux rate on a private repository, so this job runs on pushes to main, on manual runs
+  # (workflow_dispatch) and on pull requests that carry the `all-platforms` label.
+  platforms:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'all-platforms')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/nats-binary.mjs
+      - run: npm test
+      - run: npx playwright install chromium
+      # Type-checks (as part of the build), builds both targets, then runs Playwright.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
           path: test-results

@@ -650,7 +650,7 @@ These apply to every PBI and are part of the definition of done.
 - The end-to-end tests pass unchanged, except for selectors the design intentionally changes, and the screenshots are retaken and attached to the pull request.
 - Usable at 1280 x 720 and with keyboard focus visible everywhere.
 
-**Design:** [PBI-110 redesign canvas](https://claude.ai/artifact/5AfNuQJycZfJ1pvCRCpFuY) (private to the owner; four boards: Foundations, Streams dark, Message browser dark, Consumers light). PBI-110 is delivered through PBI-111 to PBI-123 below.
+**Design:** [PBI-110 redesign canvas](https://claude.ai/artifact/5AfNuQJycZfJ1pvCRCpFuY), approved by the product owner on 2026-11-15 (private to the owner; four boards: Foundations, Streams dark, Message browser dark, Consumers light). PBI-110 is delivered through PBI-111 to PBI-123 below.
 
 ### Working on the PBI-110 sub-items (for agents)
 

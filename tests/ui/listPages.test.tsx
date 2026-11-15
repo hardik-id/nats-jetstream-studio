@@ -1,7 +1,7 @@
-import { screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { ConsumersTab } from '@renderer/features/consumers/ConsumersTab'
-import { consumerTotals } from '@renderer/features/consumers/ConsumersPanel'
+import { consumerTotals, HealthBadges } from '@renderer/features/consumers/ConsumersPanel'
 import { createFakeGateway } from '@renderer/gateway/fake'
 import type { ConsumerInfoDto } from '@shared/api'
 import { renderWithGateway } from './render'
@@ -37,5 +37,20 @@ describe('PBI-121 consumer summary', () => {
     expect(cards).toHaveLength(3)
     expect(within(cards[2]).getByText('All consumers healthy')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Consumers' })).toBeInTheDocument()
+  })
+})
+
+describe('PBI-123 health cell', () => {
+  it('shows the first badge, +N and the full list in the tooltip when several flags are set', () => {
+    render(<HealthBadges c={consumer({ health: ['lag_growing', 'ack_pending_max'] })} />)
+    expect(screen.getByText('Lagging')).toBeInTheDocument()
+    const more = screen.getByText('+1')
+    expect(more.parentElement).toHaveAttribute('title', 'Lag keeps growing, Ack pending at maximum')
+  })
+
+  it('shows a single badge without +N', () => {
+    render(<HealthBadges c={consumer({ health: ['stalled'] })} />)
+    expect(screen.getByText('Inactive')).toBeInTheDocument()
+    expect(screen.queryByText(/^\+/)).toBeNull()
   })
 })

@@ -461,37 +461,42 @@ export function Card({
 export function SubTabs<T extends string>({
   tabs,
   active,
-  onChange
+  onChange,
+  bare,
+  ariaLabel
 }: {
   tabs: { id: T; label: ReactNode }[]
   active: T
   onChange: (id: T) => void
+  /** Only the segmented control, without the bordered strip around it (for use inside a panel). */
+  bare?: boolean
+  ariaLabel?: string
 }): ReactNode {
-  return (
-    <div className="shrink-0 border-b border-line px-3 py-2">
-      <div
-        role="tablist"
-        className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-md border border-line bg-raised p-0.5"
-      >
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={tab.id === active}
-            onClick={() => onChange(tab.id)}
-            className={cx(
-              'h-6 rounded px-3 text-[13px] font-medium whitespace-nowrap',
-              tab.id === active
-                ? 'border border-line bg-panel text-fg'
-                : 'border border-transparent text-muted hover:text-fg'
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+  const list = (
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-md border border-line bg-raised p-0.5"
+    >
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          role="tab"
+          aria-selected={tab.id === active}
+          onClick={() => onChange(tab.id)}
+          className={cx(
+            'h-6 rounded px-3 text-[13px] font-medium whitespace-nowrap',
+            tab.id === active
+              ? 'border border-line bg-panel text-fg'
+              : 'border border-transparent text-muted hover:text-fg'
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
     </div>
   )
+  return bare ? list : <div className="shrink-0 border-b border-line px-3 py-2">{list}</div>
 }
 
 // ───────────── Dialogs ─────────────
@@ -512,16 +517,19 @@ export function Dialog({
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
 
+  // Read before the first commit: a field with `autoFocus` takes the focus during the commit, so
+  // reading it in the effect would find that field instead of the button that opened the dialog.
+  const [opener] = useState(() => document.activeElement as HTMLElement | null)
+
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
     const root = ref.current
     // Focus the first field so the dialog can be used straight from the keyboard.
     const first = root?.querySelector<HTMLElement>(
       '[autofocus], input:not([type=hidden]), textarea, select, button:not([data-close])'
     )
     ;(first ?? root)?.focus()
-    return () => previous?.focus?.()
-  }, [])
+    return () => opener?.focus?.()
+  }, [opener])
 
   return (
     <div

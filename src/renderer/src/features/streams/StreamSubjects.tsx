@@ -87,7 +87,7 @@ export function StreamSubjects({
           }}
         />
         <Select
-          className="w-44"
+          className="w-52"
           aria-label="Sort subjects"
           value={sort}
           onChange={(e) => setSort(e.target.value as 'count' | 'subject')}

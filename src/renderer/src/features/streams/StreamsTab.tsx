@@ -235,7 +235,7 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
       filter={
         <>
           <Input
-            className="w-64"
+            className="w-52"
             type="search"
             aria-label="Search streams by name or subject"
             placeholder="Search by name or subject"
@@ -243,7 +243,7 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
             onChange={(e) => setSearch(e.target.value)}
           />
           <Select
-            className="w-36"
+            className="w-32"
             aria-label="Filter by storage"
             value={storage}
             onChange={(e) => setStorage(e.target.value)}
@@ -253,7 +253,7 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
             <option value="memory">Memory</option>
           </Select>
           <Select
-            className="w-40"
+            className="w-36"
             aria-label="Filter by retention"
             value={retention}
             onChange={(e) => setRetention(e.target.value)}
@@ -268,12 +268,12 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
       actions={
         <>
           <Button
+            aria-label="Refresh"
+            title="Refresh"
             icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
             busy={query.isFetching && !query.isLoading}
             onClick={() => void query.refetch()}
-          >
-            Refresh
-          </Button>
+          />
           <Button
             icon={<Download className="h-3.5 w-3.5" aria-hidden />}
             disabled={selected.size === 0}
@@ -283,12 +283,12 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
             Export{selected.size > 0 ? ` (${selected.size})` : ''}
           </Button>
           <Button
+            aria-label="Import"
             icon={<Upload className="h-3.5 w-3.5" aria-hidden />}
             {...readOnlyProps(conn?.readOnly)}
+            title={conn?.readOnly ? readOnlyProps(true).title : 'Import stream configuration'}
             onClick={() => void importConfig()}
-          >
-            Import
-          </Button>
+          />
           <Button
             variant="primary"
             icon={<Plus className="h-4 w-4" aria-hidden />}

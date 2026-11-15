@@ -22,6 +22,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
+    // Sizes below are content sizes: on small Windows screens the frame must not eat into 1024 px.
+    useContentSize: true,
     minWidth: 1024,
     minHeight: 640,
     show: false,

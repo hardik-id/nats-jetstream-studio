@@ -44,7 +44,7 @@ import { useGateway } from '../../gateway'
 import { useDecoders } from '../../lib/decoders'
 import { useFavorites } from '../../lib/favorites'
 import { pickFile, safeFileName, saveText } from '../../lib/files'
-import { useConnection, useLatest, useSetting } from '../../lib/hooks'
+import { useConnection, useLatest, useSetting, useTabActive } from '../../lib/hooks'
 import {
   filterChips,
   natsPubCommand,
@@ -66,6 +66,7 @@ import {
   serializeSavedExport
 } from '../../lib/savedExport'
 import { toast } from '../../state/toasts'
+import { requestRail } from '../../state/ui'
 import { draftFrom, FilterPanel } from './FilterPanel'
 import { DeleteMessageDialog, ExportAllDialog, RepublishDialog } from './MessageDialogs'
 
@@ -177,13 +178,17 @@ export function MessageBrowser({
   connId,
   info,
   requestSubject,
-  requestSeq
+  requestSeq,
+  visible = true
 }: {
   connId: string
   info: StreamInfoDto
   requestSubject?: string
   requestSeq?: number
+  /** False while another section of the stream is shown (this page stays mounted). */
+  visible?: boolean
 }): ReactNode {
+  const tabActive = useTabActive()
   const gateway = useGateway()
   const conn = useConnection(connId)
   const decoders = useDecoders(connId)
@@ -583,8 +588,14 @@ export function MessageBrowser({
     }
   }
 
-  // TODO(PBI-115): ask the shell store for the collapsed sidebar rail while the detail panel is
-  // open (when `detail` becomes non-null) and restore the previous state when it closes.
+  // The sidebar shrinks to its icon rail while the detail panel is open (PBI-115). The request is
+  // released when the panel closes and when the browser unmounts.
+  const detailOpen = Boolean(detail) && visible && tabActive
+  useEffect(() => {
+    if (!detailOpen) return
+    requestRail('messages', true)
+    return () => requestRail('messages', false)
+  }, [detailOpen])
   const [storedWidth, setStoredWidth] = useSetting<number>(
     'messages.detailWidth',
     DETAIL_DEFAULT_WIDTH
@@ -596,6 +607,16 @@ export function MessageBrowser({
     void setStoredWidth(w)
     setDragWidth(null)
   }
+
+  const tableBox = useRef<HTMLDivElement>(null)
+  const toggleChecked = useCallback((seq: number): void => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(seq)) next.delete(seq)
+      else next.add(seq)
+      return next
+    })
+  }, [])
 
   const columns: Column<MessageDto>[] = useMemo(
     () => [
@@ -619,15 +640,10 @@ export function MessageBrowser({
             aria-label={`Select message ${m.seq}`}
             className="accent-[var(--accent)]"
             checked={checked.has(m.seq)}
+            // The table has one tab stop; Space on the table ticks the highlighted row.
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
-            onChange={() =>
-              setChecked((prev) => {
-                const next = new Set(prev)
-                if (next.has(m.seq)) next.delete(m.seq)
-                else next.add(m.seq)
-                return next
-              })
-            }
+            onChange={() => toggleChecked(m.seq)}
           />
         )
       },
@@ -662,7 +678,7 @@ export function MessageBrowser({
         cell: (m) => formatBytes(m.size)
       }
     ],
-    [messages, checked]
+    [messages, checked, toggleChecked]
   )
 
   const savedItems: MenuItem[] = [
@@ -1008,7 +1024,21 @@ export function MessageBrowser({
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 bg-panel">
+        <div
+          ref={tableBox}
+          className="min-w-0 flex-1 bg-panel"
+          onKeyDown={(e) => {
+            // Keyboard counterparts of the mouse: Esc closes the panel, Space ticks the row.
+            if (e.target !== e.currentTarget.querySelector('[role=table]')) return
+            if (e.key === 'Escape' && selected !== null) {
+              e.preventDefault()
+              select(null)
+            } else if (e.key === ' ' && selected !== null) {
+              e.preventDefault()
+              toggleChecked(selected)
+            }
+          }}
+        >
           {messages.length === 0 && loadedOnce && !busy && !error ? (
             <EmptyState title={emptyText} />
           ) : (
@@ -1029,7 +1059,11 @@ export function MessageBrowser({
             <MessageDetail
               message={detail}
               decoders={decoders}
-              onClose={() => select(null)}
+              onClose={() => {
+                select(null)
+                // The panel (and the focus in it) goes away; keep the keyboard in the table.
+                tableBox.current?.querySelector<HTMLElement>('[role=table]')?.focus()
+              }}
               onPrevious={
                 selectedIndex > 0 ? () => select(messages[selectedIndex - 1].seq) : undefined
               }

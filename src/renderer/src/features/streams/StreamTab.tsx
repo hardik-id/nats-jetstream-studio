@@ -139,6 +139,7 @@ export function StreamTab({
                 info={info}
                 requestSubject={subject}
                 requestSeq={seq}
+                visible={section === 'messages'}
               />
             )}
           </div>

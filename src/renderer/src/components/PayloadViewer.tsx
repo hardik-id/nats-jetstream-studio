@@ -3,7 +3,7 @@ import { fromBase64, toHexDump, tryDecodeText, utf8Decode } from '@shared/encodi
 import { formatBytes } from '@shared/format'
 import type { PayloadDecoder } from '../lib/decoders'
 import { JsonView } from './JsonView'
-import { Button, CopyButton, cx, Notice } from './ui'
+import { Button, CopyButton, cx, Notice, SubTabs } from './ui'
 
 type View = 'decoded' | 'json' | 'text' | 'hex' | 'base64'
 const HEX_LIMIT = 64 * 1024
@@ -105,26 +105,13 @@ export function PayloadViewer({
   return (
     <div className={cx('flex min-h-0 flex-col', className)}>
       <div className="flex shrink-0 items-center gap-1 pb-1.5">
-        <div
-          role="tablist"
-          aria-label="Payload format"
-          className="flex gap-0.5 rounded-md bg-raised p-0.5"
-        >
-          {available.map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={v === view}
-              onClick={() => setChosen(v)}
-              className={cx(
-                'rounded px-2 py-0.5 text-xs font-medium',
-                v === view ? 'bg-panel text-fg shadow-sm' : 'text-muted hover:text-fg'
-              )}
-            >
-              {labels[v]}
-            </button>
-          ))}
-        </div>
+        <SubTabs
+          bare
+          ariaLabel="Payload format"
+          tabs={available.map((v) => ({ id: v, label: labels[v] }))}
+          active={view}
+          onChange={setChosen}
+        />
         <span className="ml-auto text-xs text-faint">{formatBytes(size)}</span>
         {view !== 'hex' && (
           <button

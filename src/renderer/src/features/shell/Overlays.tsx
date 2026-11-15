@@ -5,6 +5,7 @@ import { useAppInfo } from '../../lib/hooks'
 
 const SHORTCUTS: [keys: string[], what: string][] = [
   [['Ctrl/⌘', 'K'], 'Search streams, consumers and buckets, or run an action'],
+  [['Ctrl/⌘', 'B'], 'Collapse or expand the sidebar'],
   [['?'], 'Show this list'],
   [['Ctrl/⌘', 'W'], 'Close the current tab'],
   [['Ctrl', 'Tab'], 'Next tab (add Shift for the previous one)'],

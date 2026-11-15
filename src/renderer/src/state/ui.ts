@@ -29,6 +29,39 @@ export const useUi = create<UiState>()(
   )
 )
 
+/**
+ * Pages that want the sidebar as an icon rail while they are open (PBI-115). Not persisted: the
+ * user's own choice is a setting (`SIDEBAR_RAIL_SETTING`) and wins again once every request is
+ * released. `requestRail(owner, true)` asks for the rail, `requestRail(owner, false)` releases it;
+ * the owner is any stable string, so several pages can ask at once.
+ */
+interface RailState {
+  owners: Record<string, true>
+  requestRail(owner: string, on: boolean): void
+}
+
+export const useRail = create<RailState>((set, get) => ({
+  owners: {},
+  requestRail: (owner, on) => {
+    if (on === Boolean(get().owners[owner])) return
+    const owners = { ...get().owners }
+    if (on) owners[owner] = true
+    else delete owners[owner]
+    set({ owners })
+  }
+}))
+
+/** Asks for the icon rail (or releases the request). Callable outside React. */
+export function requestRail(owner: string, on: boolean): void {
+  useRail.getState().requestRail(owner, on)
+}
+
+/** True while some page has asked for the rail. */
+export const useRailRequested = (): boolean => useRail((s) => Object.keys(s.owners).length > 0)
+
+/** The user's own choice of the collapsed rail, saved with the window's settings. */
+export const SIDEBAR_RAIL_SETTING = 'ui.sidebarRail'
+
 /** Things that are open right now. Not persisted. */
 interface OverlayState {
   palette: boolean

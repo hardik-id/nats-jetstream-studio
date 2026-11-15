@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Pause, Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import type { ConsumerInfoDto } from '@shared/api'
 import { formatAgo, formatCount } from '@shared/format'
+import type { HealthFlag } from '@shared/api'
 import { HEALTH_LABELS } from '@shared/health'
 import { DataTable, type Column } from '../../components/DataTable'
 import { StarButton } from '../../components/StarButton'
@@ -26,6 +27,82 @@ export function consumerFilters(c: ConsumerInfoDto): string[] {
     : c.config.filter_subject
       ? [c.config.filter_subject]
       : []
+}
+
+const HEALTH_BADGE_TEXT: Partial<Record<HealthFlag, string>> = {
+  lag_growing: 'Lagging',
+  stalled: 'Inactive'
+}
+
+/** Status badges for one consumer: Paused, one per problem found, or Healthy. */
+function HealthBadges({ c }: { c: ConsumerInfoDto }): ReactNode {
+  const flags = c.health ?? []
+  if (!c.paused && flags.length === 0)
+    return (
+      <Badge status="ok" title="No problems found">
+        Healthy
+      </Badge>
+    )
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      {c.paused && (
+        <Badge status="neutral" title="Delivery is paused">
+          Paused
+        </Badge>
+      )}
+      {flags.map((f) => (
+        <Badge key={f} status="warn" title={HEALTH_LABELS[f]}>
+          {HEALTH_BADGE_TEXT[f] ?? HEALTH_LABELS[f]}
+        </Badge>
+      ))}
+    </span>
+  )
+}
+
+/** The figures of the summary cards. Consumers that KV and Object Store create are left out. */
+export function consumerTotals(list: ConsumerInfoDto[]): {
+  pending: number
+  ackPending: number
+  attention: number
+} {
+  let pending = 0
+  let ackPending = 0
+  let attention = 0
+  for (const c of list) {
+    if (c.stream_name.startsWith('KV_') || c.stream_name.startsWith('OBJ_')) continue
+    pending += c.num_pending
+    ackPending += c.num_ack_pending
+    if ((c.health?.length ?? 0) > 0) attention++
+  }
+  return { pending, ackPending, attention }
+}
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+  warn
+}: {
+  label: string
+  value: string
+  hint: string
+  warn?: boolean
+}): ReactNode {
+  return (
+    <div
+      className={
+        'min-w-40 flex-1 rounded-md border px-3 py-2 ' +
+        (warn ? 'border-warn bg-warn-soft' : 'border-line bg-raised')
+      }
+      data-testid="summary-card"
+    >
+      <div className="text-xs text-faint">{label}</div>
+      <div className={'text-xl font-semibold tabular-nums ' + (warn ? 'text-warn' : 'text-fg')}>
+        {value}
+      </div>
+      <div className="text-xs text-faint">{hint}</div>
+    </div>
+  )
 }
 
 export function lastActive(c: ConsumerInfoDto): string | undefined {
@@ -60,6 +137,7 @@ export function ConsumersPanel({ connId, stream }: { connId: string; stream?: st
     () => (all ?? []).filter((c) => (c.health?.length ?? 0) > 0).length,
     [all]
   )
+  const totals = useMemo(() => consumerTotals(all ?? []), [all])
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (all ?? []).filter((c) => {
@@ -98,12 +176,6 @@ export function ConsumersPanel({ connId, stream }: { connId: string; stream?: st
           >
             {c.name}
           </button>
-          {c.paused && (
-            <Badge tone="warn" title="Paused">
-              <Pause className="mr-0.5 h-3 w-3" aria-hidden />
-              paused
-            </Badge>
-          )}
         </span>
       )
     },
@@ -114,17 +186,7 @@ export function ConsumersPanel({ connId, stream }: { connId: string; stream?: st
       sort: (c) => c.health?.length ?? 0,
       title: (c) =>
         c.health?.length ? c.health.map((f) => HEALTH_LABELS[f]).join(', ') : 'No problems found',
-      cell: (c) =>
-        c.health?.length ? (
-          <span className="flex min-w-0 items-center gap-1">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" aria-hidden />
-            <span className="truncate text-warn">
-              {c.health.map((f) => HEALTH_LABELS[f]).join(', ')}
-            </span>
-          </span>
-        ) : (
-          <span className="text-faint">OK</span>
-        )
+      cell: (c) => <HealthBadges c={c} />
     },
     ...(stream
       ? []
@@ -214,6 +276,26 @@ export function ConsumersPanel({ connId, stream }: { connId: string; stream?: st
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {all && (
+        <div className="flex shrink-0 flex-wrap gap-3 border-b border-line bg-panel px-4 py-3">
+          <SummaryCard
+            label="Total pending"
+            value={formatCount(totals.pending)}
+            hint="Messages not yet delivered"
+          />
+          <SummaryCard
+            label="Ack pending"
+            value={formatCount(totals.ackPending)}
+            hint="Delivered, not yet acknowledged"
+          />
+          <SummaryCard
+            label="Needs attention"
+            value={formatCount(totals.attention)}
+            hint={totals.attention ? 'Consumers with problems' : 'All consumers healthy'}
+            warn={totals.attention > 0}
+          />
+        </div>
+      )}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2">
         <Input
           className="w-72"

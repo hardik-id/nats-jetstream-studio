@@ -66,6 +66,8 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
     })
   }, [all, search, storage, retention, showBuckets])
 
+  const totalBytes = useMemo(() => (rows ?? []).reduce((sum, s) => sum + s.state.bytes, 0), [rows])
+
   const toggle = (name: string): void =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -227,8 +229,41 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
       title="Streams"
       subtitle={
         all
-          ? `${formatCount(rows.length)} of ${formatCount(all.length - (showBuckets ? 0 : hiddenBuckets))} streams`
+          ? `${formatCount(rows.length)} of ${formatCount(all.length - (showBuckets ? 0 : hiddenBuckets))} streams · ${formatBytes(totalBytes)} stored`
           : undefined
+      }
+      filter={
+        <>
+          <Input
+            className="w-64"
+            type="search"
+            aria-label="Search streams by name or subject"
+            placeholder="Search by name or subject"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            className="w-36"
+            aria-label="Filter by storage"
+            value={storage}
+            onChange={(e) => setStorage(e.target.value)}
+          >
+            <option value="">Any storage</option>
+            <option value="file">File</option>
+            <option value="memory">Memory</option>
+          </Select>
+          <Select
+            className="w-40"
+            aria-label="Filter by retention"
+            value={retention}
+            onChange={(e) => setRetention(e.target.value)}
+          >
+            <option value="">Any retention</option>
+            <option value="limits">Limits</option>
+            <option value="interest">Interest</option>
+            <option value="workqueue">Work queue</option>
+          </Select>
+        </>
       }
       actions={
         <>
@@ -266,35 +301,6 @@ export function StreamsTab({ connId }: { connId: string }): ReactNode {
       }
     >
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2">
-        <Input
-          className="w-72"
-          type="search"
-          aria-label="Search streams by name or subject"
-          placeholder="Search by name or subject"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Select
-          className="w-36"
-          aria-label="Filter by storage"
-          value={storage}
-          onChange={(e) => setStorage(e.target.value)}
-        >
-          <option value="">Any storage</option>
-          <option value="file">File</option>
-          <option value="memory">Memory</option>
-        </Select>
-        <Select
-          className="w-40"
-          aria-label="Filter by retention"
-          value={retention}
-          onChange={(e) => setRetention(e.target.value)}
-        >
-          <option value="">Any retention</option>
-          <option value="limits">Limits</option>
-          <option value="interest">Interest</option>
-          <option value="workqueue">Work queue</option>
-        </Select>
         <Checkbox
           label={`Show KV and Object Store streams${hiddenBuckets ? ` (${hiddenBuckets})` : ''}`}
           checked={showBuckets}

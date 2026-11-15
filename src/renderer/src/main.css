@@ -41,7 +41,7 @@
   --font-ui:
     'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
     Arial, sans-serif;
-  --font-mono:
+  --font-code:
     'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 }
 
@@ -101,7 +101,7 @@
   --color-ok-soft: var(--ok-soft);
   --color-code: var(--code);
   --font-sans: var(--font-ui);
-  --font-mono: var(--font-mono);
+  --font-mono: var(--font-code);
 }
 
 html,

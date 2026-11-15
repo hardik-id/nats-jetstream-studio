@@ -95,31 +95,30 @@ export function MessageDetail({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        <dl className="grid shrink-0 grid-cols-[84px_1fr] gap-x-2 gap-y-1">
-          <dt className="text-muted">Subject</dt>
-          <dd className="flex min-w-0 items-center gap-1">
-            <span className="truncate font-mono text-xs" title={message.subject}>
-              {message.subject}
+        <dl className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-2">
+          <Fact label="Subject" wide>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="truncate font-mono text-xs" title={message.subject}>
+                {message.subject}
+              </span>
+              <CopyButton text={message.subject} label="Copy subject" />
             </span>
-            <CopyButton text={message.subject} label="Copy subject" />
-          </dd>
+          </Fact>
           {message.seq !== undefined && (
-            <>
-              <dt className="text-muted">Sequence</dt>
-              <dd className="tabular">{message.seq}</dd>
-            </>
+            <Fact label="Sequence">
+              <span className="tabular font-mono text-xs">{message.seq}</span>
+            </Fact>
           )}
-          <dt className="text-muted">{message.seq !== undefined ? 'Stored' : 'Received'}</dt>
-          <dd title={utc}>
-            {formatTime(message.time)} <span className="text-faint">({utc} UTC)</span>
-          </dd>
-          <dt className="text-muted">Size</dt>
-          <dd>{formatBytes(message.size)}</dd>
+          <Fact label="Size">{formatBytes(message.size)}</Fact>
+          <Fact label={message.seq !== undefined ? 'Stored' : 'Received'} wide>
+            <span title={utc}>
+              {formatTime(message.time)} <span className="text-faint">({utc} UTC)</span>
+            </span>
+          </Fact>
           {message.reply && (
-            <>
-              <dt className="text-muted">Reply to</dt>
-              <dd className="truncate font-mono text-xs">{message.reply}</dd>
-            </>
+            <Fact label="Reply to" wide>
+              <span className="truncate font-mono text-xs">{message.reply}</span>
+            </Fact>
           )}
         </dl>
 
@@ -174,5 +173,22 @@ export function MessageDetail({
         )}
       </div>
     </aside>
+  )
+}
+
+function Fact({
+  label,
+  wide,
+  children
+}: {
+  label: string
+  wide?: boolean
+  children: ReactNode
+}): ReactNode {
+  return (
+    <div className={wide ? 'col-span-2 min-w-0' : 'min-w-0'}>
+      <dt className="text-[11px] text-faint uppercase">{label}</dt>
+      <dd className="min-w-0 truncate">{children}</dd>
+    </div>
   )
 }

@@ -27,7 +27,8 @@ export interface DataTableProps<T> {
   /** Click or arrow keys. */
   onSelect?: (row: T) => void
   selectedKey?: string | number | null
-  rowHeight?: number
+  /** 32 px rows instead of 36 px. */
+  compact?: boolean
   empty?: ReactNode
   defaultSort?: { id: string; dir: 'asc' | 'desc' }
   rowClassName?: (row: T) => string | undefined
@@ -47,12 +48,13 @@ export function DataTable<T>({
   onOpen,
   onSelect,
   selectedKey,
-  rowHeight = 30,
+  compact,
   empty,
   defaultSort,
   rowClassName,
   stickToBottom
 }: DataTableProps<T>): ReactNode {
+  const rowHeight = compact ? 32 : 36
   const scrollRef = useRef<HTMLDivElement>(null)
   const [sort, setSort] = useState(defaultSort ?? null)
   const [cursor, setCursor] = useState<string | number | null>(null)
@@ -80,10 +82,21 @@ export function DataTable<T>({
     overscan: 12
   })
 
-  const template = columns.map((c) => c.width ?? 'minmax(80px, 1fr)').join(' ')
+  // A column never gets less room than its header label needs (uppercase 11 px, plus the sort
+  // arrow), so no header is cut off; when the columns do not fit, the table scrolls sideways.
+  const floors = columns.map((c) => Math.max(minPx(c.width), headerFloor(c)))
+  const template = columns
+    .map((c, i) => {
+      const w = c.width ?? 'minmax(80px, 1fr)'
+      if (floors[i] === minPx(c.width)) return w
+      return /^\s*minmax\(/.test(w)
+        ? w.replace(/minmax\(\s*[\d.]+px/, `minmax(${floors[i]}px`)
+        : `${floors[i]}px`
+    })
+    .join(' ')
   // The header and every row must resolve the same grid, so both get the same explicit width:
   // the scroll area, or the sum of the columns' minimum widths when that is wider.
-  const minWidth = columns.reduce((sum, c) => sum + minPx(c.width), 0)
+  const minWidth = floors.reduce((sum, n) => sum + n, 0)
   const activeKey = selectedKey !== undefined ? selectedKey : cursor
   const activeIndex = activeKey === null ? -1 : sorted.findIndex((r) => rowKey(r) === activeKey)
 
@@ -137,17 +150,17 @@ export function DataTable<T>({
       className="h-full min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
     >
       <div style={{ minWidth }}>
-        <div role="rowgroup" className="sticky top-0 z-10 border-b border-line bg-raised">
+        <div role="rowgroup" className="sticky top-0 z-10 border-b border-line bg-panel">
           <div
             role="row"
             className="grid items-center"
-            style={{ gridTemplateColumns: template, height: rowHeight }}
+            style={{ gridTemplateColumns: template, height: HEADER_HEIGHT }}
           >
             {columns.map((column) => {
               const active = sort?.id === column.id
               const content = (
                 <>
-                  <span className="truncate">{column.header}</span>
+                  <span className="whitespace-nowrap">{column.header}</span>
                   {active &&
                     (sort!.dir === 'asc' ? (
                       <ArrowUp className="h-3 w-3 shrink-0" aria-hidden />
@@ -164,14 +177,14 @@ export function DataTable<T>({
                     active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined
                   }
                   className={cx(
-                    'min-w-0 px-2 text-xs font-semibold text-muted',
+                    'min-w-0 px-2 text-[11px] font-semibold tracking-wide whitespace-nowrap text-faint uppercase',
                     column.align === 'right' && 'text-right'
                   )}
                 >
                   {column.sort ? (
                     <button
                       className={cx(
-                        'inline-flex max-w-full items-center gap-1 hover:text-fg',
+                        'inline-flex max-w-full items-center gap-1 uppercase hover:text-fg focus-visible:text-fg',
                         column.align === 'right' && 'flex-row-reverse'
                       )}
                       onClick={() =>
@@ -213,7 +226,9 @@ export function DataTable<T>({
                   onDoubleClick={() => onOpen?.(row)}
                   className={cx(
                     'absolute top-0 left-0 grid w-full cursor-default items-center border-b border-line/60',
-                    selected ? 'bg-accent-soft' : 'hover:bg-hover',
+                    selected
+                      ? 'bg-accent-soft shadow-[inset_2px_0_0_var(--accent)]'
+                      : 'hover:bg-hover',
                     rowClassName?.(row)
                   )}
                   style={{
@@ -244,6 +259,14 @@ export function DataTable<T>({
       </div>
     </div>
   )
+}
+
+const HEADER_HEIGHT = 32
+
+/** Room a header label needs: ~7.4 px per uppercase 11 px character, padding and a sort arrow. */
+function headerFloor<T>(column: Column<T>): number {
+  if (typeof column.header !== 'string') return 0
+  return Math.ceil(column.header.length * 7.4 + 16 + (column.sort ? 18 : 0))
 }
 
 /** The smallest width a column track can take: "120px" is 120, "minmax(160px, 2fr)" is 160. */

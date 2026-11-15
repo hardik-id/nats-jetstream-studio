@@ -33,10 +33,13 @@
   --json-string: #8a5a00;
   --json-number: #1b7347;
   --json-literal: #0a6e8f;
-  /* Charts: one series colour, recessive grid and axis. */
-  --series-1: #2a78d6;
-  --chart-grid: #e6eaf0;
-  --chart-axis: #c5ccd6;
+  /* Charts: categorical series (indigo first, then orange, green; validated against --panel for
+     contrast and colour-blind separation) and a recessive grid and axis. */
+  --series-1: #5059c9;
+  --series-2: #e0661f;
+  --series-3: #1b9e77;
+  --chart-grid: #e9e9ec;
+  --chart-axis: #cfcfd4;
   /* Fonts, bundled with the app (see main.tsx); never loaded from the network. */
   --font-ui:
     'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
@@ -73,9 +76,11 @@
   --json-string: #f0bc5e;
   --json-number: #5fd394;
   --json-literal: #5cc6e8;
-  --series-1: #3987e5;
-  --chart-grid: #1f2a40;
-  --chart-axis: #33405c;
+  --series-1: #7a85f0;
+  --series-2: #d9722f;
+  --series-3: #29a681;
+  --chart-grid: #1c1e22;
+  --chart-axis: #2e3036;
 }
 
 @theme inline {

@@ -1,0 +1,154 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  color-scheme: light;
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --raised: #f7f9fb;
+  --hover: #edf1f6;
+  --line: #dbe1e9;
+  --fg: #131a26;
+  --muted: #566173;
+  --faint: #8590a1;
+  --accent: #1d5fd6;
+  --accent-fg: #ffffff;
+  --accent-soft: #e2ecfd;
+  --danger: #c62828;
+  --danger-soft: #fde8e8;
+  --warn: #9a5b00;
+  --warn-soft: #fdf1d3;
+  --ok: #0a7a55;
+  --ok-soft: #d8f5e8;
+  --code: #f0f3f7;
+  --json-key: #7a3e9d;
+  --json-string: #0a7a55;
+  --json-number: #1d5fd6;
+  --json-literal: #b4530a;
+  /* Charts: one series colour, recessive grid and axis. */
+  --series-1: #2a78d6;
+  --chart-grid: #e6eaf0;
+  --chart-axis: #c5ccd6;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0b1019;
+  --panel: #111826;
+  --raised: #161f30;
+  --hover: #1c2740;
+  --line: #263149;
+  --fg: #e4e9f1;
+  --muted: #9ba7ba;
+  --faint: #6c7890;
+  --accent: #6b9bf5;
+  --accent-fg: #08101f;
+  --accent-soft: #1a2a4b;
+  --danger: #f58080;
+  --danger-soft: #3a1619;
+  --warn: #f5c04a;
+  --warn-soft: #392b0c;
+  --ok: #45d6a0;
+  --ok-soft: #0d2f25;
+  --code: #0d1422;
+  --json-key: #c99bf0;
+  --json-string: #6fdcb0;
+  --json-number: #8ab4ff;
+  --json-literal: #f0a868;
+  --series-1: #3987e5;
+  --chart-grid: #1f2a40;
+  --chart-axis: #33405c;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-code: var(--code);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* One visible focus style everywhere, for keyboard users. In the base layer so a component that
+   draws its own focus indicator can switch it off with a utility class. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.json-key {
+  color: var(--json-key);
+}
+.json-string {
+  color: var(--json-string);
+}
+.json-number {
+  color: var(--json-number);
+}
+.json-literal {
+  color: var(--json-literal);
+}
+
+@keyframes studio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: studio-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 2s;
+  }
+}

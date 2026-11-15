@@ -23,7 +23,8 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 8. Monitoring and metrics | 080 to 081 | | 1 | 1 |
 | 9. Productivity and UX | 090 to 093 | | 4 | |
 | 10. Packaging and distribution | 100 to 101 | | 1 | 1 |
-| **Total (46)** | | **27** | **17** | **2** |
+| 11. Visual design | 110 to 123 | | 14 | |
+| **Total (60)** | | **27** | **31** | **2** |
 
 ## MVP slice and build order
 
@@ -625,3 +626,187 @@ These apply to every PBI and are part of the definition of done.
 - Users must sign in (OIDC) before any NATS access.
 - Read-only mode can be enforced on the server per connection.
 - Differences from the desktop app are documented.
+
+---
+
+## Epic 11: Visual design
+
+### PBI-110: Visual redesign based on a Linear-style developer-tool dashboard
+**Priority:** v1 · **Size:** L · **Depends on:** PBI-003
+
+**Story:** As a user who spends hours in the studio, I want a refined, dark-first look with dense tables and one accent colour, so that it feels like a modern developer tool and is easy on the eyes.
+
+**Reference:** [Linear inspired developer tool dashboard](https://superdesign.dev/library/linear-inspired-developer-tool-dashboard) (a community mockup, not Linear itself). The design is prepared first (with the `/design` command), and this item implements it.
+
+**Direction (to be confirmed by the design)**
+- Dark-first: a near-black base with an indigo accent. The light theme stays and gets the same treatment.
+- Regions are separated by borders, not shadows. Dense tables with sticky headers. Strong colour is kept for status (green, amber, red).
+
+**Acceptance criteria**
+- A design document or prototype exists and has been approved before the code changes start.
+- The new look is applied through the colour tokens in `src/renderer/src/main.css` and the shared components in `src/renderer/src/components/ui.tsx`, so no screen needs its own styling.
+- Light and dark themes both pass the contrast checks: text at least 4.5:1, chart and status colours validated with the dataviz palette validator.
+- The layout problems found in the screenshot review are fixed: the cramped payload column when the message panel is open, tabs clipped at the right edge, table columns cut off at 1440 px, the cut-off reply on the Publish page, and the "Revision undefined" text in the object store detail.
+- The end-to-end tests pass unchanged, except for selectors the design intentionally changes, and the screenshots are retaken and attached to the pull request.
+- Usable at 1280 x 720 and with keyboard focus visible everywhere.
+
+**Design:** [PBI-110 redesign canvas](https://claude.ai/artifact/5AfNuQJycZfJ1pvCRCpFuY), approved by the product owner on 2026-11-15 (private to the owner; four boards: Foundations, Streams dark, Message browser dark, Consumers light). PBI-110 is delivered through PBI-111 to PBI-123 below.
+
+### Working on the PBI-110 sub-items (for agents)
+
+Each item below is small enough for one agent in one session. Rules for every item:
+
+- Start from `main` on a branch named `ui/pbi-1NN-short-name`. Touch only the files the item lists. If another file must change, keep the change minimal and say why in the PR.
+- Read the design canvas boards named in the item. Use the CSS variables from PBI-111 (`var(--…)` or the Tailwind classes that map to them), never new hex values in components.
+- Before opening the PR, run `npm run lint`, `npm run typecheck`, `npm test` and `npm run test:e2e`. Update e2e selectors only where the item changes them on purpose.
+- Attach a before and after screenshot (dark and light) of every screen the item changes. Use the fake gateway (`npm run dev` in web mode) or the seeded local server (`npm run nats`, `npm run seed`).
+- Do not merge. Leave the PR for review.
+
+**Order and parallel waves**
+
+| Wave | Items | Can run in parallel? |
+| --- | --- | --- |
+| 1 | PBI-111 tokens and fonts | No, everything depends on it |
+| 2 | PBI-112 controls, PBI-113 tables, PBI-118 payload colours, PBI-122 charts, PBI-120 object store fix | Yes, separate files (PBI-120 can start any time) |
+| 3 | PBI-114 top bar, PBI-115 sidebar, PBI-116 tab bar, PBI-117 message browser, PBI-119 publish, PBI-121 list page headers | Yes, separate files; all need 112, and 117 and 121 also need 113 |
+| 4 | PBI-123 final pass | No, needs all the others |
+
+### PBI-111: Colour tokens, fonts and focus ring
+**Priority:** v1 · **Size:** S · **Depends on:** design approved · **Files:** `src/renderer/src/main.css`, `src/renderer/index.html` (font links), `src/server` CSP only if fonts are blocked
+
+**Story:** As a developer of the studio, I want the design's colours and fonts as tokens, so that every screen picks up the new look without its own styling.
+
+**Acceptance criteria**
+- The existing variables in `main.css` (`--bg`, `--panel`, `--raised`, `--hover`, `--line`, `--fg`, `--muted`, `--faint`, `--accent*`, `--ok/warn/danger*`, `--code`, `--json-*`) take the values from the Foundations board, for both `:root` (light) and `[data-theme='dark']`. No variable is renamed, so existing components keep working.
+- Dark: bg `#0B0C0E`, panel `#121316`, raised `#1A1B1F`, line `#23252A`, fg `#E8E9EB`, muted `#A6A9B0`, faint `#8A8E97`, accent `#5E6AD2`. Light: bg `#FFFFFF`, panel `#F7F7F8`, raised `#EFEFF1`, line `#E4E4E7`, fg `#16171A`, muted `#52555C`, faint `#696D75`, accent `#5059C9`. Status colours as on the board.
+- Inter (UI) and JetBrains Mono (data) are bundled with the app (npm `@fontsource` packages or local woff2), not loaded from Google at runtime, so the desktop app works offline. A `--font-mono` variable is used for subjects, sequences and payloads.
+- Tabular figures (`font-variant-numeric: tabular-nums`) are on by default for table cells.
+- One global focus style: a 2 px accent outline, 1 px offset, on every focusable element (`:focus-visible`).
+- Every text/background pair is checked: text at least 4.5:1 in both themes. Record the ratios in the PR. Any pair that fails is adjusted and the board's value is noted as changed.
+
+### PBI-112: Shared controls (buttons, inputs, badges, segmented tabs)
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-111 · **Files:** `src/renderer/src/components/ui.tsx`, `src/renderer/src/components/inputs.tsx`
+
+**Story:** As a user, I want buttons, fields and status badges to look and behave the same everywhere, matching the design.
+
+**Acceptance criteria**
+- Buttons: primary (accent fill), secondary (raised fill, 1 px border), ghost, danger (tinted), and icon-only (square, `aria-label` required by the type). Heights 32 px (primary and secondary) and 28 px (compact). Radius 6 px.
+- Inputs and selects: 32 px (28 px compact), 1 px border, mono font when the field takes a subject or JSONPath.
+- `Badge` gains status variants (ok, warn, danger, info, neutral). Each shows an icon and a word; colour is never the only signal.
+- `SubTabs` renders as the segmented control from the Foundations board.
+- `Dialog`, `Menu`, `Card` use borders instead of shadows (a soft shadow only on floating menus and dialogs).
+- Existing props stay compatible; no feature file needs changes for this item.
+
+### PBI-113: Dense data table
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-111 · **Files:** `src/renderer/src/components/DataTable.tsx`
+
+**Story:** As a user scanning many streams or messages, I want compact rows, a sticky header and columns that never disappear off the edge.
+
+**Acceptance criteria**
+- Header: 32 px, sticky, uppercase 11 px labels in the faint colour. Rows: 36 px default, 32 px compact.
+- Selected row: accent tint plus a 2 px accent left edge. Hover: the hover colour.
+- When the columns do not fit, the table scrolls sideways inside its own box; no column is cut off or hidden (fixes "Last message" on Streams and "Waiting pulls" on Consumers at 1440 px).
+- Numeric columns are right-aligned with tabular figures.
+- Keyboard row navigation and virtualisation still work (existing tests pass).
+
+### PBI-114: Top bar
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-112 · **Files:** `src/renderer/src/features/shell/TopBar.tsx`
+
+**Story:** As a user, I want a slim top bar that shows where I am and whether I am connected.
+
+**Acceptance criteria**
+- 44 px bar as on the Streams board: app mark, breadcrumb (connection colour dot, connection name, current stream when there is one), Read-only badge when the connection is read-only.
+- Search button opens the command palette and shows the `Ctrl K` / `⌘K` hint.
+- Connection state on the right with icon and text (Connected · RTT, Reconnecting, Disconnected).
+- Wraps rather than overflows at narrow widths.
+
+### PBI-115: Sidebar with collapsible icon rail
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-112 · **Files:** `src/renderer/src/features/shell/Sidebar.tsx`, `src/renderer/src/features/shell/nav.tsx`
+
+**Story:** As a user, I want the connections tree to get out of the way when I need room, for example while reading a message.
+
+**Acceptance criteria**
+- Expanded: 240 px, sections as on the Streams board (connection rows with colour dot, section links indented with icons and counts, "Add connection" at the bottom).
+- Collapsed: a 48 px icon rail as on the Message browser board; each icon has an `aria-label` and a tooltip.
+- A button and a shortcut toggle it; the state is saved per window (setting) and restored at start.
+- The message browser may request the collapsed state while a detail panel is open (an API on the shell store, used by PBI-117).
+
+### PBI-116: Tab bar with overflow menu
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-112 · **Files:** `src/renderer/src/features/shell/TabBar.tsx`
+
+**Story:** As a user with many tabs open, I want to reach every tab, not have the last ones clipped.
+
+**Acceptance criteria**
+- 36 px tabs as on the Streams board; the active tab has a 2 px accent underline.
+- Tabs that do not fit go into a "+N" menu at the right edge listing every hidden tab; choosing one activates it and scrolls it into view.
+- Middle-click and the close button still close tabs; existing keyboard shortcuts still work.
+
+### PBI-117: Message browser layout and detail panel
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-112, PBI-113, PBI-115 (rail API; can stub it) · **Files:** `src/renderer/src/features/messages/MessageBrowser.tsx`, `src/renderer/src/features/messages/FilterPanel.tsx`, `src/renderer/src/components/MessageDetail.tsx`
+
+**Story:** As a user reading a message, I want the payload to have room, so that JSON is not cut off.
+
+**Acceptance criteria**
+- Layout as on the Message browser board: filter row with removable filter chips, table of seq / subject / payload preview / time, and a detail panel on the right.
+- The detail panel is at least 440 px wide and can be resized by dragging its edge (width saved as a setting). Opening it collapses the sidebar to the rail; closing it restores the previous state.
+- Header facts (received, size, headers) in a two-column grid; the payload wraps and scrolls inside its box, never cut off.
+- At 1280 x 720 the table still shows seq, subject and a payload preview with the panel open.
+
+### PBI-118: Payload and JSON colours
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-111 · **Files:** `src/renderer/src/components/JsonView.tsx`, `src/renderer/src/components/PayloadViewer.tsx`
+
+**Story:** As a user, I want payloads to be easy to read in both themes.
+
+**Acceptance criteria**
+- JSON keys, strings, numbers and literals use the `--json-*` tokens as on the Message browser board (keys indigo, strings amber, numbers green in dark), each at least 4.5:1 on `--code`.
+- Mono font, 12 px, line height 1.65; long lines wrap (`pre-wrap`, break long words) unless the user turns wrapping off.
+- The JSON / Text / Hex / Base64 switch uses the segmented control from PBI-112 when it is merged (otherwise keep the current control and leave a note).
+
+### PBI-119: Publish page layout
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-112 · **Files:** `src/renderer/src/features/publish/PublishTab.tsx`
+
+**Story:** As a user sending a request, I want to see the whole reply.
+
+**Acceptance criteria**
+- The reply panel is never cut off at the bottom of the window: the page scrolls, or the editor and reply share the height and each scrolls inside its box.
+- The page uses the new controls and the page header from the design (title, subtitle, actions on the right).
+- Checked at 1280 x 720 and 1440 x 900 with a reply of at least 60 lines.
+
+### PBI-120: Object store detail shows "Revision undefined"
+**Priority:** v1 · **Size:** S · **Depends on:** none · **Files:** `src/renderer/src/features/objects/ObjBucketTab.tsx` (and the conversion in `src/core` only if the value is lost there)
+
+**Story:** As a user looking at an object, I want correct metadata, not "undefined".
+
+**Acceptance criteria**
+- Find why `info.revision` is undefined (the field name in `@nats-io/obj` `ObjectInfo` is likely different, for example the sequence) and show the right value, or hide the row when the server does not give one.
+- A UI or gateway test covers it.
+
+### PBI-121: List pages: header, filter and summary cards
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-112, PBI-113 · **Files:** `src/renderer/src/features/streams/StreamsTab.tsx`, `src/renderer/src/features/consumers/ConsumersTab.tsx`, `src/renderer/src/features/consumers/ConsumersPanel.tsx`, `src/renderer/src/components/ui.tsx` (`Page` only)
+
+**Story:** As a user, I want list pages to show what matters at a glance.
+
+**Acceptance criteria**
+- `Page` header as on the boards: 20 px title, one-line subtitle with counts (for example "6 streams · 1.82 GB of 10 GB file storage"), filter input and actions on the right.
+- Consumers page: three summary cards (total pending, ack pending, needs attention) as on the Consumers board; the "needs attention" card uses the warn colours only when something needs attention.
+- Health column shows the status badges from PBI-112 (Healthy, Lagging, Paused, Inactive).
+- Create buttons are shown disabled with a tooltip on read-only connections, not hidden.
+
+### PBI-122: Chart colours
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-111 · **Files:** `src/renderer/src/components/LineChart.tsx`, `src/renderer/src/components/MetricsPanel.tsx`, `src/renderer/src/main.css` (`--series-*`, `--chart-*` only)
+
+**Story:** As a user watching rates and lag, I want charts that match the new look and stay readable for colour-blind users.
+
+**Acceptance criteria**
+- Series, grid and axis colours come from tokens; the series palette passes the dataviz palette validator in both themes (record its output in the PR).
+- Lines 2 px, recessive grid, tooltips keep working.
+
+### PBI-123: Redesign final pass
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-111 to PBI-122 · **Files:** any, small fixes only
+
+**Story:** As the product owner, I want to check the whole app against the design before calling PBI-110 done.
+
+**Acceptance criteria**
+- Every screen (overview, streams, stream detail, consumers, consumer detail, messages, live tail, subjects, publish, KV, object store, monitoring, audit, decoders, connection form, command palette, dialogs) is checked in dark and light at 1280 x 720 and 1440 x 900; leftover old colours or spacing are fixed.
+- Keyboard-only walk-through: focus is visible everywhere and nothing is reachable only by mouse.
+- Full screenshot set retaken and attached to the PR; `docs/status.md` marks PBI-110 to PBI-123 done.

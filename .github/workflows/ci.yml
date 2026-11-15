@@ -4,7 +4,13 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same branch replaces the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # The full check, on Linux.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -16,7 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      # Unit, core (against a real nats-server) and UI tests.
+      # Unit, gateway (against a real nats-server) and UI tests.
       - run: node scripts/nats-binary.mjs
       - run: npm test
       # End-to-end: the UI in Chromium and the desktop app under a virtual display.
@@ -25,5 +31,30 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: test-results
+          name: test-results-linux
+          path: test-results
+
+  # The same tests and the desktop app on Windows and macOS.
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node scripts/nats-binary.mjs
+      - run: npm test
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
           path: test-results

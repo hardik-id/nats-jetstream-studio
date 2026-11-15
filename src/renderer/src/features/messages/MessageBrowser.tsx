@@ -41,8 +41,9 @@ import {
 } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useDecoders } from '../../lib/decoders'
-import { safeFileName, saveText } from '../../lib/files'
-import { useConnection, useSetting } from '../../lib/hooks'
+import { useFavorites } from '../../lib/favorites'
+import { pickFile, safeFileName, saveText } from '../../lib/files'
+import { useConnection, useLatest, useSetting } from '../../lib/hooks'
 import {
   filterChips,
   natsPubCommand,
@@ -53,6 +54,13 @@ import {
   type ExportedMessage,
   type SavedFilter
 } from '../../lib/messages'
+import {
+  buildSavedExport,
+  describeSaved,
+  mergeSavedExport,
+  parseSavedExport,
+  serializeSavedExport
+} from '../../lib/savedExport'
 import { toast } from '../../state/toasts'
 import { draftFrom, FilterPanel } from './FilterPanel'
 import { DeleteMessageDialog, ExportAllDialog, RepublishDialog } from './MessageDialogs'
@@ -78,6 +86,8 @@ interface Outcome {
 }
 
 const FULL_PAYLOAD = 64 * 1024 * 1024
+/** An export of saved filters and favourites is a few kilobytes; anything huge is another file. */
+const MAX_SAVED_IMPORT_BYTES = 1024 * 1024
 
 /** datetime-local wants "YYYY-MM-DDTHH:MM:SS" in local time. */
 function toLocalInput(date: Date): string {
@@ -134,6 +144,9 @@ export function MessageBrowser({
     null | 'delete' | 'republishOne' | 'republishMany' | 'exportAll' | 'saveFilter'
   >(null)
   const [saved, setSaved] = useSetting<SavedFilter[]>(`conn:${connId}:savedFilters`, [])
+  const { favorites, replace: setFavorites } = useFavorites(connId)
+  // An import merges into the lists as they are when the file has been read.
+  const latestSaved = useLatest({ saved, favorites })
 
   const runToken = useRef(0)
   const stopScan = useRef<(() => void) | null>(null)
@@ -425,6 +438,38 @@ export function MessageBrowser({
     }
   }
 
+  const exportSaved = (): void => {
+    saveText(
+      `saved-filters-${safeFileName(conn?.name ?? connId)}.json`,
+      serializeSavedExport(buildSavedExport(saved, favorites))
+    )
+    toast.ok(`Exported ${describeSaved(saved.length, favorites.length)}`)
+  }
+
+  const importSaved = async (): Promise<void> => {
+    try {
+      const file = await pickFile('.json,application/json')
+      if (!file) return
+      if (file.size > MAX_SAVED_IMPORT_BYTES)
+        throw new Error('This file is too large to be an export of saved filters and favourites.')
+      const imported = parseSavedExport(await file.text())
+      const current = latestSaved.current
+      const merged = mergeSavedExport(
+        { savedFilters: current.saved, favorites: current.favorites },
+        imported
+      )
+      if (!merged.importedFilters && !merged.importedFavorites) {
+        toast.info('Nothing to import. The file has no saved filters and no new favourites.')
+        return
+      }
+      if (merged.importedFilters) setSaved(merged.savedFilters)
+      if (merged.importedFavorites) setFavorites(merged.favorites)
+      toast.ok(`Imported ${describeSaved(merged.importedFilters, merged.importedFavorites)}`)
+    } catch (err) {
+      toast.error(err)
+    }
+  }
+
   const columns: Column<MessageDto>[] = useMemo(
     () => [
       {
@@ -510,6 +555,16 @@ export function MessageBrowser({
       title: chips.length === 0 ? 'Set a subject or a filter first' : undefined,
       onSelect: () => setDialog('saveFilter')
     },
+    {
+      label: 'Export filters and favourites...',
+      disabled: saved.length === 0 && favorites.length === 0,
+      title:
+        saved.length === 0 && favorites.length === 0
+          ? 'There are no saved filters or favourites to export'
+          : undefined,
+      onSelect: exportSaved
+    },
+    { label: 'Import filters and favourites...', onSelect: () => void importSaved() },
     ...(saved.length
       ? [{ label: 'Remove all saved filters', danger: true, onSelect: () => setSaved([]) }]
       : [])

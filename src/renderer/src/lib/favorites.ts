@@ -29,6 +29,8 @@ export function useFavorites(connId: string): {
   favorites: Favorite[]
   isFavorite: (f: Favorite) => boolean
   toggle: (f: Favorite) => void
+  /** Stores a whole new list, for an import. */
+  replace: (favorites: Favorite[]) => void
 } {
   const [favorites, setFavorites] = useSetting<Favorite[]>(`conn:${connId}:favorites`, [])
   const isFavorite = useCallback(
@@ -46,5 +48,5 @@ export function useFavorites(connId: string): {
     },
     [favorites, setFavorites]
   )
-  return { favorites, isFavorite, toggle }
+  return { favorites, isFavorite, toggle, replace: setFavorites }
 }

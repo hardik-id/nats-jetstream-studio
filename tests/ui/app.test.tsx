@@ -208,6 +208,58 @@ describe('PBI-011 connection form', () => {
       within(dialog).queryByText(/No operating system keychain is available/)
     ).not.toBeInTheDocument()
   })
+
+  it('PBI-012 stores the test timeout in milliseconds and refuses a value out of range', async () => {
+    const gateway = createFakeGateway()
+    gateway.settings.set('testTimeoutMs', 8000)
+    renderWithGateway(<ConnectionForm id={null} onClose={() => {}} />, gateway)
+    const dialog = await screen.findByRole('dialog', { name: 'Add connection' })
+    const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+    // The stored value is shown in seconds, and the hint says what it applies to.
+    await waitFor(() => expect(field.value).toBe('8'))
+    expect(within(dialog).getByText(/Applies to every connection test/)).toBeInTheDocument()
+    const stored = (): unknown[] =>
+      gateway.calls
+        .filter((c) => c.method === 'setSetting' && c.args[0] === 'testTimeoutMs')
+        .map((c) => c.args[1])
+
+    fireEvent.change(field, { target: { value: '12' } })
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(12000))
+    expect(field).not.toHaveAttribute('aria-invalid')
+    fireEvent.change(field, { target: { value: '2.5' } })
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(2500))
+
+    // Out of range or not a number: an inline error, and nothing is stored.
+    for (const bad of ['0', '0.9', '61', '600', '-5', 'abc', '1e1', '']) {
+      fireEvent.change(field, { target: { value: bad } })
+      expect(within(dialog).getByRole('alert')).toHaveTextContent(
+        'Enter a number of seconds from 1 to 60'
+      )
+      expect(field).toHaveAttribute('aria-invalid', 'true')
+    }
+    // The limits themselves are accepted.
+    fireEvent.change(field, { target: { value: '60' } })
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(60000))
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    fireEvent.change(field, { target: { value: '1' } })
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(1000))
+    expect(stored()).toEqual([12000, 2500, 60000, 1000])
+  })
+
+  it('PBI-012 the test timeout stays editable for a NATS CLI connection', async () => {
+    const gateway = createFakeGateway({
+      connections: [{ id: 'cli', name: 'from-cli', source: 'cli' }]
+    })
+    renderWithGateway(<ConnectionForm id="cli" onClose={() => {}} />, gateway)
+    const dialog = await screen.findByRole('dialog', { name: 'Edit connection: from-cli' })
+    expect(within(dialog).getByLabelText('Name')).toBeDisabled()
+    const field = within(dialog).getByLabelText('Test timeout (seconds)') as HTMLInputElement
+    await waitFor(() => expect(field.value).toBe('5'))
+    expect(field).toBeEnabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, '30')
+    await waitFor(() => expect(gateway.settings.get('testTimeoutMs')).toBe(30000))
+  })
 })
 
 describe('shared components', () => {

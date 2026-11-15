@@ -113,7 +113,9 @@ test('PBI-093 keyboard navigation, help overlay and session restore', async ({ p
   await expect(page.getByTestId('active-connection')).toContainText('Local dev')
 })
 
-test('PBI-091 favourites and saved filters persist', async ({ page }) => {
+test('PBI-091 favourites and saved filters persist, export and import', async ({
+  page
+}, testInfo) => {
   await openStudio(page)
   await go(page, 'Streams')
   const table = page.getByRole('table', { name: 'Streams' })
@@ -127,12 +129,11 @@ test('PBI-091 favourites and saved filters persist', async ({ page }) => {
 
   // A consumer and a subject can be starred as well.
   await openStream(page, 'ORDERS', 'Consumers')
-  await page
+  const billing = page
     .getByRole('table', { name: 'Consumers' })
     .getByRole('row')
     .filter({ has: page.getByRole('button', { name: 'billing', exact: true }) })
-    .getByRole('button', { name: 'Add to favourites' })
-    .click()
+  await billing.getByRole('button', { name: 'Add to favourites' }).click()
   await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
 
   // Saved filter.
@@ -167,12 +168,97 @@ test('PBI-091 favourites and saved filters persist', async ({ page }) => {
   await expect(page.getByLabel('Subject filter')).toHaveValue('orders.eu.paid')
   await expect(page.getByLabel('Active filters')).toContainText('Subject orders.eu.paid')
 
-  // Clean up so other tests start from the same state.
+  // Export both to a file.
+  const exportItem = page.getByRole('menuitem', { name: 'Export filters and favourites...' })
+  const importItem = page.getByRole('menuitem', { name: 'Import filters and favourites...' })
   await page.getByRole('button', { name: 'Saved' }).click()
-  await page.getByRole('menuitem', { name: 'Remove all saved filters' }).click()
-  await go(page, 'Streams')
-  await row.getByRole('button', { name: 'Remove from favourites' }).click()
-  await expect(group.getByRole('button', { name: 'JOBS', exact: true })).toHaveCount(0)
+  const download = page.waitForEvent('download')
+  await exportItem.click()
+  const exported = await download
+  expect(exported.suggestedFilename()).toBe('saved-filters-Local_dev.json')
+  const file = testInfo.outputPath('saved-filters-Local_dev.json')
+  await exported.saveAs(file)
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+    version: 1,
+    savedFilters: [{ name: 'EU paid', subject: 'orders.eu.paid', filters: {} }],
+    favorites: [
+      { kind: 'stream', stream: 'JOBS' },
+      { kind: 'consumer', stream: 'ORDERS', consumer: 'billing' }
+    ]
+  })
+  await expect(toast(page, 'Exported 1 saved filter and 2 favourites')).toBeVisible()
+
+  // Starts on the Messages tab of ORDERS and leaves no saved filter and no favourite behind.
+  const removeEverything = async (): Promise<void> => {
+    await page.getByRole('button', { name: 'Saved' }).click()
+    await page.getByRole('menuitem', { name: 'Remove all saved filters' }).click()
+    await page.getByRole('tab', { name: 'Consumers', exact: true }).click()
+    await billing.getByRole('button', { name: 'Remove from favourites' }).click()
+    await go(page, 'Streams')
+    await row.getByRole('button', { name: 'Remove from favourites' }).click()
+    await expect(group.getByText('Favourites')).toHaveCount(0)
+  }
+  await removeEverything()
+  await openStream(page, 'ORDERS', 'Messages')
+  await page
+    .getByLabel('Active filters')
+    .getByRole('button', { name: /Remove filter: Subject/ })
+    .click()
+  await expect(page.getByLabel('Subject filter')).toHaveValue('')
+  await page.getByRole('button', { name: 'Saved' }).click()
+  await expect(page.getByRole('menuitem', { name: 'EU paid' })).toHaveCount(0)
+  await expect(exportItem).toBeDisabled()
+  await expect(exportItem).toHaveAttribute(
+    'title',
+    'There are no saved filters or favourites to export'
+  )
+
+  // A file that is not a valid export is refused with the reason, and nothing of it is taken.
+  const broken = testInfo.outputPath('broken.json')
+  writeFileSync(
+    broken,
+    JSON.stringify({
+      version: 1,
+      savedFilters: [{ name: 'Broken', subject: 'orders..paid', filters: {} }],
+      favorites: [{ kind: 'stream', stream: 'JOBS' }]
+    })
+  )
+  const refusedChooser = page.waitForEvent('filechooser')
+  await importItem.click()
+  await (await refusedChooser).setFiles(broken)
+  const refused = page.getByRole('alert').filter({
+    hasText: 'Saved filter "Broken" has an invalid subject. Subject cannot have empty tokens.'
+  })
+  await expect(refused).toBeVisible()
+  await refused.getByRole('button', { name: 'Dismiss' }).click()
+  await expect(group.getByText('Favourites')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Saved' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Broken' })).toHaveCount(0)
+  await expect(exportItem).toBeDisabled()
+
+  // Importing the exported file brings the saved filter and the favourites back.
+  const chooser = page.waitForEvent('filechooser')
+  await importItem.click()
+  await (await chooser).setFiles(file)
+  await expect(toast(page, 'Imported 1 saved filter and 2 favourites')).toBeVisible()
+  await expect(group.getByRole('button', { name: 'JOBS', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
+
+  // What was imported is stored, not only shown: it is still there after a restart.
+  await page.reload()
+  await expect(group.getByRole('button', { name: 'JOBS', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
+  await page
+    .getByRole('tablist', { name: 'Open tabs' })
+    .getByRole('tab', { name: 'ORDERS' })
+    .click()
+  await page.getByRole('button', { name: 'Saved' }).click()
+  await page.getByRole('menuitem', { name: 'EU paid' }).click()
+  await expect(page.getByLabel('Subject filter')).toHaveValue('orders.eu.paid')
+  await expect(page.getByLabel('Active filters')).toContainText('Subject orders.eu.paid')
+
+  // Clean up so other tests start from the same state.
+  await removeEverything()
 })
 
 test('PBI-092 audit log records changes and exports CSV', async ({ page }) => {

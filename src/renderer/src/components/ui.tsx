@@ -669,7 +669,7 @@ export function Menu({
         <div
           role="menu"
           className={cx(
-            'absolute top-full z-40 mt-1 min-w-44 rounded-md border border-line bg-panel py-1 shadow-lg',
+            'absolute top-full z-40 mt-1 w-max max-w-80 min-w-44 rounded-md border border-line bg-panel py-1 shadow-lg',
             align === 'right' ? 'right-0' : 'left-0'
           )}
         >

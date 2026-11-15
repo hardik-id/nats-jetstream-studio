@@ -6,8 +6,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startNatsServer, type TestServer } from '../helpers/natsServer'
 import { createHarness, type Harness } from '../helpers/studio'
 
+/** The certificates are made with openssl; without it these tests are skipped, not failed. */
+function hasOpenssl(): boolean {
+  try {
+    execFileSync('openssl', ['version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** PBI-011: TLS options, checked against servers with real certificates made for the test. */
-describe('PBI-011 TLS connections', () => {
+describe.skipIf(!hasOpenssl())('PBI-011 TLS connections', () => {
   let h: Harness
   let dir: string
   const servers: TestServer[] = []

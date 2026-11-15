@@ -427,7 +427,11 @@ export class StudioService implements GatewayMethods {
       token: input.token || stored.token,
       nkeySeed: input.nkeySeed || stored.nkeySeed
     }
-    const timeoutMs = this.settings.get<number>('testTimeoutMs') ?? 5000
+    // A stored value that is not a sensible number must not hang or instantly fail every test.
+    const timeoutMs = Math.min(
+      60_000,
+      Math.max(500, Number(this.settings.get('testTimeoutMs') ?? 5000) || 5000)
+    )
     let nc
     try {
       const cfg =

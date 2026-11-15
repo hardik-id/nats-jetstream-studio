@@ -94,7 +94,10 @@ export function buildConnectOptions(
     }
     case 'creds': {
       if (!cfg.credsFile) throw gatewayError('validation', 'Credentials file is not set')
-      const creds = readTextFile(cfg.credsFile, 'Credentials file')
+      // The client's creds parser only accepts "\n" line ends and a newline after the last line.
+      // The NATS CLI also reads files with Windows line ends or without that final newline, so
+      // normalise both here: a file that works with `nats --creds` must work in the studio too.
+      const creds = readTextFile(cfg.credsFile, 'Credentials file').replace(/\r\n?/g, '\n') + '\n'
       opts.authenticator = credsAuthenticator(new TextEncoder().encode(creds))
       break
     }

@@ -26,7 +26,7 @@ import {
   TextArea
 } from '../../components/ui'
 import { useGateway } from '../../gateway'
-import { useAppInfo, useConnections } from '../../lib/hooks'
+import { useAppInfo, useConnections, useSetting } from '../../lib/hooks'
 import { toast } from '../../state/toasts'
 
 interface FormState {
@@ -114,6 +114,16 @@ function toInput(form: FormState, id: string | undefined): ConnectionInput {
   }
 }
 
+const DEFAULT_TEST_TIMEOUT_MS = 5000
+
+/** Whole or decimal seconds from 1 to 60, as milliseconds. Null when the text is anything else. */
+function parseTestTimeout(text: string): number | null {
+  const trimmed = text.trim()
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null
+  const seconds = Number(trimmed)
+  return seconds >= 1 && seconds <= 60 ? Math.round(seconds * 1000) : null
+}
+
 /** Add or edit a connection (PBI-011), with "Test" (PBI-012) and secret handling (PBI-014). */
 export function ConnectionForm({
   id,
@@ -151,6 +161,25 @@ function Form({
   const [testing, setTesting] = useState(false)
   const [test, setTest] = useState<TestConnectionResult | null>(null)
   const [error, setError] = useState<unknown>(null)
+  // The test timeout is one setting for the whole studio, not part of this connection, so it is
+  // saved as soon as it is valid and does not wait for "Save".
+  const [testTimeoutMs, setTestTimeoutMs] = useSetting<number>(
+    'testTimeoutMs',
+    DEFAULT_TEST_TIMEOUT_MS
+  )
+  const [timeoutDraft, setTimeoutDraft] = useState<string | null>(null)
+  const timeoutText =
+    timeoutDraft ??
+    String((Number.isFinite(testTimeoutMs) ? testTimeoutMs : DEFAULT_TEST_TIMEOUT_MS) / 1000)
+  const timeoutError =
+    timeoutDraft !== null && parseTestTimeout(timeoutDraft) === null
+      ? 'Enter a number of seconds from 1 to 60'
+      : null
+  const changeTimeout = (text: string): void => {
+    setTimeoutDraft(text)
+    const ms = parseTestTimeout(text)
+    if (ms !== null && ms !== testTimeoutMs) setTestTimeoutMs(ms)
+  }
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((f) => ({ ...f, [key]: value }))
     setTest(null)
@@ -520,6 +549,29 @@ function Form({
               )}
             </Field>
           </div>
+        </details>
+
+        <details className="rounded-md border border-line p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-muted">
+            Connection test
+          </summary>
+          <Field
+            className="mt-3"
+            label="Test timeout (seconds)"
+            hint="How long a test waits before it gives up. Applies to every connection test and is saved as you type."
+            error={timeoutError}
+          >
+            {(fid) => (
+              <Input
+                id={fid}
+                className="w-32"
+                inputMode="decimal"
+                value={timeoutText}
+                invalid={!!timeoutError}
+                onChange={(e) => changeTimeout(e.target.value)}
+              />
+            )}
+          </Field>
         </details>
 
         <div className="grid grid-cols-2 gap-3">

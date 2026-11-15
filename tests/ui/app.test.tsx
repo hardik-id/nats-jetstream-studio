@@ -68,6 +68,7 @@ describe('PBI-003 app shell with the fake gateway', () => {
     expect(await within(dev).findByRole('img', { name: 'Connected' })).toBeInTheDocument()
     expect(gateway.calls.some((c) => c.method === 'connect' && c.args[0] === 'dev')).toBe(true)
     expect(await screen.findByTestId('active-connection')).toHaveTextContent('Dev')
+    expect(await screen.findByTestId('connection-state')).toHaveTextContent(/^Connected/)
 
     await userEvent.click(within(dev).getByRole('button', { name: 'Streams' }))
     const table = await screen.findByRole('table', { name: 'Streams' })
@@ -85,6 +86,7 @@ describe('PBI-003 app shell with the fake gateway', () => {
     expect(
       (await screen.findAllByText(/The connection to Dev was lost\. Reconnecting/)).length
     ).toBeGreaterThanOrEqual(1)
+    expect(screen.getByTestId('connection-state')).toHaveTextContent('Reconnecting')
     gateway.emit({ type: 'connection', state: { id: 'dev', status: 'connected', reconnects: 1 } })
     await waitFor(() =>
       expect(screen.queryAllByText(/The connection to Dev was lost/)).toHaveLength(0)

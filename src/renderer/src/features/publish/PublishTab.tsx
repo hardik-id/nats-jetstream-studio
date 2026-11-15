@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { BookmarkPlus, CheckCircle2, Send, Trash2 } from 'lucide-react'
+import { BookmarkPlus, CheckCircle2, Eraser, Send, Trash2 } from 'lucide-react'
 import type { Header, PublishResult, RequestResult } from '@shared/api'
 import { textToBase64, utf8Encode } from '@shared/encoding'
 import { formatBytes, formatTime } from '@shared/format'
@@ -139,9 +139,26 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
   }
 
   return (
-    <Page title="Publish" subtitle="Send a message or a request to a subject">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="flex flex-col gap-4">
+    <Page
+      scroll={false}
+      title="Publish"
+      subtitle="Send a message or a request to a subject"
+      actions={
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Eraser className="h-3.5 w-3.5" aria-hidden />}
+          disabled={busy}
+          onClick={() => load(EMPTY)}
+        >
+          Clear form
+        </Button>
+      }
+    >
+      {/* Wide: the editor and the reply sit side by side and each scrolls inside its own box, so
+          the reply is never below the fold. Narrow: one column and the page scrolls. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto lg:pr-1">
           <Card title="Message">
             <form
               className="flex flex-col gap-3"
@@ -234,7 +251,7 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
                 {(id) => (
                   <TextArea
                     id={id}
-                    rows={12}
+                    rows={10}
                     disabled={readOnly}
                     invalid={!!json && !json.valid}
                     placeholder='{"hello":"world"}'
@@ -285,66 +302,6 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
             </form>
           </Card>
 
-          {(outcome !== null || error != null) && (
-            <Card title="Result">
-              <div aria-live="polite" className="flex flex-col gap-3">
-                <ErrorNote error={error} />
-                {outcome?.kind === 'sent' && (
-                  <Notice tone="ok" className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                    Published {formatBytes(outcome.bytes)} to{' '}
-                    <span className="font-mono">{outcome.subject}</span>. Core NATS does not confirm
-                    delivery.
-                  </Notice>
-                )}
-                {outcome?.kind === 'ack' && (
-                  <Notice tone="ok" className="flex flex-wrap items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                    Stored in stream <span className="font-mono">{outcome.ack.stream}</span> as
-                    sequence <strong>{outcome.ack.seq}</strong>.
-                    {outcome.ack.duplicate && (
-                      <Badge tone="warn">Duplicate: the stream already had this message ID</Badge>
-                    )}
-                  </Notice>
-                )}
-                {outcome?.kind === 'reply' && (
-                  <>
-                    <p>
-                      Reply in <strong>{outcome.reply.rttMs} ms</strong> ·{' '}
-                      {formatBytes(outcome.reply.size)}
-                    </p>
-                    {outcome.reply.headers.length > 0 && (
-                      <table className="w-full table-fixed border-collapse text-xs">
-                        <tbody>
-                          {outcome.reply.headers.map(([k, v], i) => (
-                            <tr key={i} className="border-t border-line first:border-t-0">
-                              <th
-                                scope="row"
-                                className="w-2/5 py-1 pr-2 text-left font-mono font-normal text-muted"
-                              >
-                                {k}
-                              </th>
-                              <td className="py-1 font-mono break-all">{v}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                    <PayloadViewer
-                      className="h-72"
-                      payload={outcome.reply.payload}
-                      size={outcome.reply.size}
-                      subject={outcome.reply.subject}
-                      decoders={decoders}
-                    />
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4">
           <Card title={`Templates (${templates.length})`}>
             {templates.length === 0 ? (
               <p className="text-muted">
@@ -416,6 +373,75 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
             )}
           </Card>
         </div>
+
+        <section
+          aria-label="Result"
+          className="flex min-h-96 min-w-0 flex-col rounded-lg border border-line bg-panel lg:min-h-0"
+        >
+          <header className="flex min-h-9 shrink-0 items-center border-b border-line px-3 py-1.5">
+            <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Result</h3>
+          </header>
+          <div aria-live="polite" className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+            {outcome === null && error == null && (
+              <p className="text-muted">
+                {busy
+                  ? 'Waiting for the server...'
+                  : 'The acknowledgement or the reply appears here after you send.'}
+              </p>
+            )}
+            <ErrorNote error={error} />
+            {outcome?.kind === 'sent' && (
+              <Notice tone="ok" className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                Published {formatBytes(outcome.bytes)} to{' '}
+                <span className="font-mono">{outcome.subject}</span>. Core NATS does not confirm
+                delivery.
+              </Notice>
+            )}
+            {outcome?.kind === 'ack' && (
+              <Notice tone="ok" className="flex flex-wrap items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                Stored in stream <span className="font-mono">{outcome.ack.stream}</span> as sequence{' '}
+                <strong>{outcome.ack.seq}</strong>.
+                {outcome.ack.duplicate && (
+                  <Badge tone="warn">Duplicate: the stream already had this message ID</Badge>
+                )}
+              </Notice>
+            )}
+            {outcome?.kind === 'reply' && (
+              <>
+                <p>
+                  Reply in <strong>{outcome.reply.rttMs} ms</strong> ·{' '}
+                  {formatBytes(outcome.reply.size)}
+                </p>
+                {outcome.reply.headers.length > 0 && (
+                  <table className="w-full table-fixed border-collapse text-xs">
+                    <tbody>
+                      {outcome.reply.headers.map(([k, v], i) => (
+                        <tr key={i} className="border-t border-line first:border-t-0">
+                          <th
+                            scope="row"
+                            className="w-2/5 py-1 pr-2 text-left font-mono font-normal text-muted"
+                          >
+                            {k}
+                          </th>
+                          <td className="py-1 font-mono break-all">{v}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <PayloadViewer
+                  className="min-h-48 flex-1"
+                  payload={outcome.reply.payload}
+                  size={outcome.reply.size}
+                  subject={outcome.reply.subject}
+                  decoders={decoders}
+                />
+              </>
+            )}
+          </div>
+        </section>
       </div>
 
       {naming && (

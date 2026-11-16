@@ -43,7 +43,8 @@
     "test:e2e": "npm run build && npm run build:web && playwright test",
     "nats": "node scripts/nats-dev.mjs",
     "seed": "node scripts/seed.mjs",
-    "traffic": "node scripts/seed.mjs --traffic"
+    "traffic": "node scripts/seed.mjs --traffic",
+    "site:media": "node scripts/site-media.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

@@ -18,7 +18,8 @@ import {
   type MessageConsumerState,
   type MessageRef
 } from '@shared/messageConsumers'
-import { Badge, Button, ErrorNote, Input, Spinner } from '../../components/ui'
+import { useDetailSection } from '../../components/detailSections'
+import { Badge, Button, CollapsibleSection, ErrorNote, Input, Spinner } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useRefetchInterval } from '../../lib/hooks'
 import { useTabs } from '../../state/tabs'
@@ -55,11 +56,14 @@ export function MessageConsumers({
 }): ReactNode {
   const gateway = useGateway()
   const open = useTabs((s) => s.open)
+  const section = useDetailSection('consumers')
   const refetchInterval = useRefetchInterval()
   // The same key as the consumers list, so both share one cache and one refresh.
   const query = useQuery({
     queryKey: ['consumers', connId, stream],
     queryFn: () => gateway.listConsumers(connId, stream),
+    // Not read, and not polled, while the section is closed.
+    enabled: section.open,
     refetchInterval
   })
   const [search, setSearch] = useState('')
@@ -77,12 +81,14 @@ export function MessageConsumers({
   const read = query.dataUpdatedAt ? formatTime(query.dataUpdatedAt) : undefined
 
   return (
-    <section className="shrink-0" aria-label="Consumers" data-testid="message-consumers">
-      <div className="flex items-center justify-between gap-2 pb-1">
-        <h4 className="text-xs font-semibold text-muted">
-          Consumers{query.data ? ` (${total})` : ''}
-        </h4>
-        <span className="flex items-center gap-1">
+    <CollapsibleSection
+      aria-label="Consumers"
+      data-testid="message-consumers"
+      title={`Consumers${query.data ? ` (${total})` : ''}`}
+      open={section.open}
+      onToggle={section.toggle}
+      actions={
+        <>
           {read && (
             <span className="text-[11px] text-faint" data-testid="consumers-read-at">
               Read at {read}
@@ -102,8 +108,9 @@ export function MessageConsumers({
               />
             }
           />
-        </span>
-      </div>
+        </>
+      }
+    >
       {note && <p className="pb-1 text-xs text-muted">{note}</p>}
       {query.isError ? (
         <ErrorNote error={query.error} onRetry={() => void query.refetch()} />
@@ -166,6 +173,6 @@ export function MessageConsumers({
           )}
         </>
       )}
-    </section>
+    </CollapsibleSection>
   )
 }

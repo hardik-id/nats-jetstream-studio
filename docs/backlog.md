@@ -875,6 +875,17 @@ Each item below is small enough for one agent in one session. Rules for every it
 - Widths are stored per table (key `table.widths:<ariaLabel>` or the optional `storageKey` prop) in the app settings, so they survive restarts in the desktop app and in web mode. They are written only when a drag ends and never from the unloaded fallback; stored values are validated (unknown columns ignored, clamped to floor and maximum).
 - Sticky header, virtualization, ellipsis, right alignment, `stickToBottom` and keyboard row navigation keep working.
 
+### PBI-125: Message browser: clearer filters, shapeable detail panel, readable JSON
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-117, PBI-118, PBI-124 · **Files:** `src/renderer/src/features/messages/`, `src/renderer/src/components/MessageDetail.tsx`, `PayloadViewer.tsx`, `JsonView.tsx`, `ui.tsx`, tests
+
+**Story:** As a user reading messages, I want filters that look expandable, a detail panel I can shrink, collapse or widen, and JSON I can read comfortably, so that big payloads do not fight with the rest of the panel.
+
+**Acceptance criteria**
+- Filters: the button has a chevron that flips with its state, a pressed look when open, `aria-expanded` and `aria-controls`, and a count badge when content filters are active ("Filters · 2"). Active filter chips stay visible when the panel is closed and can be removed there. The panel is compact (two columns, tight spacing, a maximum height with its own scroll) with Apply, Clear and Hide in a footer that stays visible. Open or closed is remembered per stream. Esc inside the panel closes it and returns focus to the button. All existing behaviour and validation is kept.
+- Detail panel: Details, Headers, Consumers and Payload are collapsible sections (a reusable `CollapsibleSection` with a chevron header button, `aria-expanded` and a closed-state summary such as "Headers (3)"); their state is remembered for the whole panel. The payload gets all remaining height. A "Collapse panel" button shrinks the panel to a thin rail (about 36 px) that keeps the selection and has an expand button; it is distinct from the X that closes and deselects, and it is remembered. An "Expand to read" toggle widens the panel to about 70% of the container by resizing the split (the table shrinks, nothing overlays it) and back; Esc or the same button restores it. The drag handle, the minimum width and the saved width keep working, and the expanded state never overwrites the saved width.
+- JSON: the default text is 13 px with A- and A+ buttons (3 steps, remembered) that also apply to the Text, Hex and Base64 views. Expand all, Collapse all and a levels control (1, 2, 3, all) replace the fixed depth. A search box with next and previous and a match count highlights matches and expands the tree to show them (Ctrl or Cmd+F in the payload focuses it, Esc clears it); the work is capped so 1 MB payloads stay responsive. "Copy path" (for example `$.order.items[0]`) and "Copy value" are available on a hovered or focused row and by keyboard. The wrap toggle, the truncation notice and the decoders keep working.
+- Everything is keyboard accessible with accessible names, icons come with text or a label (never colour alone), contrast is fine in both themes, and the panel works at 1000 px window width. The DataTable column resize (PBI-124) and the Live tail keep working.
+
 ## Epic 12: Website
 
 A public website on GitHub Pages, so that people can see what the studio does, download it and read

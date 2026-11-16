@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Info,
   Loader2,
@@ -497,6 +499,75 @@ export function SubTabs<T extends string>({
     </div>
   )
   return bare ? list : <div className="shrink-0 border-b border-line px-3 py-2">{list}</div>
+}
+
+// ───────────── Collapsible section ─────────────
+
+/**
+ * A titled section that opens and closes (the detail panel's Details, Headers, Consumers and
+ * Payload). The header is one button with a chevron and `aria-expanded`; while closed it shows
+ * `summary` ("3 headers"). The body stays mounted but hidden, so what is inside (a chosen payload
+ * format, a search) survives a close. `grow` makes an open section take the height that is left.
+ */
+export function CollapsibleSection({
+  title,
+  summary,
+  open,
+  onToggle,
+  actions,
+  grow,
+  className,
+  children,
+  ...rest
+}: {
+  title: ReactNode
+  /** Shown next to the title while the section is closed. */
+  summary?: ReactNode
+  open: boolean
+  onToggle: () => void
+  /** Buttons at the right of the header; shown while the section is open. */
+  actions?: ReactNode
+  grow?: boolean
+  className?: string
+  children: ReactNode
+  'data-testid'?: string
+  'aria-label'?: string
+}): ReactNode {
+  const bodyId = useId()
+  return (
+    <section
+      className={cx('flex flex-col', grow && open ? 'min-h-0 flex-1' : 'shrink-0', className)}
+      {...rest}
+    >
+      <div className="flex min-h-6 shrink-0 items-center justify-between gap-2">
+        <h4 className="min-w-0 text-xs font-semibold text-muted">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={onToggle}
+            className="flex min-w-0 items-center gap-1 rounded py-1 pr-1 hover:text-fg"
+          >
+            {open ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            )}
+            <span>{title}</span>
+            {!open && summary && <span className="truncate font-normal text-faint">{summary}</span>}
+          </button>
+        </h4>
+        {open && actions && <span className="flex items-center gap-1">{actions}</span>}
+      </div>
+      <div
+        id={bodyId}
+        hidden={!open}
+        className={cx(grow && open && 'flex min-h-0 flex-1 flex-col', open && 'pb-1')}
+      >
+        {children}
+      </div>
+    </section>
+  )
 }
 
 // ───────────── Dialogs ─────────────

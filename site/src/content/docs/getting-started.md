@@ -37,6 +37,8 @@ The stream tab has five parts: **Overview**, **Messages**, **Consumers**, **Subj
 2. Under **Start from**, choose where to begin, for example **Latest messages**, then click **Go**. You can also start at a sequence number or a time.
 3. Click a message to open it in the detail panel. It shows the subject, headers, time and payload. Switch the payload between text, hex and base64. JSON shows only when the payload parses as JSON, and Protobuf only when a decoder is set for the subject.
 
+   The sections of the panel (Details, Headers, Consumers, Payload) fold with their chevron, so the payload can have the height. **Collapse panel** shrinks the panel to a thin rail and keeps the message selected; **Expand to read** widens it to about 70% of the window until you press it again or <kbd>Esc</kbd>. In a JSON payload, **A-** and **A+** change the text size, **Levels**, **Expand all** and **Collapse all** control how much is open, and the search box finds keys and values (<kbd>Ctrl</kbd> or <kbd>Cmd</kbd> + <kbd>F</kbd> while the payload has focus). Hover a line, or tab to it, to copy its path (for example `$.order.items[0]`) or its value.
+
 Reading is safe. The studio reads messages straight from the stream. It does not create a consumer and it acknowledges nothing, so no consumer position changes.
 
 While the message panel has focus, use <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> to step through messages and <kbd>Esc</kbd> to close the panel. All shortcuts are listed under [Keyboard shortcuts](/docs/keyboard-shortcuts/).

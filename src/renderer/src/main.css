@@ -29,6 +29,10 @@
   --ok-soft: #e4efea;
   /* Code and payloads. */
   --code: #f7f7f8;
+  /* Search hit in the JSON view: a solid fill with its own text colour (13.9:1), so no token
+     colour has to be readable on it. */
+  --hit-bg: #ffe08a;
+  --hit-fg: #16171a;
   --json-key: #4a52c0;
   --json-string: #8a5a00;
   --json-number: #1b7347;
@@ -72,6 +76,8 @@
   --ok: #5fd394;
   --ok-soft: #172821;
   --code: #0b0c0e;
+  --hit-bg: #5f4b00;
+  --hit-fg: #ffffff; /* 8.4:1 */
   --json-key: #a9aeff;
   --json-string: #f0bc5e;
   --json-number: #5fd394;
@@ -165,6 +171,23 @@ body {
 }
 .json-literal {
   color: var(--json-literal);
+}
+/* Search hits keep the text colour of the token and add a fill and an underline, so the cue is
+   not colour alone. The current match also gets an outline and a marked row. */
+.json-hit {
+  background: var(--hit-bg);
+  color: var(--hit-fg);
+  border-radius: 2px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.json-active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.json-active .json-hit {
+  outline: 1.5px solid var(--accent);
 }
 
 @keyframes studio-spin {

@@ -16,7 +16,7 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 1. Connection management | 010 to 016 | 7 | | |
 | 2. Dashboard and server overview | 020 to 022 | 2 | 1 | |
 | 3. Streams | 030 to 035 | 5 | 1 | |
-| 4. Message browser | 040 to 048 | 5 | 4 | |
+| 4. Message browser | 040 to 049 | 5 | 5 | |
 | 5. Consumers | 050 to 054 | 3 | 2 | |
 | 6. Subjects explorer and live tail | 060 to 062 | 2 | 1 | |
 | 7. KV and Object Store | 070 to 071 | | 2 | |
@@ -25,7 +25,7 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 10. Packaging and distribution | 100 to 101 | | 1 | 1 |
 | 11. Visual design | 110 to 123 | | 14 | |
 | 12. Website | 130 to 137 | | 8 | |
-| **Total (68)** | | **27** | **39** | **2** |
+| **Total (69)** | | **27** | **40** | **2** |
 
 ## MVP slice and build order
 
@@ -396,6 +396,57 @@ These apply to every PBI and are part of the definition of done.
 - A JSONPath expression with a comparison (for example `$.order.total > 100`) can be used as a filter.
 - An invalid expression shows an inline error before the scan starts.
 - Payloads that are not JSON are skipped by JSONPath filters, and the skipped count is shown.
+
+### PBI-049: Which consumers have received a message
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-043, PBI-050
+
+**Story:** As someone debugging a pipeline, I want to see for one message which consumers have
+received and finished with it and which have not, so that I can tell where it is stuck.
+
+**How it is worked out:** NATS keeps no per-message receipt. The studio compares the message's
+sequence, subject and time with each consumer's info (filter subjects, deliver policy and its start
+options, ack policy, `created`, `delivered.stream_seq`, `ack_floor.stream_seq`), which it already
+reads for PBI-050. It never creates a consumer or changes any state to answer.
+
+**Where the consumer starts.** A new consumer sets its delivered sequence and ack floor to the
+sequence before its start, so messages before the start look "at or below the ack floor" without
+ever being delivered. The start is therefore decided first, per deliver policy:
+
+| Deliver policy | Messages before the consumer's start |
+| --- | --- |
+| `all` | none: it starts at the stream's first message |
+| `by_start_sequence` | sequence below `opt_start_seq` |
+| `by_start_time` | stored before `opt_start_time` |
+| `new` | stored before the consumer's `created` time |
+| `last` | stored before `created`, except the stream's last message at that time, which cannot be identified afterwards |
+| `last_per_subject` | stored before `created`, except the last message per subject at that time, which cannot be identified afterwards |
+
+**Acceptance criteria**
+- The message detail panel has a "Consumers" section listing every consumer of the stream, with one
+  state each, checked in this order:
+  1. **Not for this consumer:** its filter subjects do not match the message subject.
+  2. **Before the consumer started:** the message is before the start (table above). For `last` and
+     `last_per_subject` it says "probably not delivered: only the last message (per subject) at
+     creation was", because which one that was is not recorded.
+  3. **Done:** sequence at or below the ack floor. The tooltip says this means acknowledged,
+     terminated or out of delivery attempts, because NATS does not tell them apart. For ack policy
+     `none` it reads "Delivered, no ack needed" and uses the last delivered sequence.
+  4. **Delivered, waiting for ack:** above the ack floor and at or below the last delivered
+     sequence. When `num_ack_pending` is 0 nothing is outstanding, so the state is shown as **Done**.
+     For ack policy `explicit` it adds "may already be done out of order", because NATS does not
+     expose individual acks above the floor (with `all`, acks are cumulative and the floor is exact).
+  5. **Not delivered yet:** above the last delivered sequence.
+- Each state shows an icon and a word, never colour alone, and a tooltip explains the rule used.
+- Each row links to the consumer detail (PBI-051). A paused consumer (PBI-053) is marked.
+- On a work-queue stream the section notes that a message is removed once its consumer acknowledges
+  it (or, with ack policy `none`, once it is delivered), so a visible message has not been finished.
+  On an interest stream it notes that the message is removed once every interested consumer has
+  finished with it.
+- The states refresh with the consumer list and with a Refresh button, and say when they were read.
+- Works in read-only mode (it only reads). Unit tests cover the state rules, including filters with
+  wildcards and every deliver and ack policy in the table; a gateway test checks them against a real
+  server with consumers created with `all`, `new` and `by_start_sequence`, one of which acks some
+  messages and leaves others pending.
 
 ---
 

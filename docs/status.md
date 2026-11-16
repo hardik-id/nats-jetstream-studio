@@ -1,8 +1,8 @@
 # Implementation status
 
-The first 60 backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123) have been implemented.
-This page says how each was checked and what was **not** verified. Epic 12, the website (PBI-130 to
-PBI-137), is planned and not started.
+The first 60 backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123, except PBI-049) have
+been implemented. This page says how each was checked and what was **not** verified. Planned and
+not started: PBI-049 (added later) and Epic 12, the website (PBI-130 to PBI-137).
 
 ## How it was tested
 
@@ -50,6 +50,7 @@ the React compiler). Type-check: clean.
 | 046 | Delete a single message | Tested | |
 | 047 | Republish a message | Tested | |
 | 048 | Regex and JSONPath filters | Tested | JSONPath subset: fields, indexes, `*`, `..`, and one comparison. |
+| 049 | Which consumers have received a message | Planned | Added 2026-11-16. |
 | 050 | Consumers list | Tested | 1,000 consumers on one stream. |
 | 051 | Consumer detail and lag | Tested | |
 | 052 | Create, edit, delete a consumer | Tested | |

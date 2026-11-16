@@ -1044,6 +1044,7 @@ export function MessageBrowser({
           ) : (
             <DataTable
               ariaLabel={`Messages in ${stream}`}
+              storageKey="Messages"
               rows={messages}
               columns={columns}
               rowKey={(m) => m.seq}

@@ -1,0 +1,13 @@
+---
+// Placeholder body for pages whose content arrives in a later item. Title and description come
+// from the site map, so a page file only has to say which path it is.
+import { findPage } from '../lib/site-map'
+
+const { path } = Astro.props as { path: string }
+const page = findPage(path)
+if (!page) throw new Error(`No site-map entry for ${path}`)
+---
+
+<h1>{page.title}</h1>
+<p class="lede">{page.description}</p>
+<p><span class="coming-soon">Coming soon</span></p>

@@ -11,3 +11,6 @@ playwright-report
 *.log*
 *.tsbuildinfo
 .shot.mjs
+site/node_modules
+site/dist
+site/.astro

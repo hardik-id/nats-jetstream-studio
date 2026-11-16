@@ -1,0 +1,102 @@
+---
+import Layout from './Layout.astro'
+import PrevNext from '../components/PrevNext.astro'
+import { docs, docsPages, labelOf } from '../lib/site-map'
+import { url, pathWithoutBase } from '../lib/url'
+
+interface Props {
+  title?: string
+  description?: string
+}
+
+const current = pathWithoutBase(Astro.url.pathname)
+const items = [docs, ...docsPages]
+---
+
+<Layout title={Astro.props.title} description={Astro.props.description}>
+  <div class="container docs">
+    <aside>
+      <details open>
+        <summary>Documentation</summary>
+        <nav aria-label="Documentation">
+        <ul>
+          {
+            items.map((p) => (
+              <li>
+                <a href={url(p.path)} aria-current={p.path === current ? 'page' : undefined}>
+                  {p.path === docs.path ? 'Overview' : labelOf(p)}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+        </nav>
+      </details>
+    </aside>
+    <article class="page">
+      <slot />
+      <PrevNext current={current} />
+    </article>
+    <aside class="toc" aria-label="On this page">
+      <slot name="toc" />
+    </aside>
+  </div>
+</Layout>
+
+<style>
+  .docs {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding-top: 1.5rem;
+  }
+  aside:not(.toc) details {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 0.5rem 0.75rem;
+  }
+  summary {
+    font-weight: 600;
+    cursor: pointer;
+  }
+  ul {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+  }
+  aside a {
+    display: block;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  aside a:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  aside a[aria-current='page'] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .page {
+    min-width: 0;
+    padding-block: 0 3rem;
+  }
+  .toc:empty {
+    display: none;
+  }
+  @media (min-width: 64rem) {
+    .docs {
+      grid-template-columns: 14rem minmax(0, 1fr) 12rem;
+      gap: 2.5rem;
+    }
+    aside:not(.toc) {
+      position: sticky;
+      top: 1rem;
+      align-self: start;
+    }
+  }
+</style>

@@ -15,7 +15,8 @@ export default defineConfig(
       '**/.tools',
       '**/test-results',
       '**/playwright-report',
-      '.shot.mjs'
+      '.shot.mjs',
+      'site'
     ]
   },
   tseslint.configs.recommended,

@@ -1,0 +1,59 @@
+---
+import '../styles/global.css'
+import Header from '../components/Header.astro'
+import Breadcrumbs from '../components/Breadcrumbs.astro'
+import Footer from '../components/Footer.astro'
+import { findPage } from '../lib/site-map'
+import { url, pathWithoutBase, absoluteUrl } from '../lib/url'
+
+interface Props {
+  title?: string
+  description?: string
+  /** Hide breadcrumbs (404). Home never shows them. */
+  noBreadcrumbs?: boolean
+  /** Used by the 404 page, which has no site-map entry. */
+  noindex?: boolean
+}
+
+const current = pathWithoutBase(Astro.url.pathname)
+const page = findPage(current)
+const { noBreadcrumbs = false, noindex = false } = Astro.props
+const pageTitle = Astro.props.title ?? page?.title ?? 'NATS JetStream Studio'
+const fullTitle = current === '/' ? 'NATS JetStream Studio' : `${pageTitle} | NATS JetStream Studio`
+const description = Astro.props.description ?? page?.description ?? ''
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={absoluteUrl(current)} />}
+    <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
+    <script is:inline>
+      // Runs before first paint: follow the system setting unless the visitor has chosen.
+      ;(function () {
+        document.documentElement.dataset.js = ''
+        var t
+        try {
+          t = localStorage.getItem('theme')
+        } catch (e) {}
+        if (t !== 'light' && t !== 'dark') {
+          t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+        }
+        document.documentElement.dataset.theme = t
+      })()
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Header current={current} />
+    {!noBreadcrumbs && <Breadcrumbs current={current} />}
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

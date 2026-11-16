@@ -1,0 +1,61 @@
+---
+import { prevNext, labelOf } from '../lib/site-map'
+import { url } from '../lib/url'
+
+const { current } = Astro.props as { current: string }
+const { prev, next } = prevNext(current)
+---
+
+{
+  (prev || next) && (
+    <nav class="prev-next" aria-label="Previous and next pages">
+      {prev ? (
+        <a class="prev" href={url(prev.path)} rel="prev">
+          <span>Previous</span>
+          {labelOf(prev)}
+        </a>
+      ) : (
+        <span />
+      )}
+      {next && (
+        <a class="next" href={url(next.path)} rel="next">
+          <span>Next</span>
+          {labelOf(next)}
+        </a>
+      )}
+    </nav>
+  )
+}
+
+<style>
+  .prev-next {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+  a {
+    display: block;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    min-width: 0;
+  }
+  a:hover {
+    background: var(--hover);
+  }
+  a span {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .next {
+    text-align: right;
+    margin-left: auto;
+  }
+</style>

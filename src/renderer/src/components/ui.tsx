@@ -539,7 +539,7 @@ export function CollapsibleSection({
       className={cx('flex flex-col', grow && open ? 'min-h-0 flex-1' : 'shrink-0', className)}
       {...rest}
     >
-      <div className="flex min-h-7 shrink-0 items-center justify-between gap-2">
+      <div className="flex min-h-6 shrink-0 items-center justify-between gap-2">
         <h4 className="min-w-0 text-xs font-semibold text-muted">
           <button
             type="button"

@@ -651,6 +651,19 @@ export function MessageBrowser({
   const [collapsed, setCollapsed] = useSetting<boolean>('messages.detailCollapsed', false)
   // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
   const [expanded, setExpanded] = useState(false)
+  // After the panel collapses or opens again the button that was pressed is gone; keyboard focus
+  // goes to its counterpart instead of falling back to the page.
+  const focusAfter = useRef<'rail' | 'panel' | null>(null)
+  useEffect(() => {
+    const want = focusAfter.current
+    if (!want) return
+    focusAfter.current = null
+    document
+      .querySelector<HTMLElement>(
+        want === 'rail' ? '[aria-label="Expand message panel"]' : '[aria-label="Collapse panel"]'
+      )
+      ?.focus()
+  }, [collapsed])
   const setDetailWidth = setDragWidth
   const saveDetailWidth = (w: number): void => {
     void setStoredWidth(w)
@@ -819,7 +832,10 @@ export function MessageBrowser({
             </span>
           )}
           <ChevronDown
-            className={cx('h-3.5 w-3.5 transition-transform', panelOpen && 'rotate-180')}
+            className={cx(
+              'h-3.5 w-3.5 transition-transform motion-reduce:transition-none',
+              panelOpen && 'rotate-180'
+            )}
             aria-hidden
           />
         </Button>
@@ -899,6 +915,7 @@ export function MessageBrowser({
       {panelOpen && (
         <FilterPanel
           id={FILTER_PANEL_ID}
+          compact={Boolean(detail)}
           key={JSON.stringify(view.filters) + view.scanLimit}
           initial={draftFrom(view.filters, view.scanLimit)}
           onClose={() => {
@@ -1088,7 +1105,7 @@ export function MessageBrowser({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-40 flex-1">
         <div
           ref={tableBox}
           className="min-w-0 flex-1 bg-panel"
@@ -1097,7 +1114,9 @@ export function MessageBrowser({
             if (e.target !== e.currentTarget.querySelector('[role=table]')) return
             if (e.key === 'Escape' && selected !== null) {
               e.preventDefault()
-              select(null)
+              // A widened panel goes back to its size first; a second Escape closes it.
+              if (expanded) setExpanded(false)
+              else select(null)
             } else if (e.key === ' ' && selected !== null) {
               e.preventDefault()
               toggleChecked(selected)
@@ -1136,7 +1155,10 @@ export function MessageBrowser({
             {collapsed === true ? (
               <DetailRail
                 label={`Message #${detail.seq}`}
-                onExpand={() => void setCollapsed(false)}
+                onExpand={() => {
+                  focusAfter.current = 'panel'
+                  void setCollapsed(false)
+                }}
               />
             ) : (
               <MessageDetail
@@ -1145,6 +1167,7 @@ export function MessageBrowser({
                 onToggleExpanded={() => setExpanded((v) => !v)}
                 onCollapse={() => {
                   setExpanded(false)
+                  focusAfter.current = 'rail'
                   void setCollapsed(true)
                 }}
                 decoders={decoders}

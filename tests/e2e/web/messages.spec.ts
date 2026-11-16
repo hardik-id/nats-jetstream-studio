@@ -180,6 +180,9 @@ test('PBI-043/045 message detail, payload views, copy and export', async ({ page
   await expect(detail).toContainText(`${stream}.eu`)
   // Only the stored headers, not the ones the server adds to its replies.
   await expect(detail).toContainText('Headers (2)')
+  // Headers start closed (PBI-125); open them.
+  const headersToggle = detail.getByRole('button', { name: /^Headers \(2\)/ })
+  if ((await headersToggle.getAttribute('aria-expanded')) !== 'true') await headersToggle.click()
   await expect(detail.getByRole('row', { name: /Trace-Id/ })).toContainText('trace-120')
   await expect(detail.getByRole('row', { name: /Region/ })).toContainText('eu')
 
@@ -451,6 +454,8 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   const headers = detail.getByRole('button', { name: /^Headers \(2\)/ })
 
   // A section collapses to a summary, and the choice survives a reload.
+  if ((await headers.getAttribute('aria-expanded')) !== 'true') await headers.click()
+  await expect(detail.getByRole('row', { name: /Trace-Id/ })).toBeVisible()
   await headers.click()
   await expect(headers).toHaveAttribute('aria-expanded', 'false')
   await expect(detail.getByText('Region, Trace-Id')).toBeVisible()
@@ -565,3 +570,48 @@ test('PBI-125 readable JSON: text size, levels, search and copy path', async ({
   await expect(search).toHaveValue('')
   await expect(detail).toBeVisible()
 })
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 1000, height: 700 }
+]) {
+  test(`PBI-125 filters open and a message selected never scroll the page (${size.width}x${size.height})`, async ({
+    page
+  }) => {
+    await page.setViewportSize(size)
+    await openStudio(page)
+    await openStream(page, stream, 'Messages')
+    const button = page.getByRole('button', { name: /^Filters/ })
+    if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click()
+    await rowOf(page, 120).click()
+    const detail = page.getByRole('complementary', { name: 'Message detail' })
+    await expect(detail).toBeVisible()
+    // The default layout: Headers and Consumers closed (earlier tests may have changed them).
+    for (const name of [/^Headers/, /^Consumers/]) {
+      const toggle = detail.getByRole('button', { name })
+      if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click()
+    }
+    const metrics = (): Promise<{ scroll: number; inner: number }> =>
+      page.evaluate(() => ({
+        scroll: document.scrollingElement!.scrollHeight,
+        inner: window.innerHeight
+      }))
+    const m = await metrics()
+    expect(m.scroll).toBeLessThanOrEqual(m.inner)
+    expect((await table(page).boundingBox())!.height).toBeGreaterThan(150)
+    if (size.height >= 900)
+      expect((await detail.getByTestId('payload-body').boundingBox())!.height).toBeGreaterThan(80)
+    // The filter panel keeps its footer in view.
+    await expect(page.getByRole('button', { name: 'Apply filters' })).toBeInViewport()
+    await page
+      .getByRole('form', { name: 'Message filters' })
+      .getByRole('button', { name: 'Hide' })
+      .click()
+    if (size.height >= 900) {
+      // With the filters closed the payload has real height.
+      expect((await detail.getByTestId('payload-body').boundingBox())!.height).toBeGreaterThan(300)
+    }
+    const after = await metrics()
+    expect(after.scroll).toBeLessThanOrEqual(after.inner)
+  })
+}

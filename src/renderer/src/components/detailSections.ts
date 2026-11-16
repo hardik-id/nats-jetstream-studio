@@ -5,7 +5,9 @@ export type DetailSections = Record<DetailSectionId, boolean>
 
 export const DEFAULT_DETAIL_SECTIONS: DetailSections = {
   details: true,
-  headers: true,
+  // Headers and Consumers start closed (their summary says what is in them), so the payload has
+  // the height; Details and Payload start open.
+  headers: false,
   // Consumers is the tallest and least often needed section, so it starts closed.
   consumers: false,
   payload: true

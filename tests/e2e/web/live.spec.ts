@@ -40,6 +40,9 @@ test('PBI-060 live tail: start, receive, pause, resume, clear, detail', async ({
   // Clicking a message opens the detail viewer.
   await table.getByRole('row').nth(1).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
+  // Headers start closed in the detail panel (PBI-125).
+  const headersToggle = detail.getByRole('button', { name: /^Headers/ })
+  if ((await headersToggle.getAttribute('aria-expanded')) !== 'true') await headersToggle.click()
   await expect(detail.getByRole('row', { name: /Trace-Id/ })).toContainText('live-1')
   await expect(detail.getByTestId('payload-body')).toContainText('"tail"')
   await detail.getByRole('button', { name: 'Close message detail' }).click()

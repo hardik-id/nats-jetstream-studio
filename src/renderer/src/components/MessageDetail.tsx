@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -14,7 +14,7 @@ import type { PayloadDecoder } from '../lib/decoders'
 import { useSetting } from '../lib/hooks'
 import { DetailSectionsContext, normalizeSections, type DetailSectionId } from './detailSections'
 import { PayloadViewer } from './PayloadViewer'
-import { Button, CollapsibleSection, CopyButton, cx, Kbd } from './ui'
+import { Button, CollapsibleSection, CopyButton, cx } from './ui'
 
 export interface DetailMessage {
   subject: string
@@ -64,11 +64,27 @@ export function MessageDetail({
   sections
 }: MessageDetailProps): ReactNode {
   const utc = new Date(message.time).toISOString()
-  const [stored, setStored] = useSetting<unknown>('messages.detailSections', null)
+  const [stored, setStored, storedLoaded, storedError] = useSetting<unknown>(
+    'messages.detailSections',
+    null
+  )
   const sections_ = useMemo(() => normalizeSections(stored), [stored])
+  // Two quick clicks must both count, so a toggle starts from the value the last one wrote, not
+  // from what has been stored by now. Nothing is written before the stored value has been read
+  // (it would replace the other sections' choices with defaults).
+  const latest = useRef(sections_)
+  useEffect(() => {
+    latest.current = sections_
+  }, [sections_])
+  const ready = storedLoaded || storedError !== null
   const toggle = useCallback(
-    (id: DetailSectionId) => void setStored({ ...sections_, [id]: !sections_[id] }),
-    [sections_, setStored]
+    (id: DetailSectionId) => {
+      if (!ready) return
+      const next = { ...latest.current, [id]: !latest.current[id] }
+      latest.current = next
+      void setStored(next)
+    },
+    [ready, setStored]
   )
   const ctx = useMemo(() => ({ sections: sections_, toggle }), [sections_, toggle])
   const details = { open: sections_.details, toggle: () => toggle('details') }
@@ -154,11 +170,11 @@ export function MessageDetail({
           />
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-1.5">
           <div
             className={cx(
               'flex flex-col gap-1 overflow-y-auto',
-              payload.open ? 'max-h-[45%] shrink-0' : 'min-h-0 flex-1'
+              sections_.payload ? 'max-h-[45%] shrink-0' : 'min-h-0 flex-1'
             )}
           >
             <CollapsibleSection
@@ -167,8 +183,8 @@ export function MessageDetail({
               open={details.open}
               onToggle={details.toggle}
             >
-              <dl className="grid grid-cols-4 gap-x-4 gap-y-2">
-                <Fact label="Subject" wide>
+              <dl className="flex flex-col gap-0.5">
+                <Fact label="Subject">
                   <span className="flex min-w-0 items-center gap-1">
                     <span className="truncate font-mono text-xs" title={message.subject}>
                       {message.subject}
@@ -176,19 +192,23 @@ export function MessageDetail({
                     <CopyButton text={message.subject} label="Copy subject" />
                   </span>
                 </Fact>
-                {message.seq !== undefined && (
-                  <Fact label="Sequence">
-                    <span className="tabular font-mono text-xs">{message.seq}</span>
+                <div className="flex flex-wrap items-baseline gap-x-4">
+                  {message.seq !== undefined && (
+                    <Fact label="Sequence" inline>
+                      <span className="tabular font-mono text-xs">{message.seq}</span>
+                    </Fact>
+                  )}
+                  <Fact label="Size" inline>
+                    {formatBytes(message.size)}
                   </Fact>
-                )}
-                <Fact label="Size">{formatBytes(message.size)}</Fact>
-                <Fact label={message.seq !== undefined ? 'Stored' : 'Received'} half>
-                  <span title={utc}>
-                    {formatTime(message.time)} <span className="text-faint">({utc} UTC)</span>
-                  </span>
-                </Fact>
+                  <Fact label={message.seq !== undefined ? 'Stored' : 'Received'} inline>
+                    <span title={utc}>
+                      {formatTime(message.time)} <span className="text-faint">({utc} UTC)</span>
+                    </span>
+                  </Fact>
+                </div>
                 {message.reply && (
-                  <Fact label="Reply to" wide>
+                  <Fact label="Reply to">
                     <span className="truncate font-mono text-xs">{message.reply}</span>
                   </Fact>
                 )}
@@ -240,7 +260,6 @@ export function MessageDetail({
             open={payload.open}
             onToggle={payload.toggle}
             grow
-            className="min-h-32"
           >
             <PayloadViewer
               className="min-h-0 flex-1"
@@ -254,11 +273,6 @@ export function MessageDetail({
               loadingFull={loadingFull}
             />
           </CollapsibleSection>
-          {(onPrevious || onNext) && (
-            <p className="shrink-0 text-xs text-faint">
-              <Kbd>Alt</Kbd> + <Kbd>↑</Kbd> / <Kbd>↓</Kbd> moves between messages
-            </p>
-          )}
         </div>
       </aside>
     </DetailSectionsContext.Provider>
@@ -298,21 +312,20 @@ export function DetailRail({
 
 function Fact({
   label,
-  wide,
-  half,
+  inline,
   children
 }: {
   label: string
-  /** The whole row of the four-column grid. */
-  wide?: boolean
-  /** Half the row; the value may wrap onto a second line. */
-  half?: boolean
+  /** Label and value side by side, sized to their content (several can share a row). */
+  inline?: boolean
   children: ReactNode
 }): ReactNode {
   return (
-    <div className={wide ? 'col-span-4 min-w-0' : half ? 'col-span-2 min-w-0' : 'min-w-0'}>
-      <dt className="text-[11px] text-faint uppercase">{label}</dt>
-      <dd className={half ? 'min-w-0' : 'min-w-0 truncate'}>{children}</dd>
+    <div className="flex min-w-0 items-baseline gap-2">
+      <dt className={cx('shrink-0 text-[11px] text-faint uppercase', !inline && 'w-[4.5rem]')}>
+        {label}
+      </dt>
+      <dd className={cx('min-w-0', inline ? '' : 'flex-1 truncate')}>{children}</dd>
     </div>
   )
 }

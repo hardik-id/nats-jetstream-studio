@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { appendSegment, valueText, type JsonSearch } from '@shared/jsonTree'
 import { cx } from './ui'
@@ -10,18 +10,26 @@ export interface JsonViewSearch extends JsonSearch {
   query: string
   /** The id (path) of the match that is current, or null. */
   activeId: string | null
+  /** Changes every time the user steps to another match, so hand-closed nodes open again. */
+  nav: number
 }
 
 interface Ctx {
   expandDepth: number
   search?: JsonViewSearch
   matchIds: ReadonlySet<string>
+  /** The row that is in the tab order (roving tabindex). */
+  roving: string
+  setRoving: (id: string) => void
 }
 
 /**
  * A collapsible tree for JSON values. Large arrays and objects are shown in chunks. `expandDepth`
  * is how many levels start open; change `resetKey` to apply it again (Expand all, Collapse all).
- * Every key row has "Copy path" and "Copy value", shown on hover and while the row has focus.
+ *
+ * Keyboard: one row is in the tab order; Up and Down move between visible rows, Right opens or
+ * steps into a node, Left closes it or steps to its parent, Home and End go to the first and last
+ * row. A focused row offers "Copy path" and "Copy value" (also shown on hover).
  */
 export function JsonView({
   value,
@@ -40,16 +48,27 @@ export function JsonView({
   resetKey?: number
 }): ReactNode {
   const root = useRef<HTMLDivElement>(null)
+  const [roving, setRoving] = useState('$')
   const activeId = search?.activeId ?? null
   const query = search?.query ?? ''
+  const nav = search?.nav ?? 0
   useEffect(() => {
     if (!activeId) return
     root.current?.querySelector('[data-active-match]')?.scrollIntoView({ block: 'nearest' })
-  }, [activeId, query, resetKey, expandDepth])
+  }, [activeId, query, resetKey, expandDepth, nav])
+  // The row that was in the tab order may be gone (collapsed, or the tree was rebuilt): make the
+  // first row the tab stop, so the tree can always be entered with Tab.
+  useEffect(() => {
+    const el = root.current
+    if (!el || el.querySelector('[data-json-row][tabindex="0"]')) return
+    el.querySelector('[data-json-row]')?.setAttribute('tabindex', '0')
+  })
   const matchIds = new Set(search?.matches.map((m) => m.id))
   return (
     <div
       ref={root}
+      role="tree"
+      aria-label="JSON"
       style={{ fontSize }}
       className={cx(
         'font-mono leading-[1.65]',
@@ -61,54 +80,145 @@ export function JsonView({
         id="$"
         value={value}
         depth={0}
-        ctx={{ expandDepth, search, matchIds }}
+        ctx={{ expandDepth, search, matchIds, roving, setRoving }}
       />
     </div>
   )
 }
 
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Marks every occurrence of `query` in `text`, using the same text that is on screen. */
 function Highlight({ text, query }: { text: string; query: string }): ReactNode {
   if (!query) return text
-  const lower = text.toLowerCase()
-  const q = query.toLowerCase()
   const parts: ReactNode[] = []
   let from = 0
-  for (let at = lower.indexOf(q); at !== -1; at = lower.indexOf(q, from)) {
+  for (const m of text.matchAll(new RegExp(escapeRegExp(query), 'gi'))) {
+    const at = m.index
     if (at > from) parts.push(text.slice(from, at))
     parts.push(
       <mark key={at} className="json-hit">
-        {text.slice(at, at + q.length)}
+        {m[0]}
       </mark>
     )
-    from = at + q.length
+    from = at + m[0].length
   }
   if (from === 0) return text
   if (from < text.length) parts.push(text.slice(from))
   return <>{parts}</>
 }
 
-/** One row: the content, plus "Copy path" and "Copy value" that appear on hover or focus. */
+/** A JSON string as written in the document. The quote characters are never highlighted. */
+function Quoted({ text, query }: { text: string; query: string }): ReactNode {
+  const inner = JSON.stringify(text).slice(1, -1)
+  return (
+    <>
+      {'"'}
+      <Highlight text={inner} query={query} />
+      {'"'}
+    </>
+  )
+}
+
+/**
+ * One row of the tree. It is a focusable tree item: `onToggle` is set for nodes that open. The
+ * copy buttons are in the tab order while focus is in the row.
+ */
 function Row({
   id,
   value,
+  level,
+  label,
   active,
+  open,
+  onToggle,
+  ctx,
   className,
   children
 }: {
   id: string
   value: unknown
+  level: number
+  label: string
   active: boolean
+  /** Undefined for a value that cannot be opened. */
+  open?: boolean
+  onToggle?: () => void
+  ctx: Ctx
   className?: string
   children: ReactNode
 }): ReactNode {
-  // The copy buttons are only in the tab order while focus is in the row, so a long tree does
-  // not need three Tab presses per line.
   const [inside, setInside] = useState(false)
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // Keys pressed on the copy buttons are theirs.
+    if (e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return
+    const rows = Array.from(
+      e.currentTarget.closest('[role=tree]')?.querySelectorAll<HTMLElement>('[data-json-row]') ?? []
+    )
+    const at = rows.indexOf(e.currentTarget)
+    const go = (row: HTMLElement | undefined): void => {
+      if (row) row.focus()
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        go(rows[at + 1])
+        break
+      case 'ArrowUp':
+        go(rows[at - 1])
+        break
+      case 'Home':
+        go(rows[0])
+        break
+      case 'End':
+        go(rows[rows.length - 1])
+        break
+      case 'ArrowRight':
+        if (open === false) onToggle?.()
+        else if (open) go(rows[at + 1])
+        break
+      case 'ArrowLeft':
+        if (open) onToggle?.()
+        else
+          go(
+            rows
+              .slice(0, at)
+              .reverse()
+              .find((r) => Number(r.dataset.level) < level)
+          )
+        break
+      case 'Enter':
+      case ' ':
+        if (onToggle) onToggle()
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+  }
   return (
     <div
-      className={cx('group flex items-start hover:bg-hover', active && 'json-active', className)}
+      role="treeitem"
+      aria-level={level}
+      aria-expanded={open}
+      aria-label={label}
+      tabIndex={ctx.roving === id ? 0 : -1}
+      data-json-row=""
+      data-level={level}
       data-active-match={active ? '' : undefined}
-      onFocus={() => setInside(true)}
+      className={cx(
+        'group flex items-start hover:bg-hover focus-visible:outline-offset-[-2px]',
+        onToggle && 'cursor-pointer',
+        active && 'json-active',
+        className
+      )}
+      onClick={(e) => {
+        if (onToggle && !(e.target as HTMLElement).closest('button')) onToggle()
+      }}
+      onKeyDown={onKeyDown}
+      onFocus={(e) => {
+        setInside(true)
+        if (e.target === e.currentTarget) ctx.setRoving(id)
+      }}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) setInside(false)
       }}
@@ -188,26 +298,38 @@ function Node({
   const isContainer = value !== null && typeof value === 'object'
   const [open, setOpen] = useState(depth < ctx.expandDepth || (search?.reveal.has(id) ?? false))
   const [shown, setShown] = useState(JSON_CHUNK)
+  // Stepping to another match opens the nodes on the way to it, also ones closed by hand.
+  const [seenNav, setSeenNav] = useState(search?.nav ?? 0)
+  if (search && seenNav !== search.nav) {
+    setSeenNav(search.nav)
+    if (search.reveal.has(id)) setOpen(true)
+  }
   const needed = search?.need.get(id)
   const isMatch = ctx.matchIds.has(id)
   const active = search?.activeId === id
   const label = name !== undefined && (
     <>
       <span className="json-key">
-        {isMatch && query ? (
-          <Highlight text={JSON.stringify(name)} query={query} />
-        ) : (
-          JSON.stringify(name)
-        )}
+        <Quoted text={name} query={isMatch ? query : ''} />
       </span>
       <span className="text-faint">: </span>
     </>
   )
   const comma = !last && <span className="text-faint">,</span>
+  const level = depth + 1
 
   if (!isContainer) {
+    const text = typeof value === 'string' ? value : String(value)
     return (
-      <Row id={id} value={value} active={active} className="pl-4">
+      <Row
+        id={id}
+        value={value}
+        level={level}
+        label={`${id}: ${text.length > 200 ? text.slice(0, 200) + '...' : text}`}
+        active={active}
+        ctx={ctx}
+        className="pl-4"
+      >
         <span className="min-w-0">
           {label}
           <Primitive value={value} query={isMatch ? query : ''} />
@@ -222,6 +344,13 @@ function Node({
     ? (value as unknown[]).map((v) => [undefined, v])
     : Object.entries(value as object)
   const [openBracket, closeBracket] = isArray ? ['[', ']'] : ['{', '}']
+  const noun = isArray
+    ? entries.length === 1
+      ? 'item'
+      : 'items'
+    : entries.length === 1
+      ? 'key'
+      : 'keys'
 
   // The first `shown` children, plus the ones a search match is inside (so a match far down a
   // long array is shown without rendering everything before it).
@@ -233,7 +362,15 @@ function Node({
 
   if (entries.length === 0) {
     return (
-      <Row id={id} value={value} active={active} className="pl-4">
+      <Row
+        id={id}
+        value={value}
+        level={level}
+        label={`${id}: empty ${isArray ? 'array' : 'object'}`}
+        active={active}
+        ctx={ctx}
+        className="pl-4"
+      >
         <span className="min-w-0">
           {label}
           <span className="text-faint">
@@ -247,14 +384,18 @@ function Node({
   }
 
   return (
-    <div>
-      <Row id={id} value={value} active={active}>
-        <button
-          className="flex min-w-0 items-start text-left"
-          aria-expanded={open}
-          aria-label={`${name !== undefined ? name : 'root'} ${isArray ? 'array' : 'object'}, ${entries.length} ${entries.length === 1 ? (isArray ? 'item' : 'key') : isArray ? 'items' : 'keys'}`}
-          onClick={() => setOpen((v) => !v)}
-        >
+    <div role="none">
+      <Row
+        id={id}
+        value={value}
+        level={level}
+        label={`${id} ${isArray ? 'array' : 'object'}, ${entries.length} ${noun}`}
+        active={active}
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        ctx={ctx}
+      >
+        <span className="flex min-w-0 items-start text-left">
           {open ? (
             <ChevronDown className="mt-[0.3em] h-3.5 w-4 shrink-0 text-faint" aria-hidden />
           ) : (
@@ -266,24 +407,16 @@ function Node({
             {!open && (
               <span className="text-faint">
                 {' '}
-                {entries.length}{' '}
-                {isArray
-                  ? entries.length === 1
-                    ? 'item'
-                    : 'items'
-                  : entries.length === 1
-                    ? 'key'
-                    : 'keys'}{' '}
-                {closeBracket}
+                {entries.length} {noun} {closeBracket}
                 {!last && ','}
               </span>
             )}
           </span>
-        </button>
+        </span>
       </Row>
       {open && (
         <>
-          <div className="ml-[7px] border-l border-line pl-2">
+          <div role="group" className="ml-[7px] border-l border-line pl-2">
             {visible.map((i, at) => {
               const [key, child] = entries[i]
               return (
@@ -322,9 +455,13 @@ function Node({
 }
 
 function Primitive({ value, query }: { value: unknown; query: string }): ReactNode {
-  const text = typeof value === 'string' ? JSON.stringify(value) : String(value)
+  if (typeof value === 'string')
+    return (
+      <span className="json-string">
+        <Quoted text={value} query={query} />
+      </span>
+    )
+  const text = String(value)
   const body = query ? <Highlight text={text} query={query} /> : text
-  if (typeof value === 'string') return <span className="json-string">{body}</span>
-  if (typeof value === 'number') return <span className="json-number">{body}</span>
-  return <span className="json-literal">{body}</span>
+  return <span className={typeof value === 'number' ? 'json-number' : 'json-literal'}>{body}</span>
 }

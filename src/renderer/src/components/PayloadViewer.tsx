@@ -89,11 +89,26 @@ export function PayloadViewer({
   ]
   const view = chosen && available.includes(chosen) ? chosen : detected
 
-  const [storedStep, setStoredStep] = useSetting<number>('payload.fontStep', 0)
+  const [storedStep, setStoredStep, stepLoaded, stepError] = useSetting<number>(
+    'payload.fontStep',
+    0
+  )
   const step = Number.isInteger(storedStep)
     ? Math.min(PAYLOAD_FONT_SIZES.length - 1, Math.max(0, storedStep))
     : 0
   const fontSize = PAYLOAD_FONT_SIZES[step]
+  // Quick clicks both count (start from the last value written); nothing is written before the
+  // stored value has been read.
+  const stepRef = useRef(step)
+  useEffect(() => {
+    stepRef.current = step
+  }, [step])
+  const changeStep = (by: number): void => {
+    if (!stepLoaded && stepError === null) return
+    const next = Math.min(PAYLOAD_FONT_SIZES.length - 1, Math.max(0, stepRef.current + by))
+    stepRef.current = next
+    void setStoredStep(next)
+  }
 
   // The tree views: levels, a reset counter for Expand all and Collapse all, and the search.
   const treeValue = view === 'decoded' ? parsed.decoded?.value : parsed.json
@@ -103,6 +118,8 @@ export function PayloadViewer({
   const [searchText, setSearchText] = useState('')
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
+  // Counts Next and Previous presses, so a node the user closed by hand opens again.
+  const [navCount, setNavCount] = useState(0)
   const searchInput = useRef<HTMLInputElement>(null)
   const bodyBox = useRef<HTMLDivElement>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -135,7 +152,9 @@ export function PayloadViewer({
   }, [isTree, treeValue, levels])
   const clamped = levels === 'all' && depth < maxDepth(treeValue)
   const moveMatch = (by: number): void => {
-    if (matchCount) setActiveIndex((active + by + matchCount) % matchCount)
+    if (!matchCount) return
+    setActiveIndex((active + by + matchCount) % matchCount)
+    setNavCount((n) => n + 1)
   }
   const setLevel = (l: Levels): void => {
     setLevels(l)
@@ -184,7 +203,7 @@ export function PayloadViewer({
         }
       }}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-1 pb-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1 pb-0.5">
         <SubTabs
           bare
           ariaLabel="Payload format"
@@ -200,7 +219,7 @@ export function PayloadViewer({
             disabled={step === 0}
             title="Smaller text"
             aria-label="Smaller text"
-            onClick={() => void setStoredStep(step - 1)}
+            onClick={() => changeStep(-1)}
           >
             A-
           </button>
@@ -210,7 +229,7 @@ export function PayloadViewer({
             disabled={step === PAYLOAD_FONT_SIZES.length - 1}
             title="Larger text"
             aria-label="Larger text"
-            onClick={() => void setStoredStep(step + 1)}
+            onClick={() => changeStep(1)}
           >
             A+
           </button>
@@ -229,7 +248,7 @@ export function PayloadViewer({
       </div>
 
       {isTree && size > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center gap-1 pb-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1 pb-0.5">
           <span className="inline-flex items-center gap-0.5" role="group" aria-label="Levels">
             <span className="pr-1 text-xs text-faint">Levels</span>
             {([1, 2, 3, 'all'] as Levels[]).map((l) => (
@@ -337,14 +356,14 @@ export function PayloadViewer({
         </div>
       )}
       {isTree && query && search?.truncated && (
-        <p className="shrink-0 pb-1.5 text-xs text-faint">
+        <p className="shrink-0 pb-1 text-xs text-faint">
           {matchCount >= SEARCH_MAX_MATCHES
             ? `Showing the first ${SEARCH_MAX_MATCHES} matches.`
             : 'The payload is large, so only the first part was searched.'}
         </p>
       )}
       {isTree && clamped && (
-        <p className="shrink-0 pb-1.5 text-xs text-faint">
+        <p className="shrink-0 pb-1 text-xs text-faint">
           The payload is large, so the tree opens to level {depth}. Open the rest one node at a
           time.
         </p>
@@ -389,7 +408,7 @@ export function PayloadViewer({
             fontSize={fontSize}
             search={
               search && query
-                ? { ...search, query, activeId: search.matches[active]?.id ?? null }
+                ? { ...search, query, activeId: search.matches[active]?.id ?? null, nav: navCount }
                 : undefined
             }
           />

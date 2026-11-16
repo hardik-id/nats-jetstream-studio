@@ -62,6 +62,8 @@ export function MessageConsumers({
   const query = useQuery({
     queryKey: ['consumers', connId, stream],
     queryFn: () => gateway.listConsumers(connId, stream),
+    // Not read, and not polled, while the section is closed.
+    enabled: section.open,
     refetchInterval
   })
   const [search, setSearch] = useState('')

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ChevronUp, Plus, X } from 'lucide-react'
 import type { ContentFilters, HeaderFilter } from '@shared/api'
 import { validateFilters } from '@shared/filters'
-import { Button, Field, Input } from '../../components/ui'
+import { Button, cx, Field, Input } from '../../components/ui'
 
 export interface FilterDraft {
   headers: HeaderFilter[]
@@ -40,12 +40,15 @@ export function draftToFilters(draft: FilterDraft): ContentFilters {
  */
 export function FilterPanel({
   id,
+  compact,
   initial,
   onApply,
   onClose
 }: {
   /** The id the Filters button points at with `aria-controls`. */
   id?: string
+  /** A message is open beside the table: leave more height for it. */
+  compact?: boolean
   initial: FilterDraft
   onApply: (filters: ContentFilters, scanLimit: number) => void
   onClose: () => void
@@ -64,7 +67,10 @@ export function FilterPanel({
     <form
       id={id}
       aria-label="Message filters"
-      className="flex max-h-[min(55vh,26rem)] shrink-0 flex-col border-b border-line bg-raised"
+      className={cx(
+        'flex min-h-28 shrink flex-col border-b border-line bg-raised',
+        compact ? 'max-h-[min(30%,13rem)]' : 'max-h-[min(40%,18rem)]'
+      )}
       onSubmit={(e) => {
         e.preventDefault()
         if (valid) onApply(filters, scanLimit)

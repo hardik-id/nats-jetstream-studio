@@ -26,6 +26,11 @@ jobs:
       - name: Build and publish installers
         shell: bash
         run: |
+          # Unset signing variables that are empty. GitHub passes a missing secret as an empty string,
+          # and electron-builder then reads an empty CSC_LINK as a file path and fails on macOS.
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
           # Notarize only when the Apple credentials are configured for this repository.
           if [ "$RUNNER_OS" = "macOS" ] && [ -n "$APPLE_ID" ]; then EXTRA="-c.mac.notarize=true"; fi
           npx electron-builder --publish always $EXTRA

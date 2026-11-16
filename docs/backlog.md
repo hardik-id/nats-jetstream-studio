@@ -1,6 +1,6 @@
 # NATS JetStream Studio: Product Backlog
 
-Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [README](../README.md) for the vision and architecture.
+Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [README](../README.md) for the vision and [architecture.md](architecture.md) for the architecture.
 
 ## How to read this
 

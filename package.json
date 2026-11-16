@@ -7,6 +7,14 @@
   "desktopName": "nats-jetstream-studio.desktop",
   "author": "NATS JetStream Studio contributors",
   "license": "Apache-2.0",
+  "keywords": [
+    "nats",
+    "jetstream",
+    "nats-gui",
+    "nats-client",
+    "electron",
+    "message-queue"
+  ],
   "homepage": "https://github.com/hardik-id/nats-jetstream-studio",
   "repository": {
     "type": "git",

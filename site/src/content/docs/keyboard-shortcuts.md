@@ -9,9 +9,9 @@ On macOS use <kbd>⌘</kbd> where this page says <kbd>Ctrl</kbd>/<kbd>⌘</kbd>.
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd> | Open the command palette: search streams, consumers and buckets, or run an action. |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd> | Collapse or expand the sidebar. |
 | <kbd>?</kbd> | Show the list of shortcuts. It does nothing while you type in a field. |
-| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>W</kbd> | Close the current tab. Not available in a browser, see below. |
-| <kbd>Ctrl</kbd> + <kbd>Tab</kbd> | Go to the next tab (also <kbd>Ctrl</kbd> on macOS). |
-| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd> | Go to the previous tab. |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>W</kbd> | Close the current tab. Desktop app only. |
+| <kbd>Ctrl</kbd> + <kbd>Tab</kbd> | Go to the next tab (also <kbd>Ctrl</kbd> on macOS). Desktop app only. |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd> | Go to the previous tab. Desktop app only. |
 | <kbd>Esc</kbd> | Close a dialog, a menu, the command palette or the message panel. |
 | <kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move between controls. Inside a dialog the focus stays in the dialog. |
 
@@ -40,7 +40,7 @@ These work in every table, such as the lists of streams, consumers and messages,
 | --- | --- |
 | <kbd>Space</kbd> | Tick or untick the selected message, for copy and export. |
 | <kbd>Esc</kbd> | Close the message panel. |
-| <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> | Show the previous or next message while the panel is open. |
+| <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> | Show the previous or next message while the message panel has focus. |
 | <kbd>Enter</kbd> | In the sequence field: go to that sequence. |
 | <kbd>←</kbd> / <kbd>→</kbd> | On the resize handle of the message panel: make it wider or narrower. |
 | <kbd>Home</kbd> / <kbd>End</kbd> | On the resize handle: smallest or largest width. |
@@ -66,4 +66,4 @@ These work in every table, such as the lists of streams, consumers and messages,
 
 ## In a browser
 
-[Web mode](/docs/web-mode/) uses the same shortcuts, with one difference. The browser keeps <kbd>Ctrl</kbd> + <kbd>W</kbd> for closing its own tab, so use the close button on a studio tab instead. A browser may also claim other combinations for itself, in which case the page cannot receive them.
+[Web mode](/docs/web-mode/) uses the same shortcuts, except three. A browser keeps <kbd>Ctrl</kbd> + <kbd>W</kbd>, <kbd>Ctrl</kbd> + <kbd>Tab</kbd> and <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd> for its own tabs, so the page never receives them. Use the studio's tab bar and the close button on a tab instead. A browser may claim other combinations too.

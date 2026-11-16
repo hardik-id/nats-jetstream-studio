@@ -73,7 +73,7 @@ So the studio runs as a desktop app that connects straight to your servers. If y
 
 ## Does it update itself?
 
-Installed desktop builds check GitHub for a newer version at start and offer to download it. Automatic updates on macOS need a signed app, so until signing is set up, download new macOS versions by hand. See [Install](/docs/install/#updates).
+Installed desktop builds check GitHub for a newer version at start and offer to download it. Automatic updates on macOS need a signed app, so until signing is set up, download new macOS versions by hand. Updates have not yet been proven by a real release. See [Install](/docs/install/#updates).
 
 ## Does it send data anywhere?
 

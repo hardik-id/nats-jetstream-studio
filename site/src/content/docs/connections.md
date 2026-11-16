@@ -57,9 +57,9 @@ The block is enforced by the studio's core and not only by disabled buttons. A b
 If you use the `nats` command line tool, the studio lists its contexts as connections. It reads them from `$XDG_CONFIG_HOME/nats/context`, or `~/.config/nats/context` when that variable is not set. It takes over the server URLs, user, password, token, NKey, credentials file, TLS files, JetStream domain, API prefix and inbox prefix of each context.
 
 - Click the refresh button in the sidebar to read the folder again.
-- Details that come from the context are locked in the form. Change them with the `nats` CLI. You can still set the colour, the environment label and read-only mode.
+- Details that come from the context (name, description, servers, login, TLS files and TLS-first, JetStream domain, API prefix and inbox prefix) are locked in the form. Change them with the `nats` CLI. You can still set the colour, the environment label and read-only mode.
 - A CLI connection cannot be deleted in the studio. Remove it with `nats context rm`.
-- A context that uses `nsc` or `user_jwt` shows a warning and cannot connect. Set a credentials file on the context instead. A SOCKS proxy setting is ignored.
+- A context that uses `nsc` or `user_jwt` shows a warning, and the studio ignores that setting. Set a credentials file on the context instead. A SOCKS proxy setting is ignored too.
 
 ## Test timeout
 

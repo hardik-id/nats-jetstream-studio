@@ -11,6 +11,8 @@ Passwords, tokens and NKey seeds are encrypted before they are written to disk. 
 | Linux desktop | Encrypted with a key held by the desktop keyring (libsecret, for example GNOME Keyring, or KWallet), through Electron `safeStorage`. |
 | Web mode | Encrypted with AES-256-GCM. The key is a file in the server's data directory (`STUDIO_DATA_DIR`), readable only by the server's user. Keep that directory on a volume and protect it. |
 
+Secret storage was tested on Linux only. The Windows and macOS paths were not run (see [implementation status](https://github.com/hardik-id/nats-jetstream-studio/blob/main/docs/status.md)).
+
 If a Linux system has no keyring, a saved secret would only be lightly protected. The connection form then warns you and suggests that you untick **Save the secret on this computer**. The studio then asks for the secret each time you connect and stores nothing.
 
 Credentials files, NKey seed files and TLS certificate files are not copied. The studio only keeps their paths and reads the files when it connects. Secrets are never sent to the user interface once saved: the form shows only that one is stored.
@@ -46,4 +48,4 @@ The installers are not code-signed yet. That is why Windows SmartScreen and macO
 
 ## Read-only mode and web mode
 
-Use [read-only mode](/docs/connections/#read-only-mode) on production connections. It is enforced by the studio's core, not just the buttons. In [web mode](/docs/web-mode/) nothing is served without a signed-in session, and an administrator can lock connections and force read-only.
+Use [read-only mode](/docs/connections/#read-only-mode) on production connections. It is enforced by the studio's core, not just the buttons. In [web mode](/docs/web-mode/) nothing is served without a signed-in session (unless the administrator set `STUDIO_AUTH=none` on `127.0.0.1`, where the audit user is `local`), and an administrator can lock connections and force read-only.

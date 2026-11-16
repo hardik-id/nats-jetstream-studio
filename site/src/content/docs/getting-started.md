@@ -37,7 +37,7 @@ The stream tab has five parts: **Overview**, **Messages**, **Consumers**, **Subj
 
 Reading is safe. The studio reads messages straight from the stream. It does not create a consumer and it acknowledges nothing, so no consumer position changes.
 
-Use <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> to step through messages and <kbd>Esc</kbd> to close the panel. All shortcuts are listed under [Keyboard shortcuts](/docs/keyboard-shortcuts/).
+While the message panel has focus, use <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> to step through messages and <kbd>Esc</kbd> to close the panel. All shortcuts are listed under [Keyboard shortcuts](/docs/keyboard-shortcuts/).
 
 ## No server? Use the demo data
 
@@ -49,7 +49,7 @@ npm run nats      # a local nats-server on nats://127.0.0.1:4222
 npm run traffic   # demo streams, consumers, KV and Object Store, plus live traffic
 ```
 
-`npm run nats` downloads the official `nats-server` binary if it is not on your path. It creates the users `app` / `app` and `viewer` / `viewer`. Add a connection to `nats://127.0.0.1:4222`, choose **User and password**, and use `app` for both. The `viewer` user can only read, which is handy for trying permission errors.
+`npm run nats` downloads the official `nats-server` binary if it is not on your path. It creates the users `app` / `app` and `viewer` / `viewer`. Add a connection to `nats://127.0.0.1:4222`, choose **User and password**, and use `app` for both. The `viewer` user cannot publish to normal subjects, which is handy for trying permission errors.
 
 `npm run traffic` first creates the streams `ORDERS`, `EVENTS`, `JOBS` and `TELEMETRY`, with consumers, two KV buckets and one Object Store. It then keeps publishing and consuming until you press <kbd>Ctrl</kbd> + <kbd>C</kbd>. The `ORDERS` stream has one consumer that falls behind and one that never acknowledges, so you can see lag and redeliveries.
 

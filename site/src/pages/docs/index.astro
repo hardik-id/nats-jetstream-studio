@@ -1,7 +1,7 @@
 ---
 import DocsLayout from '../../layouts/DocsLayout.astro'
 import { docs, docsPages } from '../../lib/site-map'
-import { url } from '../../lib/url'
+import { url, repo } from '../../lib/url'
 ---
 
 <DocsLayout title={docs.title} description={docs.description}>
@@ -24,7 +24,7 @@ import { url } from '../../lib/url'
     }
   </ul>
   <p class="edit">
-    <a href="https://github.com/hardik-id/nats-jetstream-studio/edit/main/site/src/pages/docs/index.astro" rel="noopener">Edit this page on GitHub</a>
+    <a href={`${repo}/edit/main/site/src/pages/docs/index.astro`} rel="noopener">Edit this page on GitHub</a>
   </p>
 </DocsLayout>
 

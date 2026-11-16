@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { createServer, request as httpRequest, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
@@ -55,7 +55,9 @@ class Rpc {
   static open(server: RunningServer, headers: Record<string, string> = {}): Promise<Rpc> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(server.url.replace('http', 'ws') + '/rpc', {
-        headers: { Origin: server.url, ...headers }
+        headers: { Origin: server.url, ...headers },
+        // Node's WebSocket client otherwise sets Host from the URL; tests choose their own.
+        setHost: !('Host' in headers)
       })
       ws.once('open', () => resolve(new Rpc(ws)))
       ws.once('unexpected-response', (_req, res) => reject(new Error(`HTTP ${res.statusCode}`)))
@@ -153,6 +155,77 @@ describe('PBI-101 web mode serves the UI and the gateway', () => {
   })
 })
 
+/** A raw HTTP request with a chosen Host header (fetch does not allow overriding it). */
+function rawGet(server: RunningServer, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(server.url + '/', { headers: { Host: host } }, (res) => {
+      res.resume()
+      resolve(res.statusCode ?? 0)
+    })
+    req.once('error', reject)
+    req.end()
+  })
+}
+
+describe('web mode without sign-in refuses DNS rebinding', () => {
+  let server: RunningServer
+  let port: string
+  beforeAll(async () => {
+    server = await start({ mode: 'none' })
+    port = new URL(server.url).port
+  })
+  afterAll(() => server.close())
+
+  it('rejects a matching non-loopback Host and Origin over HTTP and WebSocket', async () => {
+    const host = `evil.example:${port}`
+    expect(await rawGet(server, host)).toBe(403)
+    expect(await rawGet(server, `192.168.1.5:${port}`)).toBe(403)
+    await expect(Rpc.open(server, { Host: host, Origin: `http://${host}` })).rejects.toThrow(
+      'HTTP 403'
+    )
+  })
+
+  it('accepts loopback Host and Origin, IPv6 included', async () => {
+    for (const host of [
+      `localhost:${port}`,
+      `LOCALHOST.:${port}`,
+      `127.0.0.1:${port}`,
+      `127.1.2.3:${port}`,
+      `[::1]:${port}`
+    ]) {
+      expect(await rawGet(server, host), host).toBe(200)
+      const rpc = await Rpc.open(server, { Host: host, Origin: `http://${host}` })
+      expect(await rpc.call('appInfo')).toMatchObject({ mode: 'web' })
+      rpc.close()
+    }
+  })
+
+  it('still rejects a loopback page that is not the same origin', async () => {
+    await expect(
+      Rpc.open(server, { Host: `127.0.0.1:${port}`, Origin: `http://localhost:${port}` })
+    ).rejects.toThrow('HTTP 403')
+    await expect(
+      Rpc.open(server, { Host: `localhost:${port}`, Origin: 'http://localhost:1' })
+    ).rejects.toThrow('HTTP 403')
+    // Loopback Host with a non-loopback Origin that also matches is impossible, but a mismatch fails.
+    await expect(
+      Rpc.open(server, { Host: `127.0.0.1:${port}`, Origin: `http://evil.example:${port}` })
+    ).rejects.toThrow('HTTP 403')
+  })
+
+  it('leaves the check off only when asked (STUDIO_ALLOW_INSECURE)', async () => {
+    const open = await start({ mode: 'none' }, { requireLoopback: false })
+    try {
+      const host = `evil.example:${new URL(open.url).port}`
+      expect(await rawGet(open, host)).toBe(200)
+      const rpc = await Rpc.open(open, { Host: host, Origin: `http://${host}` })
+      rpc.close()
+    } finally {
+      await open.close()
+    }
+  })
+})
+
 describe('PBI-101 token sign-in', () => {
   let server: RunningServer
   const token = 'a-long-shared-token-for-tests'
@@ -204,6 +277,16 @@ describe('PBI-101 token sign-in', () => {
     await expect(
       Rpc.open(server, { Cookie: cookie, Origin: 'https://evil.example' })
     ).rejects.toThrow('HTTP 403')
+
+    // Token mode keeps the plain same-origin rule: any matching Host and Origin pair with a
+    // valid session is accepted, the loopback requirement only applies without sign-in.
+    const named = `studio.internal:${new URL(server.url).port}`
+    const viaName = await Rpc.open(server, {
+      Cookie: cookie,
+      Host: named,
+      Origin: `http://${named}`
+    })
+    viaName.close()
 
     // Signing out ends the session.
     await fetch(server.url + '/auth/logout', { headers: { Cookie: cookie }, redirect: 'manual' })

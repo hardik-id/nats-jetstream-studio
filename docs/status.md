@@ -1,8 +1,7 @@
 # Implementation status
 
-The first 60 backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123, except PBI-049) have
-been implemented. This page says how each was checked and what was **not** verified. Planned and
-not started: PBI-049 (added later) and Epic 12, the website (PBI-130 to PBI-137).
+The backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123) have been implemented. This page says how each was checked and what was **not** verified. Planned
+and not started: Epic 12, the website (PBI-130 to PBI-137).
 
 ## How it was tested
 
@@ -50,7 +49,7 @@ the React compiler). Type-check: clean.
 | 046 | Delete a single message | Tested | |
 | 047 | Republish a message | Tested | |
 | 048 | Regex and JSONPath filters | Tested | JSONPath subset: fields, indexes, `*`, `..`, and one comparison. |
-| 049 | Which consumers have received a message | Planned | Added 2026-11-16. |
+| 049 | Which consumers have received a message | Tested | State rules unit tested; gateway test against a real server (`all`, `new`, `by_start_sequence`, partial acks); web e2e. Electron project not run. `last` and `last_per_subject` can only say "probably not delivered" ([#32](https://github.com/hardik-id/nats-jetstream-studio/issues/32)). |
 | 050 | Consumers list | Tested | 1,000 consumers on one stream. |
 | 051 | Consumer detail and lag | Tested | |
 | 052 | Create, edit, delete a consumer | Tested | |

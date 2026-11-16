@@ -29,6 +29,8 @@ export interface MessageDetailProps {
   loadingFull?: boolean
   /** Extra buttons: delete, republish... */
   actions?: ReactNode
+  /** Extra sections shown between the headers and the payload (stream messages only). */
+  sections?: ReactNode
 }
 
 /** The side panel for one message: subject, sequence, time, headers and payload (PBI-043). */
@@ -40,7 +42,8 @@ export function MessageDetail({
   onNext,
   onLoadFull,
   loadingFull,
-  actions
+  actions,
+  sections
 }: MessageDetailProps): ReactNode {
   const utc = new Date(message.time).toISOString()
   return (
@@ -152,6 +155,8 @@ export function MessageDetail({
             </table>
           )}
         </section>
+
+        {sections}
 
         <section className="flex min-h-48 flex-1 flex-col">
           <h4 className="pb-1 text-xs font-semibold text-muted">Payload</h4>

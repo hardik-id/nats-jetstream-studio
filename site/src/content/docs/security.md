@@ -11,7 +11,7 @@ Passwords, tokens and NKey seeds are encrypted before they are written to disk. 
 | Linux desktop | Encrypted with a key held by the desktop keyring (libsecret, for example GNOME Keyring, or KWallet), through Electron `safeStorage`. |
 | Web mode | Encrypted with AES-256-GCM. The key is a file in the server's data directory (`STUDIO_DATA_DIR`), readable only by the server's user. Keep that directory on a volume and protect it. |
 
-Secret storage was tested on Linux only. The Windows and macOS paths were not run (see [implementation status](https://github.com/hardik-id/nats-jetstream-studio/blob/main/docs/status.md)).
+Secret storage was tested on Linux only, and there only the case with no keyring was run. The keychain paths on Windows, macOS and Linux were not run (see [implementation status](https://github.com/hardik-id/nats-jetstream-studio/blob/main/docs/status.md)).
 
 If a Linux system has no keyring, a saved secret would only be lightly protected. The connection form then warns you and suggests that you untick **Save the secret on this computer**. The studio then asks for the secret each time you connect and stores nothing.
 
@@ -28,7 +28,7 @@ The fonts are part of the app, so nothing is loaded from a font service. This we
 
 ## The audit log
 
-Every action that changes something is written to a log on your machine, one line per action. Each entry has:
+Every change made on a NATS server is written to a log on your machine, one line per action. Each entry has:
 
 - the time,
 - the connection name,

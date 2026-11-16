@@ -14,7 +14,7 @@ on:
   # The download and changelog pages read the releases at build time. A release event runs on the
   # tag, so it only starts a normal run on main (see the `after-release` job).
   release:
-    types: [published]
+    types: [published, edited]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
   build:
     if: github.event_name != 'release'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # A newer push to a pull request replaces its run; builds on main and manual runs never cancel.
     concurrency:
       group: pages-build-${{ github.ref }}
@@ -44,6 +45,28 @@ jobs:
         working-directory: site
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # Checks over the built site: no third-party origins, no broken links or #anchors, one h1,
+      # unique titles, canonical and social tags, structured data.
+      - run: npm test
+        working-directory: site
+      - run: npm run check:built
+        working-directory: site
+      - run: npm run check:built:negative
+        working-directory: site
+      # Browser checks on the runner's Chrome: axe (WCAG A/AA, contrast) and a keyboard walk on
+      # every page, light and dark, desktop and phone width.
+      - run: npm run check:a11y
+        working-directory: site
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      # Lighthouse, mobile settings: fails below 95 for performance, accessibility, best practices, SEO.
+      - run: npm run lighthouse
+        working-directory: site
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - run: node scripts/lighthouse-summary.mjs
+        if: always()
+        working-directory: site
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3

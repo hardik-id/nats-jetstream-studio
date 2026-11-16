@@ -5,9 +5,25 @@ import Highlights from '../components/home/Highlights.astro'
 import Safe from '../components/home/Safe.astro'
 import DesktopWeb from '../components/home/DesktopWeb.astro'
 import Closing from '../components/home/Closing.astro'
+import { absoluteUrl, repo } from '../lib/url'
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'NATS JetStream Studio',
+  description: 'A free GUI and desktop client for NATS and JetStream.',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: ['Windows', 'macOS', 'Linux'],
+  url: absoluteUrl('/'),
+  image: absoluteUrl('/social-preview.png'),
+  license: `${repo}/blob/main/LICENSE`,
+  downloadUrl: absoluteUrl('/download/'),
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }
+}
 ---
 
 <Layout>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <Hero />
   <Highlights />
   <Safe />

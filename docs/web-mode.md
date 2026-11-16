@@ -83,7 +83,7 @@ the UI. Read-only is enforced in the server for every change: create, edit, dele
 
 ## Differences from the desktop app
 
-| | Desktop | Web mode |
+| Topic | Desktop | Web mode |
 | --- | --- | --- |
 | Secrets | Encrypted with the OS keychain | Encrypted with a key file in the data directory |
 | Credential and certificate files | Chosen with a file dialog on your machine | Paths on the server |
@@ -91,5 +91,5 @@ the UI. Read-only is enforced in the server for every change: create, edit, dele
 | Settings, saved filters, favourites, alert rules | Per user | Shared |
 | Audit log | Local, no user name | On the server, with the signed-in user |
 | Auto-update | Yes | Deploy a new image |
-| Ctrl+W to close a tab | Yes | The browser keeps that shortcut; use the tab's close button |
+| Ctrl+W, Ctrl+Tab and Ctrl+Shift+Tab | Yes | The browser keeps these shortcuts; use the studio's tab bar and the tab's close button |
 | Desktop notifications for alerts | Yes | Yes, after allowing them in the browser |

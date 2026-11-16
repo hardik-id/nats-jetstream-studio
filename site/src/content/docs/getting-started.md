@@ -17,6 +17,8 @@ You need the address of a NATS server. If you do not have one, use the [demo dat
 5. Click **Test connection**. The studio reports the server name, the NATS version, the round-trip time, and whether JetStream is available to this account.
 6. Click **Save**.
 
+<!-- {{shot ...}} lines are replaced by the site build with the dark and light screenshots; on GitHub they show as plain text. -->
+
 {{shot docs-connection-form}}
 
 Click the connection in the sidebar to connect. The top bar shows the state: connecting, connected, reconnecting or error.
@@ -33,7 +35,7 @@ The stream tab has five parts: **Overview**, **Messages**, **Consumers**, **Subj
 
 1. Open the **Messages** tab of the stream.
 2. Under **Start from**, choose where to begin, for example **Latest messages**, then click **Go**. You can also start at a sequence number or a time.
-3. Click a message to open it in the detail panel. It shows the subject, headers, time and payload. Switch the payload between JSON, text, hex, base64 and Protobuf.
+3. Click a message to open it in the detail panel. It shows the subject, headers, time and payload. Switch the payload between text, hex and base64. JSON shows only when the payload parses as JSON, and Protobuf only when a decoder is set for the subject.
 
 Reading is safe. The studio reads messages straight from the stream. It does not create a consumer and it acknowledges nothing, so no consumer position changes.
 

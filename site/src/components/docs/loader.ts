@@ -79,7 +79,12 @@ export function docsLoader(): Loader {
       const siteRoot = fileURLToPath(config.root)
       const repoRoot = posix.join(siteRoot.replace(/\\/g, '/'), '..')
       const media = (
-        JSON.parse(readFileSync(posix.join(siteRoot.replace(/\\/g, '/'), 'public/media/manifest.json'), 'utf8')) as {
+        JSON.parse(
+          readFileSync(
+            posix.join(siteRoot.replace(/\\/g, '/'), 'public/media/manifest.json'),
+            'utf8'
+          )
+        ) as {
           files: MediaFile[]
         }
       ).files
@@ -88,7 +93,13 @@ export function docsLoader(): Loader {
         store.clear()
         for (const { slug, file } of docSources) {
           const raw = readFileSync(posix.join(repoRoot, file), 'utf8').replace(/\r\n/g, '\n')
-          const body = expandShots(rewriteLinks(raw.replace(/^# .*\n+/, ''), file), media)
+          const body = expandShots(
+            rewriteLinks(
+              raw.replace(/^# .*\n+/, '').replace(/<!-- \{\{shot[\s\S]*?-->\n*/g, ''),
+              file
+            ),
+            media
+          )
           store.set({
             id: slug,
             data: { slug, file },

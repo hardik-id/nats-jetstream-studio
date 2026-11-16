@@ -19,7 +19,7 @@ const cards = featurePages.map((p) => {
       Everything NATS JetStream Studio can do, in eight areas. Each page shows the real app.
     </p>
     <div class="grid">
-      {cards.map((c) => <FeatureCard {...c} />)}
+      {cards.map((c, i) => <FeatureCard {...c} priority={i === 0} />)}
     </div>
   </div>
 </Layout>

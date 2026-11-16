@@ -81,14 +81,25 @@ const editUrl = githubBlob(source).replace('/blob/', '/edit/')
     border-radius: 8px;
     margin: 0 0 1rem;
   }
+  .prose pre,
+  .prose pre span {
+    color: var(--shiki-light);
+  }
+  [data-theme='dark'] .prose pre,
+  [data-theme='dark'] .prose pre span {
+    color: var(--shiki-dark);
+  }
+  /* Comment colour of the dark theme is too dim on the page background (measured 3.9:1). */
+  [data-theme='dark'] .prose pre span[style*='--shiki-dark:#6A737D'] {
+    color: #9ba3ad;
+  }
   .prose pre code {
     background: none;
     border: 0;
     padding: 0;
   }
   .prose table {
-    display: block;
-    overflow-x: auto;
+    width: 100%;
     border-collapse: collapse;
     margin: 0 0 1.25rem;
     max-width: 100%;
@@ -99,6 +110,7 @@ const editUrl = githubBlob(source).replace('/blob/', '/edit/')
     vertical-align: top;
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--line);
+    overflow-wrap: anywhere;
   }
   .prose th {
     background: var(--panel);
@@ -143,6 +155,10 @@ const editUrl = githubBlob(source).replace('/blob/', '/edit/')
     list-style: none;
     margin: 0.4rem 0 0;
     padding: 0;
+  }
+  .inline-toc a {
+    display: block;
+    padding: 0.4rem 0;
   }
   .side-toc {
     position: sticky;

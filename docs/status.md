@@ -1,7 +1,7 @@
 # Implementation status
 
-The backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123) have been implemented. This page says how each was checked and what was **not** verified. Planned
-and not started: Epic 12, the website (PBI-130 to PBI-137).
+The backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123) have been implemented. This page says how each was checked and what was **not** verified. The website
+(Epic 12, PBI-130 to PBI-137) is in the section "Website" below.
 
 ## How it was tested
 
@@ -84,6 +84,31 @@ the React compiler). Type-check: clean.
 | 123 | Redesign final pass | Done | Every screen was checked in dark and light at 1280 x 720 and 1440 x 900, and a keyboard-only walk-through was done. Not run: Windows desktop (the minimum content width of 1024 px is set with `useContentSize`, see `docs/handoff-windows.md`). |
 | 124 | Resizable table columns | Done | Drag, double-click reset and arrow keys on a handle in `DataTable`, so all tables get it; widths stored per table in settings. 15 UI tests (drag, clamp, reset, keyboard, sort not triggered, restore, corrupt value) and a Chromium e2e on the Streams table (drag widens the column, header and first row stay aligned, width survives a reload), checked in dark and light screenshots. Not run: touch input on a real device, Electron e2e of this feature. |
 
+## Website (PBI-130 to PBI-137)
+
+The site is in `site/` (Astro, static). The checks below were run on the built site in the PBI-137 change, served under the real base path (`/nats-jetstream-studio/`) by `site/scripts/serve.mjs`. The first four rows were built and merged in their own pull requests; this page does not repeat what was checked there, only what was run across the whole site at the end.
+
+| PBI | Item | Status | How it was verified |
+| --- | --- | --- | --- |
+| 130 | Scaffold, layout, Pages deployment | Done | `npm run build` and `npm run check` (0 errors) in `site/`; all 21 pages pass the structure checks below. The deployment itself (`deploy` job) runs only on main and was not run for this change. |
+| 131 | Home | Done | Same checks; Lighthouse on Home. The home recording was not re-taken (see issue #39). |
+| 132 | Features pages | Done | Same checks; Lighthouse on Features and on Streams. |
+| 133 | Download page | Done | Same checks; Lighthouse on Download. Built with the GitHub releases API (in this run with no token, so unauthenticated). |
+| 134 | Docs pages | Done | Same checks; Lighthouse on Getting started; code blocks and tables fixed for contrast and keyboard access in this change. Install and Web mode come from `docs/`. |
+| 135 | Changelog and RSS | Done | Same checks; `npm test` in `site/` (4 tests for the release-notes renderer). The feed was built; it was not opened in a feed reader. |
+| 136 | Screenshots and recordings | Done | Pictures exist in `site/public/media/` and every `img` has alt text and size (checked by `check:built`). `npm run site:media` was not re-run in the PBI-137 change. |
+| 137 | Search engines, accessibility and speed | Done | See below. |
+
+What was run for PBI-137 (Linux, Playwright's Chromium 1255 via `CHROME_PATH`):
+
+- `npm run check:built`: all 21 built pages and 667 internal links. No external script, stylesheet, font, image, media or iframe origin; no remote `url()` or `@import` in CSS or remote origin in the scripts; no broken internal link or `#anchor`; exactly one `h1` and no skipped heading level per page; every `img` has `alt`; unique title and description; canonical URL; Open Graph and Twitter tags with absolute image URL; `SoftwareApplication` on Home and `BreadcrumbList` equal to the visible breadcrumbs elsewhere; `robots.txt`, `sitemap-index.xml` and `sitemap-0.xml` exist and list every page. `npm run check:built:negative` injects 18 violations one at a time (remote script, stylesheet, image, `srcset`, `style` url, inline-script origin, preconnect, dns-prefetch, modulepreload, meta refresh, broken link, missing anchor, missing alt, second h1, and four wrong JSON-LD values) and requires each to fail.
+- `npm run check:a11y`: axe-core (WCAG 2.0/2.1 A and AA and best practices, which includes the 4.5:1 text contrast rule) and an automated Tab walk (first stop is the skip link, every stop is visible and shows a focus style), on every page, in light and dark, at 1280 and 390 px wide (84 runs). It found code-block contrast, an empty table header, scrollable tables and a missing theme-colour for Shiki; all fixed. A person walked no page by hand. The first CI run scored Features 92 for performance (eight full-size screenshots competing with the first card on a slow link); the cards now use small copies made by `site/scripts/make-card-images.mjs` before build.
+- `npm run lighthouse` (`lhci autorun`, mobile preset, 3 runs per page, median, assertion 0.95 on each category). Scores (performance / accessibility / best practices / SEO): Home 100/100/100/100, Features 100/100/100/100, Streams 100/100/100/100, Download 100/100/100/100, Getting started 100/100/100/100.
+
+Not verified: the new workflow steps on GitHub's runners (they use `/usr/bin/google-chrome`), `robots.txt` and the sitemap on the live host (see below), Windows and macOS browsers, Safari and Firefox, screen readers.
+
+Note on `robots.txt`: GitHub Pages serves this project under `/nats-jetstream-studio/`, and crawlers read `robots.txt` only at the host root, so the file at `/nats-jetstream-studio/robots.txt` is not found by them. It starts to work with a custom domain (`base` set to `/`). Search engines find the sitemap through Search Console or the link in the page.
+
 ## PBI-100: what was and was not verified
 
 Done and checked on Linux:
@@ -101,7 +126,6 @@ Not run, because they need things this machine does not have:
 - AppImage and deb packaging
 - Code signing and notarization (need certificates: see the secrets listed in the workflow)
 - A real auto-update (needs a published release to update from)
-- `package.json` has no `repository` yet; set it before the first release so updates know where to look
 
 ## Differences from the planned stack
 

@@ -44,6 +44,10 @@
     cursor: pointer;
     align-self: flex-start;
   }
+  /* The switch needs JavaScript (the head script sets html[data-js]); without it the page keeps its default theme. */
+  :global(html:not([data-js])) .theme-toggle {
+    display: none;
+  }
   .theme-toggle:hover {
     background: var(--hover);
   }

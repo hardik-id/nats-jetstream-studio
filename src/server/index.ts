@@ -8,6 +8,9 @@ import { startServer } from './server'
 const env = process.env
 const flag = (name: string): boolean => /^(1|true|yes)$/i.test(env[name] ?? '')
 
+const isLoopbackHost = (host: string): boolean =>
+  host === '127.0.0.1' || host === 'localhost' || host === '::1'
+
 function authFromEnv(host: string): AuthConfig {
   const mode = (env.STUDIO_AUTH ?? '').toLowerCase()
   if (mode === 'oidc' || (!mode && env.STUDIO_OIDC_ISSUER)) {
@@ -35,8 +38,7 @@ function authFromEnv(host: string): AuthConfig {
     return { mode: 'token', token }
   }
   if (mode === 'none') {
-    const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1'
-    if (!loopback && !flag('STUDIO_ALLOW_INSECURE')) {
+    if (!isLoopbackHost(host) && !flag('STUDIO_ALLOW_INSECURE')) {
       throw new Error(
         'STUDIO_AUTH=none is only allowed when listening on localhost. Anyone who can reach this port could use your NATS credentials.'
       )
@@ -57,6 +59,8 @@ async function main(): Promise<void> {
     dataDir,
     webRoot: resolve(env.STUDIO_WEB_ROOT ?? join(__dirname, '..', 'web')),
     auth: authFromEnv(host),
+    // STUDIO_ALLOW_INSECURE (no sign-in on a non-loopback listener) is explicitly unprotected.
+    requireLoopback: isLoopbackHost(host),
     cliContextDir: env.STUDIO_CONTEXT_DIR ? resolve(env.STUDIO_CONTEXT_DIR) : cliContextDir(),
     appVersion: appPkg.version,
     natsClientVersion: natsPkg.version,

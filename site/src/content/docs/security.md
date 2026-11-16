@@ -48,4 +48,4 @@ The installers are not code-signed yet. That is why Windows SmartScreen and macO
 
 ## Read-only mode and web mode
 
-Use [read-only mode](/docs/connections/#read-only-mode) on production connections. It is enforced by the studio's core, not just the buttons. In [web mode](/docs/web-mode/) nothing is served without a signed-in session (unless the administrator set `STUDIO_AUTH=none` on `127.0.0.1`, where the audit user is `local`), and an administrator can lock connections and force read-only.
+Use [read-only mode](/docs/connections/#read-only-mode) on production connections. It is enforced by the studio's core, not just the buttons. In [web mode](/docs/web-mode/) nothing is served without a signed-in session (unless the administrator set `STUDIO_AUTH=none` on `127.0.0.1`, where the audit user is `local` and only loopback `Host` and `Origin` headers are accepted, so websites cannot reach it through DNS rebinding), and an administrator can lock connections and force read-only.

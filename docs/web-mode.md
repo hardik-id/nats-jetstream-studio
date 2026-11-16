@@ -36,6 +36,13 @@ served: not the page, not the WebSocket, and so no NATS operation.
 | Shared token | `STUDIO_AUTH_TOKEN` (16+ characters) | A small trusted group. |
 | None | `STUDIO_AUTH=none` | Your own machine. Only allowed on `127.0.0.1` unless `STUDIO_ALLOW_INSECURE=1`. |
 
+With `STUDIO_AUTH=none` the server only accepts requests whose `Host` header is a loopback name
+(`localhost`, `127.0.0.0/8`, `::1`), and only opens the WebSocket for a page whose `Origin` is
+loopback too. Other websites therefore cannot reach it through DNS rebinding (a public name that
+is switched to resolve to `127.0.0.1`); they get a 403. With `STUDIO_ALLOW_INSECURE=1` on a
+non-loopback address this check is off and there is no such protection, so only do that on a
+network you fully trust.
+
 The signed-in user is shown in the top bar and recorded with every change in the audit log.
 
 ## Settings

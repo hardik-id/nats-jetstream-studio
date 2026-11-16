@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { isIP } from 'node:net'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { RpcSession } from '@core/rpcSession'
@@ -16,6 +17,13 @@ export interface ServerOptions {
   /** Folder with the built UI (index.html and assets). */
   webRoot: string
   auth: AuthConfig
+  /**
+   * Only accept requests whose Host (and WebSocket Origin) is a loopback name or address. This is
+   * what stops DNS rebinding when nobody signs in. Defaults to true for `auth.mode === 'none'` and
+   * is ignored for token and OIDC sign-in. Set it to false only for the explicit
+   * `STUDIO_ALLOW_INSECURE=1` setup, which then has no rebinding protection.
+   */
+  requireLoopback?: boolean
   cliContextDir: string
   appVersion: string
   natsClientVersion: string
@@ -53,20 +61,48 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 }
 
+/** The hostname of a `host[:port]` value or an origin, lowercased and without IPv6 brackets. */
+function hostnameOf(value: string, isOrigin: boolean): string | undefined {
+  try {
+    const name = new URL(isOrigin ? value : `http://${value}`).hostname.toLowerCase()
+    return name.startsWith('[') && name.endsWith(']') ? name.slice(1, -1) : name
+  } catch {
+    return undefined
+  }
+}
+
+/** localhost, 127.0.0.0/8 and ::1. */
+function isLoopbackName(name: string | undefined): boolean {
+  if (!name) return false
+  if (name === 'localhost' || name === 'localhost.') return true
+  const kind = isIP(name)
+  return kind === 4 ? name.startsWith('127.') : kind === 6 && name === '::1'
+}
+
+/** The Host header names this machine itself, so a rebound public name is refused. */
+function loopbackHost(req: IncomingMessage): boolean {
+  const host = req.headers.host
+  return host !== undefined && isLoopbackName(hostnameOf(host, false))
+}
+
 /** True when the request comes from a page served by this server (blocks cross-site WebSockets). */
-function sameOrigin(req: IncomingMessage): boolean {
+function sameOrigin(req: IncomingMessage, requireLoopback: boolean): boolean {
   const origin = req.headers.origin
   if (!origin) return false
   try {
-    return new URL(origin).host === req.headers.host
+    if (new URL(origin).host !== req.headers.host?.toLowerCase()) return false
   } catch {
     return false
   }
+  return !requireLoopback || (loopbackHost(req) && isLoopbackName(hostnameOf(origin, true)))
 }
 
 /** Starts web mode (PBI-101): the same React UI, with the gateway reached over a WebSocket. */
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const auth = new Auth(opts.auth)
+  // Without sign-in the browser's same-origin rule is the only barrier, and DNS rebinding defeats
+  // it (Host and Origin both name the attacker's domain), so insist on loopback names.
+  const requireLoopback = opts.auth.mode === 'none' && opts.requireLoopback !== false
   const service = new StudioService({
     dataDir: opts.dataDir,
     secretStore: new KeyFileSecretStore(join(opts.dataDir, 'secret.key')),
@@ -106,6 +142,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const onRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
+    if (requireLoopback && !loopbackHost(req)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' })
+      res.end('Forbidden: open the studio through localhost or 127.0.0.1')
+      return
+    }
     if (url.pathname === '/healthz') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify({ ok: true, version: opts.appVersion }))
@@ -163,7 +204,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const user = auth.userFor(req)
     // Both checks matter: the cookie proves who it is, the origin proves our own page opened it.
-    if (url.pathname !== '/rpc' || !user || !sameOrigin(req)) {
+    if (url.pathname !== '/rpc' || !user || !sameOrigin(req, requireLoopback)) {
       socket.write(
         `HTTP/1.1 ${!user ? '401 Unauthorized' : '403 Forbidden'}\r\nConnection: close\r\n\r\n`
       )

@@ -25,6 +25,7 @@ jobs:
   build:
     if: github.event_name != 'release'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # A newer push to a pull request replaces its run; builds on main and manual runs never cancel.
     concurrency:
       group: pages-build-${{ github.ref }}

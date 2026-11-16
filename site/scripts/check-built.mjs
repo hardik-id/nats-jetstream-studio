@@ -37,6 +37,8 @@ function exists(p) {
   )
 }
 
+const isRemote = (v) => /^(https?:)?\/\//i.test(v ?? '') && new URL(v, site).origin !== own
+
 const loaders = [
   ['script[src]', 'src'],
   ['link[rel~=stylesheet]', 'href'],
@@ -71,7 +73,34 @@ for (const [page, doc] of docs) {
       }
     }
   for (const s of doc.querySelectorAll('style'))
-    if (/@import|url\(\s*['"]?https?:/i.test(s.text)) fail(page, 'external url() in inline style')
+    if (/@import|url\(\s*['"]?(https?:)?\/\//i.test(s.text))
+      fail(page, 'external url() in inline style')
+  for (const el of doc.querySelectorAll('[srcset]'))
+    for (const part of el.getAttribute('srcset').split(','))
+      if (isRemote(part.trim().split(/\s+/)[0])) fail(page, `external srcset: ${part.trim()}`)
+  for (const el of doc.querySelectorAll('[style]'))
+    if (/url\(\s*['"]?(https?:)?\/\//i.test(el.getAttribute('style')))
+      fail(page, `external url() in style attribute: ${el.getAttribute('style')}`)
+  for (const s of doc.querySelectorAll('script:not([src])')) {
+    if (s.getAttribute('type') === 'application/ld+json') continue
+    for (const m of s.text.matchAll(/(?:https?:)?\/\/[a-z0-9.-]+\.[a-z]{2,}[^\s'"`)]*/gi))
+      if (isRemote(m[0]) && !/^(https?:)?\/\/www\.w3\.org\//.test(m[0]))
+        fail(page, `remote address in inline script: ${m[0]}`)
+  }
+  // Any link element that points off-site, except canonical and alternate (preconnect, dns-prefetch,
+  // modulepreload, prefetch, stylesheet, icon and the rest are all fetches or connections).
+  for (const el of doc.querySelectorAll('link[href]'))
+    if (
+      isRemote(el.getAttribute('href')) &&
+      !/^(canonical|alternate)$/i.test(el.getAttribute('rel') ?? '')
+    )
+      fail(page, `external link rel=${el.getAttribute('rel')}: ${el.getAttribute('href')}`)
+  for (const el of doc.querySelectorAll('meta[http-equiv]'))
+    if (
+      /^refresh$/i.test(el.getAttribute('http-equiv')) &&
+      /url\s*=\s*['"]?(https?:)?\/\//i.test(el.getAttribute('content') ?? '')
+    )
+      fail(page, `meta refresh to another address: ${el.getAttribute('content')}`)
 
   // Links
   for (const a of doc.querySelectorAll('a[href]')) {
@@ -140,6 +169,20 @@ for (const [page, doc] of docs) {
     .map((s) => JSON.parse(s.text))
   const want = page === base ? 'SoftwareApplication' : 'BreadcrumbList'
   if (!ld.some((x) => x['@type'] === want)) fail(page, `no ${want} structured data`)
+  const app = ld.find((x) => x['@type'] === 'SoftwareApplication')
+  if (app) {
+    if (app.offers?.price !== '0')
+      fail(page, `offers.price is ${JSON.stringify(app.offers?.price)}, not "0"`)
+    if (!app.license) fail(page, 'SoftwareApplication has no license')
+    if (!app.downloadUrl) fail(page, 'SoftwareApplication has no downloadUrl')
+    else {
+      const u = new URL(app.downloadUrl)
+      if (u.origin !== own || !u.pathname.startsWith(base) || !exists(u.pathname))
+        fail(page, `downloadUrl does not resolve to a built page: ${app.downloadUrl}`)
+    }
+    if (!Array.isArray(app.operatingSystem) || app.operatingSystem.length < 3)
+      fail(page, 'SoftwareApplication.operatingSystem should list Windows, macOS and Linux')
+  }
   const bc = ld.find((x) => x['@type'] === 'BreadcrumbList')
   if (bc) {
     const visible = doc.querySelectorAll('nav[aria-label=Breadcrumb] li').map((l) => l.text.trim())

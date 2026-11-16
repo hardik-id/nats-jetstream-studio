@@ -23,4 +23,5 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 .lighthouseci
+public/media/cards/
 C:*

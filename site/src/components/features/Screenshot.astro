@@ -14,8 +14,11 @@ interface Props {
   hero?: boolean
   /** Link target instead of the full-size image; the image then has no alt (a titled link sits next to it). */
   href?: string
+  /** First card on a page: raise its fetch priority (it is the largest element above the fold). */
+  priority?: boolean
 }
-const { name, hero = false, href } = Astro.props
+const { name, hero = false, href, priority = false } = Astro.props
+const CARD_WIDTH = 640 // scripts/make-card-images.mjs
 const themes = ['dark', 'light'] as const
 const files = themes.map((t) => {
   const file = `${name}-${t}.webp`
@@ -38,13 +41,13 @@ const files = themes.map((t) => {
         tabindex={href ? -1 : undefined}
       >
         <img
-          src={url(`/media/${entry.file}`)}
+          src={url(href ? `/media/cards/${entry.file}` : `/media/${entry.file}`)}
           alt={href ? '' : entry.alt}
-          width={entry.width}
-          height={entry.height}
+          width={href ? CARD_WIDTH : entry.width}
+          height={href ? Math.round((CARD_WIDTH * entry.height) / entry.width) : entry.height}
           loading="lazy"
           decoding="async"
-          fetchpriority={hero ? 'high' : undefined}
+          fetchpriority={hero || priority ? 'high' : undefined}
         />
         {!href && <span class="sr-only"> (opens the full-size image in a new tab)</span>}
       </a>

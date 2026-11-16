@@ -52,6 +52,49 @@ test('PBI-030 streams list: columns, search, filters and hidden bucket streams',
   )
 })
 
+test('PBI-124 a dragged column width keeps header and rows aligned and survives a reload', async ({
+  page
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await openStudio(page)
+  await go(page, 'Streams')
+  const table = page.getByRole('table', { name: 'Streams' })
+  const header = table.getByRole('columnheader', { name: 'Name', exact: true })
+  // The first column holds the row checkbox; Name is the second.
+  const cell = table.getByRole('row').nth(1).getByRole('cell').nth(1)
+  await expect(cell).toBeVisible()
+  const width = async (l: typeof header): Promise<number> => (await l.boundingBox())!.width
+  const before = await width(header)
+
+  const handle = table.getByRole('separator', { name: 'Resize Name' })
+  await header.hover()
+  const box = (await handle.boundingBox())!
+  const y = box.y + box.height / 2
+  await page.mouse.move(box.x + box.width / 2, y)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 120, y, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(() => width(header)).toBeGreaterThan(before + 100)
+  const after = await width(header)
+  expect(Math.abs((await width(cell)) - after)).toBeLessThan(1.5)
+  expect((await cell.boundingBox())!.x).toBeCloseTo((await header.boundingBox())!.x, 0)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.screenshot({ path: testInfo.outputPath('resized-dark.png') })
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await page.screenshot({ path: testInfo.outputPath('resized-light.png') })
+
+  // Stored, so it is still there after a reload.
+  await page.waitForTimeout(500) // the write goes over the socket without a visible signal
+  await page.reload()
+  await go(page, 'Streams')
+  await expect.poll(() => width(header)).toBeCloseTo(after, 0)
+
+  // Double-click resets it.
+  await handle.dblclick()
+  await expect.poll(() => width(header)).toBeCloseTo(before, 0)
+})
+
 test('PBI-031/032/033/035 create, inspect, edit, export, purge and delete a stream', async ({
   page
 }) => {

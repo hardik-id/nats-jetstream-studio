@@ -83,6 +83,7 @@ the React compiler). Type-check: clean.
 | 121 | List pages: header, filter and summary cards | Done | Several health flags show as one badge and "+N" (PBI-123). |
 | 122 | Chart colours | Done | Series, grid and axis colours come from tokens. |
 | 123 | Redesign final pass | Done | Every screen was checked in dark and light at 1280 x 720 and 1440 x 900, and a keyboard-only walk-through was done. Not run: Windows desktop (the minimum content width of 1024 px is set with `useContentSize`, see `docs/handoff-windows.md`). |
+| 124 | Resizable table columns | Done | Drag, double-click reset and arrow keys on a handle in `DataTable`, so all tables get it; widths stored per table in settings. 15 UI tests (drag, clamp, reset, keyboard, sort not triggered, restore, corrupt value) and a Chromium e2e on the Streams table (drag widens the column, header and first row stay aligned, width survives a reload), checked in dark and light screenshots. Not run: touch input on a real device, Electron e2e of this feature. |
 
 ## PBI-100: what was and was not verified
 

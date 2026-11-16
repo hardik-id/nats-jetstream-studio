@@ -1,0 +1,39 @@
+---
+import { url } from '../../lib/url'
+---
+
+<section class="dw container" aria-labelledby="dw-title">
+  <h2 id="dw-title">Desktop or web</h2>
+  <div class="cols">
+    <div>
+      <h3>Desktop app</h3>
+      <p>Install it on Windows, macOS or Linux. Your connections and secrets stay on your machine.</p>
+      <p><a class="btn" href={url('/download/')}>Go to downloads</a></p>
+    </div>
+    <div>
+      <h3>In a browser</h3>
+      <p>Run the studio with Docker and open it from any browser, for a team or a shared server.</p>
+      <p><a class="btn" href={url('/docs/web-mode/')}>Read about web mode</a></p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dw {
+    padding-block: 2.5rem;
+    border-top: 1px solid var(--line);
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+  h3 {
+    font-size: 1.1rem;
+    margin: 0 0 0.4rem;
+  }
+  p {
+    color: var(--muted);
+  }
+</style>

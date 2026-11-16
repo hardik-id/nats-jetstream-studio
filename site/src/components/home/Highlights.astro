@@ -1,45 +1,43 @@
 ---
 import { url } from '../../lib/url'
+import { featurePages } from '../../lib/site-map'
 
-// Paths come from site-map.ts (featurePages).
-const items = [
-  {
-    path: '/features/message-browser/',
-    title: 'Message browser',
+// Titles and paths come from site-map.ts; only the sentence and icon live here.
+const copy: Record<string, { label?: string; text: string; icon: string }> = {
+  '/features/message-browser/': {
     text: 'Read stream messages without creating a consumer, then filter and export them.',
     icon: 'M4 5h16v4H4zM4 11h16v4H4zM4 17h10v2H4z'
   },
-  {
-    path: '/features/consumers/',
-    title: 'Consumer health',
+  '/features/consumers/': {
+    label: 'Consumer health',
     text: 'See lag, ack pending and redeliveries, with flags for consumers that need a look.',
     icon: 'M3 12h4l3-8 4 16 3-8h4'
   },
-  {
-    path: '/features/live-tail-and-publish/',
-    title: 'Live tail and publish',
+  '/features/live-tail-and-publish/': {
     text: 'Watch any subject as it happens, publish a message or send a request and read the reply.',
     icon: 'M5 4l14 8-14 8 3-8z'
   },
-  {
-    path: '/features/connections/',
-    title: 'Several connections',
-    text: 'Keep many servers and environments side by side, with every auth type.',
+  '/features/connections/': {
+    label: 'Several connections',
+    text: 'Keep many servers and environments side by side, with all the common auth types.',
     icon: 'M9 7V3m6 4V3M7 7h10v5a5 5 0 0 1-10 0zM12 17v4'
   },
-  {
-    path: '/features/kv-and-object-store/',
-    title: 'KV and Object Store',
+  '/features/kv-and-object-store/': {
     text: 'Browse and watch keys, upload and download objects.',
     icon: 'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'
   },
-  {
-    path: '/features/monitoring-and-alerts/',
-    title: 'Monitoring',
+  '/features/monitoring-and-alerts/': {
+    label: 'Monitoring',
     text: 'Charts, alert rules and a view of the cluster.',
     icon: 'M4 20V10m6 10V4m6 16v-7m4 7H3'
   }
-]
+}
+
+const items = Object.entries(copy).map(([path, c]) => {
+  const page = featurePages.find((p) => p.path === path)
+  if (!page) throw new Error(`Home highlight: no site-map page for ${path}`)
+  return { path, title: c.label ?? page.title, text: c.text, icon: c.icon }
+})
 ---
 
 <section class="highlights container" aria-labelledby="highlights-title">

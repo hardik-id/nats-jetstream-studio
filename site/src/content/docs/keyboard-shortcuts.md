@@ -33,6 +33,10 @@ These work in every table, such as the lists of streams, consumers and messages,
 | <kbd>PgUp</kbd> / <kbd>PgDn</kbd> | Move up or down by one page. |
 | <kbd>Home</kbd> / <kbd>End</kbd> | Go to the first or last row. |
 | <kbd>Enter</kbd> | Open the selected row. |
+| <kbd>←</kbd> / <kbd>→</kbd> | On the resize handle at the right edge of a column header: make the column 10 px narrower or wider (50 px with <kbd>Shift</kbd>). |
+| <kbd>Home</kbd> | On the resize handle: reset the column to its default width. |
+
+Columns can also be resized by dragging the handle; double-click it to reset the column. The widths are remembered for each table.
 
 ## Message browser
 

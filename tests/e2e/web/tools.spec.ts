@@ -288,9 +288,9 @@ test('PBI-092 audit log records changes and exports CSV', async ({ page }) => {
   await expect(table.getByRole('row').nth(1)).toContainText('done')
   await expect(table.getByRole('row').nth(2)).toContainText('stream.create')
   await expect(table.getByRole('row').nth(2)).toContainText('Local dev')
-  await page.getByLabel('Result').selectOption('error')
+  await page.getByRole('combobox', { name: 'Result' }).selectOption('error')
   await expect(page.getByText(/Nothing recorded yet/)).toBeVisible()
-  await page.getByLabel('Result').selectOption('')
+  await page.getByRole('combobox', { name: 'Result' }).selectOption('')
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export CSV' }).click()

@@ -299,7 +299,7 @@ test('PBI-061 subject tree: hierarchy, counts, search and actions', async ({ pag
   // Subjects seen only in a live tail show up marked live.
   const live = unique('livesubj').toLowerCase()
   await go(page, 'Live tail')
-  await page.getByLabel('Subject', { exact: true }).fill(`${live}.>`)
+  await page.getByRole('textbox', { name: 'Subject', exact: true }).fill(`${live}.>`)
   await page.getByRole('button', { name: 'Start' }).click()
   await expect(page.getByText(`Waiting for messages on ${live}.>`)).toBeVisible()
   nc.publish(`${live}.ping`, 'x')

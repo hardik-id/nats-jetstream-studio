@@ -863,6 +863,18 @@ Each item below is small enough for one agent in one session. Rules for every it
 - Keyboard-only walk-through: focus is visible everywhere and nothing is reachable only by mouse.
 - Full screenshot set retaken and attached to the PR; `docs/status.md` marks PBI-110 to PBI-123 done.
 
+### PBI-124: Resizable table columns
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-113 · **Files:** `src/renderer/src/components/DataTable.tsx`, tests
+
+**Story:** As a user, I want to change the width of a table column, so that I can read long names and subjects without truncation and hide what I do not need.
+
+**Acceptance criteria**
+- Every column header has a thin drag handle on its right edge, visible on header hover and on keyboard focus (pointer events with pointer capture; mouse and touch; `touch-action: none`; col-resize cursor). Dragging sets the width in px; it never drops below the header's floor and never exceeds 1200 px. Header and rows keep sharing one grid template, and text is not selected while dragging.
+- A column with a user width has a fixed px track; the others keep their default. When the columns exceed the viewport the table scrolls sideways.
+- Double-click on the handle resets that column. The handle is focusable (`role="separator"`, `aria-orientation`, `aria-label`, `aria-valuenow/min/max`); the arrow keys resize by 10 px (Shift: 50 px), Home resets. The handle does not sort, select a row or scroll.
+- Widths are stored per table (key `table.widths:<ariaLabel>` or the optional `storageKey` prop) in the app settings, so they survive restarts in the desktop app and in web mode. They are written only when a drag ends and never from the unloaded fallback; stored values are validated (unknown columns ignored, clamped to floor and maximum).
+- Sticky header, virtualization, ellipsis, right alignment, `stickToBottom` and keyboard row navigation keep working.
+
 ## Epic 12: Website
 
 A public website on GitHub Pages, so that people can see what the studio does, download it and read

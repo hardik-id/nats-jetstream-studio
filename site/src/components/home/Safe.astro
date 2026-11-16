@@ -1,0 +1,53 @@
+---
+import { url } from '../../lib/url'
+---
+
+<section class="safe container" aria-labelledby="safe-title">
+  <h2 id="safe-title">Safe on production</h2>
+  <p class="lede">Look around a live system without changing it.</p>
+  <ul>
+    <li>
+      <h3>Read-only mode</h3>
+      <p>Turn it on for a connection and the studio refuses every change to it.</p>
+    </li>
+    <li>
+      <h3>Audit log</h3>
+      <p>Every change you make is recorded, so you can see what was done and when.</p>
+    </li>
+    <li>
+      <h3>No consumer needed</h3>
+      <p>Browse messages straight from the stream. Nothing is acknowledged and no consumer is created.</p>
+    </li>
+  </ul>
+  <p><a href={url('/docs/connections/')}>How read-only mode works</a></p>
+</section>
+
+<style>
+  .safe {
+    padding-block: 2.5rem;
+    border-top: 1px solid var(--line);
+  }
+  .lede {
+    margin-bottom: 1rem;
+  }
+  ul {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+  }
+  li {
+    border-left: 3px solid var(--ok);
+    padding-left: 1rem;
+  }
+  h3 {
+    font-size: 1.1rem;
+    margin: 0 0 0.3rem;
+  }
+  li p {
+    margin: 0;
+    color: var(--muted);
+  }
+</style>

@@ -32,6 +32,7 @@ const description = Astro.props.description ?? page?.description ?? ''
     {description && <meta name="description" content={description} />}
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={absoluteUrl(current)} />}
     <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
+    <slot name="head" />
     <script is:inline>
       // Runs before first paint: follow the system setting unless the visitor has chosen.
       ;(function () {

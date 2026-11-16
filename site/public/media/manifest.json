@@ -1,0 +1,219 @@
+{
+  "files": [
+    {
+      "file": "docs-connection-form-dark.webp",
+      "kind": "screenshot",
+      "group": "docs",
+      "name": "connection-form",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "The add connection form with server address, authentication type and environment label"
+    },
+    {
+      "file": "docs-connection-form-light.webp",
+      "kind": "screenshot",
+      "group": "docs",
+      "name": "connection-form",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "The add connection form with server address, authentication type and environment label"
+    },
+    {
+      "file": "docs-first-stream-dark.webp",
+      "kind": "screenshot",
+      "group": "docs",
+      "name": "first-stream",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "The ORDERS stream open with its configuration and state"
+    },
+    {
+      "file": "docs-first-stream-light.webp",
+      "kind": "screenshot",
+      "group": "docs",
+      "name": "first-stream",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "The ORDERS stream open with its configuration and state"
+    },
+    {
+      "file": "features-connections-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "connections",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Sidebar with three connections, each with its own environment label and colour, and the overview of the selected server"
+    },
+    {
+      "file": "features-connections-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "connections",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Sidebar with three connections, each with its own environment label and colour, and the overview of the selected server"
+    },
+    {
+      "file": "features-consumers-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "consumers",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Consumers of the ORDERS stream with lag, ack pending, redeliveries and health flags"
+    },
+    {
+      "file": "features-consumers-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "consumers",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Consumers of the ORDERS stream with lag, ack pending, redeliveries and health flags"
+    },
+    {
+      "file": "features-kv-and-object-store-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "kv-and-object-store",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Keys of the app-config key-value bucket with their values and revisions"
+    },
+    {
+      "file": "features-kv-and-object-store-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "kv-and-object-store",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Keys of the app-config key-value bucket with their values and revisions"
+    },
+    {
+      "file": "features-live-tail-and-publish-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "live-tail-and-publish",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Live tail of orders.> showing messages as they arrive, with received and rate counters"
+    },
+    {
+      "file": "features-live-tail-and-publish-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "live-tail-and-publish",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Live tail of orders.> showing messages as they arrive, with received and rate counters"
+    },
+    {
+      "file": "features-message-browser-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "message-browser",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Messages of the ORDERS stream with the detail panel showing headers and a JSON payload"
+    },
+    {
+      "file": "features-message-browser-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "message-browser",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Messages of the ORDERS stream with the detail panel showing headers and a JSON payload"
+    },
+    {
+      "file": "features-monitoring-and-alerts-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "monitoring-and-alerts",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Stream overview with live charts of messages per second, messages stored and bytes stored"
+    },
+    {
+      "file": "features-monitoring-and-alerts-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "monitoring-and-alerts",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Stream overview with live charts of messages per second, messages stored and bytes stored"
+    },
+    {
+      "file": "features-productivity-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "productivity",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Command palette searching streams, consumers and buckets for \"orders\""
+    },
+    {
+      "file": "features-productivity-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "productivity",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Command palette searching streams, consumers and buckets for \"orders\""
+    },
+    {
+      "file": "features-streams-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "streams",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "List of JetStream streams with message counts, sizes, storage type and retention"
+    },
+    {
+      "file": "features-streams-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "streams",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "List of JetStream streams with message counts, sizes, storage type and retention"
+    },
+    {
+      "file": "home-still.webp",
+      "kind": "still",
+      "width": 1100,
+      "height": 660,
+      "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers"
+    },
+    {
+      "file": "home.mp4",
+      "kind": "video",
+      "width": 1100,
+      "height": 660,
+      "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers",
+      "poster": "home-still.webp"
+    }
+  ]
+}

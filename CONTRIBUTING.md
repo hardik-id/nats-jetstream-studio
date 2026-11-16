@@ -31,9 +31,16 @@ command downloads the official `nats-server` binary into `.tools/` if it is not 
 | `npm run lint`, `npm run typecheck`, `npm run format` | Code quality                                                     |
 | `npm test`                                            | Unit tests, gateway tests against a real `nats-server`, UI tests |
 | `npm run test:e2e`                                    | End-to-end tests: the UI in Chromium and the desktop app         |
+| `npm run site:media`                                  | Retake the website and README screenshots and recording          |
 
 Tests need a real `nats-server`: `node scripts/nats-binary.mjs` downloads it into `.tools/`.
 Run one test project with `npx vitest run --project core <file>`.
+
+`npm run site:media` needs `npm run build:web` first (it stops with a message if `dist/` is
+missing). It starts its own `nats-server` and web mode on free ports, then writes WebP screenshots
+(dark and light), `manifest.json` and the home recording to `site/public/media/`, and refreshes
+`docs/images/demo.gif` and `docs/images/social-preview.png`. The recording needs ffmpeg
+(`FFMPEG=/path/to/ffmpeg` or on `PATH`); without it the screenshots are still made.
 
 ## Rules of the codebase
 

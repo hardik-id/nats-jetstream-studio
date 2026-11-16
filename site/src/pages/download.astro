@@ -74,7 +74,7 @@ const fallback = latest?.url ?? releasesPageUrl
     </div>
 
     <p class="updates">
-      There is no automatic update yet. Download new versions from this page. Older versions are on the{' '}
+      Automatic updates need a signed app on macOS, so until signing is set up, download new versions by hand from this page. Older versions are on the{' '}
       <a href={releasesPageUrl}>releases page</a>, and the <a href={url('/changelog/')}>changelog</a> lists what changed.
     </p>
 
@@ -100,7 +100,7 @@ const fallback = latest?.url ?? releasesPageUrl
     var ua = navigator.userAgent || ''
     var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
     var s = ua + ' ' + p
-    var os = /Android|iPhone|iPad/.test(s) ? '' : /Win/i.test(s) ? 'windows' : /Mac/i.test(s) ? 'mac' : /Linux|X11/i.test(s) ? 'linux' : ''
+    var os = /Android|iPhone|iPad/.test(s) ? '' : /Macintosh|MacIntel|Mac OS|macOS/i.test(s) ? 'mac' : /Windows|Win32|Win64/i.test(s) ? 'windows' : /Linux|X11/i.test(s) ? 'linux' : ''
     if (!os) return
     var card = document.querySelector('.card[data-os="' + os + '"]')
     if (!card) return

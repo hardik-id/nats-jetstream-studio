@@ -29,16 +29,31 @@ export interface ReleasesResult {
   releases: Release[]
 }
 
-/** Markdown from this repo's releases, with any raw HTML escaped and only http(s)/mailto links kept. */
-function renderNotes(md: string): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const esc = (s: string) =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+/**
+ * Markdown from this repo's releases, treated as untrusted: raw HTML is escaped, images become
+ * their alt text, only http(s) and mailto links are kept, attribute values are fully escaped and
+ * headings are moved down two levels so they sit under the entry's h2.
+ */
+export function renderNotes(md: string): string {
   const renderer: RendererObject = {
     html: ({ text }) => esc(text),
+    heading({ tokens, depth }) {
+      const level = Math.min(depth + 2, 6)
+      return `<h${level}>${this.parser.parseInline(tokens)}</h${level}>\n`
+    },
     link({ href, title, tokens }) {
       const text = this.parser.parseInline(tokens)
-      if (!/^(https?:|mailto:)/i.test(href)) return text
+      if (!/^(https?:|mailto:)/i.test(href.trim())) return text
       const t = title ? ` title="${esc(title)}"` : ''
-      return `<a href="${esc(href)}"${t} rel="noopener">${text}</a>`
+      return `<a href="${esc(href.trim())}"${t} rel="noopener">${text}</a>`
     },
     image: ({ text }) => esc(text)
   }

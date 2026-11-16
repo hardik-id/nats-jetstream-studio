@@ -12,10 +12,12 @@ const { ok, releases } = await getReleases()
     <h1>Changelog</h1>
     <p class="lede">What changed in each version. <a href={url('/changelog/rss.xml')}>RSS feed</a></p>
     {
-      !ok || releases.length === 0 ? (
+      !ok ? (
         <p>
           The release list could not be loaded. See all versions on the <a href={releasesPageUrl}>releases page</a>.
         </p>
+      ) : releases.length === 0 ? (
+        <p>No releases yet. Check the <a href={releasesPageUrl}>releases page</a> later.</p>
       ) : (
         releases.map((r) => (
           <article class="entry" id={`v${r.version}`}>

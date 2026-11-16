@@ -1,7 +1,7 @@
 // Run with: node --test src/lib/releases.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { renderNotes } from './releases.ts'
+import { renderNotes, plainText } from './releases.ts'
 
 // An injected attribute would show up as an on* handler outside the quoted values of a tag.
 const hasInjectedAttr = (html: string) =>
@@ -22,6 +22,11 @@ test('javascript links, raw html and images are neutralised', () => {
   assert.ok(!/href="javascript/i.test(renderNotes('[a](javascript:alert(1))')))
   assert.ok(!renderNotes('<script>alert(1)</script>').includes('<script'))
   assert.ok(!renderNotes('![x](https://x/y.png)').includes('<img'))
+})
+
+test('entities in links are escaped once, and plain text has no Markdown', () => {
+  assert.match(renderNotes('[a](https://x.com/?a=1&b=2)'), /href="https:\/\/x\.com\/\?a=1&amp;b=2"/)
+  assert.equal(plainText('## Title\n\n**bold** and [a link](https://x.com) &amp; more'), 'Title bold and a link & more')
 })
 
 test('headings move below h2', () => {

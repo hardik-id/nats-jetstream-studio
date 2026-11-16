@@ -9,7 +9,8 @@ export async function GET(context: APIContext) {
     title: 'NATS JetStream Studio releases',
     description: 'New versions of NATS JetStream Studio.',
     site: context.site!,
-    customData: `<link>${absoluteUrl('/changelog/')}</link>`,
+    xmlns: { atom: 'http://www.w3.org/2005/Atom' },
+    customData: `<link>${absoluteUrl('/changelog/')}</link><atom:link href="${absoluteUrl('/changelog/rss.xml')}" rel="self" type="application/rss+xml"/>`,
     items: releases.map((r) => ({
       title: `Version ${r.version}`,
       pubDate: new Date(r.date),

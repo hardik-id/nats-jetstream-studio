@@ -37,6 +37,20 @@ const esc = (s: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+// marked hands link addresses and titles over already HTML-escaped; undo that before escaping once.
+const unesc = (s: string) =>
+  s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+
+/** Plain-text summary of release notes (no Markdown or HTML), for the RSS description. */
+export function plainText(md: string): string {
+  return unesc(renderNotes(md).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim()
+}
+
 /**
  * Markdown from this repo's releases, treated as untrusted: raw HTML is escaped, images become
  * their alt text, only http(s) and mailto links are kept, attribute values are fully escaped and
@@ -52,8 +66,8 @@ export function renderNotes(md: string): string {
     link({ href, title, tokens }) {
       const text = this.parser.parseInline(tokens)
       if (!/^(https?:|mailto:)/i.test(href.trim())) return text
-      const t = title ? ` title="${esc(title)}"` : ''
-      return `<a href="${esc(href.trim())}"${t} rel="noopener">${text}</a>`
+      const t = title ? ` title="${esc(unesc(title))}"` : ''
+      return `<a href="${esc(unesc(href.trim()))}"${t} rel="noopener">${text}</a>`
     },
     image: ({ text }) => esc(text)
   }
@@ -84,7 +98,7 @@ async function load(): Promise<ReleasesResult> {
           date: String(r.published_at ?? r.created_at),
           url: String(r.html_url),
           notesHtml: renderNotes(body),
-          notesText: body.replace(/\s+/g, ' ').trim(),
+          notesText: plainText(body),
           assets: (r.assets ?? [])
             .filter((a: any) => !/\.(ya?ml|blockmap)$/i.test(a.name))
             .map((a: any) => ({ name: String(a.name), size: Number(a.size), url: String(a.browser_download_url) }))

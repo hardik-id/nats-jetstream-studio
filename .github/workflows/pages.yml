@@ -51,6 +51,8 @@ jobs:
         working-directory: site
       - run: npm run check:built
         working-directory: site
+      - run: npm run check:built:negative
+        working-directory: site
       # Browser checks on the runner's Chrome: axe (WCAG A/AA, contrast) and a keyboard walk on
       # every page, light and dark, desktop and phone width.
       - run: npm run check:a11y

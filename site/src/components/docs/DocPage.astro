@@ -1,0 +1,174 @@
+---
+// One docs page: title, lede, "On this page", the body, and "Edit this page on GitHub".
+// The sidebar and Previous/Next come from DocsLayout.
+import type { MarkdownHeading } from 'astro'
+import DocsLayout from '../../layouts/DocsLayout.astro'
+import { findPage } from '../../lib/site-map'
+import { githubBlob } from './loader'
+
+interface Props {
+  path: string
+  /** Repository path of the source file, for the edit link. */
+  source: string
+  headings?: MarkdownHeading[]
+}
+
+const { path, source, headings = [] } = Astro.props
+const page = findPage(path)
+if (!page) throw new Error(`No site-map entry for ${path}`)
+const toc = headings.filter((h) => h.depth === 2)
+const editUrl = githubBlob(source).replace('/blob/', '/edit/')
+---
+
+<DocsLayout title={page.title} description={page.description}>
+  <h1>{page.title}</h1>
+  <p class="lede">{page.description}</p>
+  {
+    toc.length > 1 && (
+      <nav class="inline-toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ul>
+          {toc.map((h) => (
+            <li>
+              <a href={`#${h.slug}`}>{h.text}</a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
+  }
+  <div class="prose"><slot /></div>
+  <p class="edit"><a href={editUrl} rel="noopener">Edit this page on GitHub</a></p>
+  {
+    toc.length > 1 && (
+      <nav slot="toc" class="side-toc">
+        <strong>On this page</strong>
+        <ul>
+          {toc.map((h) => (
+            <li>
+              <a href={`#${h.slug}`}>{h.text}</a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
+  }
+</DocsLayout>
+
+<style is:global>
+  .prose h2 {
+    font-size: 1.5rem;
+    margin: 2.25rem 0 0.75rem;
+    scroll-margin-top: 1rem;
+  }
+  .prose h3 {
+    font-size: 1.15rem;
+    margin: 1.75rem 0 0.5rem;
+    scroll-margin-top: 1rem;
+  }
+  .prose p,
+  .prose ul,
+  .prose ol {
+    margin: 0 0 1rem;
+  }
+  .prose li {
+    margin-bottom: 0.35rem;
+  }
+  .prose pre {
+    overflow-x: auto;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 0 0 1rem;
+  }
+  .prose pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  .prose table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0 0 1.25rem;
+    max-width: 100%;
+  }
+  .prose th,
+  .prose td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
+  }
+  .prose th {
+    background: var(--panel);
+  }
+  .prose kbd {
+    font-family: var(--font-code);
+    font-size: 0.85em;
+    padding: 0.1em 0.4em;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--raised);
+    white-space: nowrap;
+  }
+  .prose figure.shot {
+    margin: 1.25rem 0 1.5rem;
+  }
+  .prose figure.shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  [data-theme='dark'] .shot-light,
+  [data-theme='light'] .shot-dark {
+    display: none !important;
+  }
+  .inline-toc,
+  .side-toc {
+    font-size: 0.9rem;
+  }
+  .inline-toc {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .inline-toc ul,
+  .side-toc ul {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+  }
+  .side-toc {
+    position: sticky;
+    top: 1rem;
+  }
+  .side-toc a {
+    display: block;
+    padding: 0.2rem 0;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .side-toc a:hover {
+    color: var(--fg);
+  }
+  .edit {
+    margin-top: 2.5rem;
+    font-size: 0.9rem;
+  }
+  @media (min-width: 64rem) {
+    .inline-toc {
+      display: none;
+    }
+  }
+  @media (max-width: 63.99rem) {
+    .side-toc {
+      display: none;
+    }
+  }
+</style>

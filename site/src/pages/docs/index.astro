@@ -1,8 +1,64 @@
 ---
 import DocsLayout from '../../layouts/DocsLayout.astro'
-import Stub from '../../components/Stub.astro'
+import { docs, docsPages } from '../../lib/site-map'
+import { url, repo } from '../../lib/url'
 ---
 
-<DocsLayout>
-  <Stub path="/docs/" />
+<DocsLayout title={docs.title} description={docs.description}>
+  <h1>{docs.title}</h1>
+  <p class="lede">{docs.description}</p>
+  <p>
+    New here? Start with <a href={url('/docs/getting-started/')}>Getting started</a>. It takes you
+    from install to reading your first message.
+  </p>
+  <ul class="cards">
+    {
+      docsPages.map((p) => (
+        <li>
+          <a href={url(p.path)}>
+            <strong>{p.title}</strong>
+            <span>{p.description}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+  <p class="edit">
+    <a href={`${repo}/edit/main/site/src/pages/docs/index.astro`} rel="noopener">Edit this page on GitHub</a>
+  </p>
 </DocsLayout>
+
+<style>
+  .cards {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  }
+  .cards a {
+    display: block;
+    height: 100%;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .cards a:hover {
+    background: var(--hover);
+  }
+  .cards strong {
+    display: block;
+  }
+  .cards span {
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .edit {
+    margin-top: 2.5rem;
+    font-size: 0.9rem;
+  }
+</style>

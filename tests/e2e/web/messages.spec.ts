@@ -324,3 +324,70 @@ test('PBI-046 delete is disabled on a stream that denies it', async ({ page }) =
   await expect(button).toHaveAttribute('title', /deny_delete/)
   await client.jsm.streams.delete(name)
 })
+
+test('PBI-049 the message panel shows which consumers have received the message', async ({
+  page
+}) => {
+  const name = unique('MCONS')
+  await client.jsm.streams.add({ name, subjects: [`${name}.>`] })
+  // A work-queue stream with no consumer keeps its messages: it only adds the retention note.
+  const queue = unique('MQUEUE')
+  await client.jsm.streams.add({
+    name: queue,
+    subjects: [`${queue}.>`],
+    retention: 'workqueue' as never
+  })
+  await client.js.publish(`${queue}.a`, 'waiting')
+  for (let i = 1; i <= 3; i++) await client.js.publish(`${name}.${i === 3 ? 'b' : 'a'}`, `m${i}`)
+  await client.jsm.consumers.add(name, {
+    durable_name: 'only-a',
+    ack_policy: 'explicit' as never,
+    filter_subject: `${name}.a`
+  })
+  await client.jsm.consumers.add(name, {
+    durable_name: 'only-b',
+    ack_policy: 'explicit' as never,
+    deliver_policy: 'by_start_sequence' as never,
+    opt_start_seq: 2,
+    filter_subject: `${name}.>`
+  })
+  const consumer = await client.js.consumers.get(name, 'only-a')
+  for await (const m of await consumer.fetch({ max_messages: 1, expires: 2000 })) m.ack()
+
+  await openStudio(page)
+  await openStream(page, name, 'Messages')
+  await rowOf(page, 1, name).click()
+  const section = page
+    .getByRole('complementary', { name: 'Message detail' })
+    .getByRole('region', { name: 'Consumers' })
+  const only = section.getByRole('listitem').filter({ hasText: 'only-a' })
+  await expect(only).toContainText('Done')
+  await expect(only.getByText('Done', { exact: true })).toHaveAttribute('title', /ack floor/)
+  await expect(section.getByRole('listitem').filter({ hasText: 'only-b' })).toContainText(
+    'Before the consumer started'
+  )
+  await expect(section.getByTestId('consumers-read-at')).toContainText('Read at')
+
+  // Message 2 is for only-a and not delivered yet; the Refresh button reads again.
+  await rowOf(page, 2, name).click()
+  await expect(only).toContainText('Not delivered yet')
+  await expect(section.getByRole('listitem').filter({ hasText: 'only-b' })).toContainText(
+    'Not delivered yet'
+  )
+  await rowOf(page, 3, name).click()
+  await expect(only).toContainText('Not for this consumer')
+  await section.getByRole('button', { name: 'Refresh consumers' }).click()
+
+  // The consumer name opens the consumer detail.
+  await only.getByRole('button', { name: 'only-a' }).click()
+  await expect(page.getByTestId('consumer-pending')).toBeVisible()
+
+  await openStream(page, queue, 'Messages')
+  await rowOf(page, 1, queue).click()
+  await expect(
+    page.getByRole('region', { name: 'Consumers' }).getByText('removed once its consumer')
+  ).toBeVisible()
+  await expect(page.getByText('This stream has no consumers')).toBeVisible()
+  await client.jsm.streams.delete(name)
+  await client.jsm.streams.delete(queue)
+})

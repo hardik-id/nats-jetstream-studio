@@ -26,6 +26,7 @@ import { formatBytes, formatCount, formatTime } from '@shared/format'
 import { validateSubject } from '@shared/subject'
 import { DataTable, type Column } from '../../components/DataTable'
 import { MessageDetail } from '../../components/MessageDetail'
+import { MessageConsumers } from './MessageConsumers'
 import {
   Button,
   Dialog,
@@ -1077,6 +1078,14 @@ export function MessageBrowser({
                 detail.truncated ? () => setFullBytes(Math.max(detail.size, 1)) : undefined
               }
               loadingFull={full.isFetching}
+              sections={
+                <MessageConsumers
+                  connId={connId}
+                  stream={stream}
+                  retention={info.config.retention}
+                  message={{ seq: detail.seq, subject: detail.subject, time: detail.time }}
+                />
+              }
               actions={
                 <>
                   <Button

@@ -64,6 +64,9 @@ jobs:
         working-directory: site
         env:
           CHROME_PATH: /usr/bin/google-chrome
+      - run: node scripts/lighthouse-summary.mjs
+        if: always()
+        working-directory: site
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3

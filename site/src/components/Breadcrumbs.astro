@@ -1,0 +1,65 @@
+---
+import { breadcrumbsFor, labelOf } from '../lib/site-map'
+import { url, absoluteUrl } from '../lib/url'
+
+const { current } = Astro.props as { current: string }
+const trail = breadcrumbsFor(current)
+const show = current !== '/' && trail.length > 1
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: trail.map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: labelOf(p),
+    item: absoluteUrl(p.path)
+  }))
+}
+---
+
+{
+  show && (
+    <>
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol class="container">
+          {trail.map((p, i) =>
+            i === trail.length - 1 ? (
+              <li>
+                <span aria-current="page">{labelOf(p)}</span>
+              </li>
+            ) : (
+              <li>
+                <a href={url(p.path)}>{labelOf(p)}</a>
+              </li>
+            )
+          )}
+        </ol>
+      </nav>
+      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    </>
+  )
+}
+
+<style>
+  .breadcrumbs {
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 0.875rem;
+  }
+  ol {
+    display: flex;
+    flex-wrap: wrap;
+    list-style: none;
+    margin: 0 auto;
+    padding-block: 0.6rem;
+  }
+  li + li::before {
+    content: '/';
+    color: var(--faint);
+    margin-inline: 0.5rem;
+  }
+  [aria-current='page'] {
+    color: var(--muted);
+  }
+</style>

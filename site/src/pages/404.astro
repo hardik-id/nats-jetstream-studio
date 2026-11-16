@@ -1,0 +1,24 @@
+---
+import Layout from '../layouts/Layout.astro'
+import { url } from '../lib/url'
+---
+
+<Layout title="Page not found" description="This page does not exist." noBreadcrumbs noindex>
+  <div class="container page">
+    <h1>Page not found</h1>
+    <p class="lede">The page you asked for does not exist or has moved.</p>
+    <p class="actions">
+      <a class="btn primary" href={url('/')}>Home</a>
+      <a class="btn" href={url('/features/')}>Features</a>
+      <a class="btn" href={url('/docs/')}>Docs</a>
+    </p>
+  </div>
+</Layout>
+
+<style>
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+</style>

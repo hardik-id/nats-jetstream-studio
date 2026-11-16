@@ -1,0 +1,73 @@
+---
+import { features, download, changelog, docs, docsPages, labelOf } from '../lib/site-map'
+import { url, repo } from '../lib/url'
+
+// PBI-133/135 replace this with the version of the latest release.
+const version: string | undefined = undefined
+---
+
+<footer class="site-footer">
+  <div class="container grid">
+    <div>
+      <h2>Product</h2>
+      <ul>
+        <li><a href={url(features.path)}>{features.title}</a></li>
+        <li><a href={url(download.path)}>{download.title}</a></li>
+        <li><a href={url(changelog.path)}>{changelog.title}</a></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Docs</h2>
+      <ul>
+        <li><a href={url(docs.path)}>{labelOf(docs)}</a></li>
+        {docsPages.map((p) => <li><a href={url(p.path)}>{p.title}</a></li>)}
+      </ul>
+    </div>
+    <div>
+      <h2>Project</h2>
+      <ul>
+        <li><a href={repo} rel="noopener">GitHub</a></li>
+        <li><a href={`${repo}/issues`} rel="noopener">Issues</a></li>
+        <li><a href={`${repo}/blob/main/CONTRIBUTING.md`} rel="noopener">Contributing</a></li>
+        <li><a href={`${repo}/blob/main/LICENSE`} rel="noopener">License</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container version">
+    NATS JetStream Studio{version ? ` ${version}` : ''}
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    padding-block: 2rem 1.5rem;
+    margin-top: 2rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 1.5rem;
+  }
+  h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li {
+    padding-block: 0.2rem;
+  }
+  .version {
+    margin-top: 1.5rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+</style>

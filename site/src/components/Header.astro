@@ -1,0 +1,142 @@
+---
+import { primaryNav, labelOf } from '../lib/site-map'
+import { url, repo } from '../lib/url'
+import ThemeToggle from './ThemeToggle.astro'
+
+const { current } = Astro.props as { current: string }
+const isCurrent = (path: string) => current === path || (path !== '/' && current.startsWith(path))
+---
+
+<header class="site-header">
+  <div class="container bar">
+    <a class="brand" href={url('/')}>
+      <img src={url('/favicon.svg')} alt="" width="28" height="28" />
+      <span>NATS JetStream Studio</span>
+    </a>
+    <button
+      class="menu-btn"
+      type="button"
+      aria-expanded="false"
+      aria-controls="site-nav"
+      data-menu-button
+    >
+      <span class="sr-only">Menu</span>
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+    </button>
+    <div class="nav-wrap" id="site-nav" data-nav>
+      <nav aria-label="Main">
+        <ul>
+          {
+            primaryNav.map((p) => (
+              <li>
+                <a href={url(p.path)} aria-current={isCurrent(p.path) ? 'true' : undefined}>
+                  {labelOf(p)}
+                </a>
+              </li>
+            ))
+          }
+          <li><a href={repo} rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+      <ThemeToggle />
+    </div>
+  </div>
+</header>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>('[data-menu-button]')
+  const nav = document.querySelector<HTMLElement>('[data-nav]')
+  btn?.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') !== 'true'
+    btn.setAttribute('aria-expanded', String(open))
+    nav?.toggleAttribute('data-open', open)
+  })
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && btn?.getAttribute('aria-expanded') === 'true') {
+      btn.setAttribute('aria-expanded', 'false')
+      nav?.removeAttribute('data-open')
+      btn.focus()
+    }
+  })
+</script>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    position: relative;
+    z-index: 10;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3.5rem;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--fg);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .nav-wrap {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  ul {
+    display: flex;
+    gap: 0.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  nav a {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  nav a:hover,
+  nav a[aria-current] {
+    color: var(--fg);
+    background: var(--hover);
+  }
+  .menu-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--fg);
+    border-radius: 6px;
+    padding: 0.4rem;
+    cursor: pointer;
+  }
+  @media (max-width: 720px) {
+    .menu-btn {
+      display: inline-flex;
+    }
+    .nav-wrap {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      align-items: stretch;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      padding: 0.5rem 1rem 1rem;
+    }
+    .nav-wrap[data-open] {
+      display: flex;
+    }
+    ul {
+      flex-direction: column;
+    }
+  }
+</style>

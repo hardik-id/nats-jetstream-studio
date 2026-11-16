@@ -35,6 +35,8 @@ jobs:
         working-directory: site
       - run: npm run build
         working-directory: site
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

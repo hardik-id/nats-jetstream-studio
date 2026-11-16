@@ -1,10 +1,16 @@
 ---
 import Layout from '../layouts/Layout.astro'
-import Stub from '../components/Stub.astro'
+import Hero from '../components/home/Hero.astro'
+import Highlights from '../components/home/Highlights.astro'
+import Safe from '../components/home/Safe.astro'
+import DesktopWeb from '../components/home/DesktopWeb.astro'
+import Closing from '../components/home/Closing.astro'
 ---
 
 <Layout>
-  <div class="container page">
-    <Stub path="/" />
-  </div>
+  <Hero />
+  <Highlights />
+  <Safe />
+  <DesktopWeb />
+  <Closing />
 </Layout>

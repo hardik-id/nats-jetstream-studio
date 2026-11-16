@@ -1,0 +1,35 @@
+---
+interface Props {
+  title: string
+  issue: string
+  issueLabel: string
+}
+const { title, issue, issueLabel } = Astro.props
+---
+
+<div class="first-run">
+  <h3>{title}</h3>
+  <slot />
+  <p class="issue">Code signing is tracked in <a href={issue}>{issueLabel}</a>.</p>
+</div>
+
+<style>
+  .first-run {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+  h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+  }
+  .first-run :global(p) {
+    margin: 0.3rem 0;
+  }
+  .issue {
+    color: var(--muted);
+  }
+</style>

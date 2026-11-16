@@ -11,6 +11,10 @@ on:
       - 'site/**'
       - 'docs/**'
       - '.github/workflows/pages.yml'
+  # The download and changelog pages read the releases at build time. A release event runs on the
+  # tag, so it only starts a normal run on main (see the `after-release` job).
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +23,7 @@ permissions:
 jobs:
   # Pull requests only build (and type-check) the site. Nothing is deployed from them.
   build:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     # A newer push to a pull request replaces its run; builds on main and manual runs never cancel.
     concurrency:
@@ -37,6 +42,8 @@ jobs:
         working-directory: site
       - run: npm run build
         working-directory: site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
@@ -44,8 +51,19 @@ jobs:
         with:
           path: site/dist
 
+  # A published release starts a run on main, so the new version shows up without a manual step.
+  after-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run pages.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.event_name != 'release'
     needs: build
     runs-on: ubuntu-latest
     # One deployment at a time; a waiting deployment is never cancelled by a pull request build.

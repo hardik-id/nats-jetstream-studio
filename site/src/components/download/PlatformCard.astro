@@ -1,0 +1,86 @@
+---
+import { formatSize, type ReleaseAsset } from '../../lib/releases'
+
+interface Props {
+  os: 'windows' | 'mac' | 'linux'
+  title: string
+  note: string
+  files: { label: string; asset?: ReleaseAsset }[]
+  fallbackUrl: string
+}
+const { os, title, note, files, fallbackUrl } = Astro.props
+---
+
+<section class="card" id={os === 'mac' ? 'macos' : os} data-os={os} aria-labelledby={`dl-${os}`}>
+  <h2 id={`dl-${os}`}>{title} <span class="here" hidden>Your system</span></h2>
+  <p class="note">{note}</p>
+  <ul>
+    {
+      files.map((f) => (
+        <li>
+          <a class="btn primary" href={f.asset?.url ?? fallbackUrl}>
+            {f.asset ? `Download ${f.label}` : `Get ${f.label} from the releases page`}
+          </a>
+          {f.asset && <span class="size">{formatSize(f.asset.size)}</span>}
+        </li>
+      ))
+    }
+  </ul>
+  <slot />
+</section>
+
+<style>
+  .card {
+    scroll-margin-top: 1rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  .note {
+    margin: 0;
+    color: var(--muted);
+  }
+  ul {
+    list-style: none;
+    margin: 0.5rem 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .size {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .here {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .here[hidden] {
+    display: none;
+  }
+  .card.is-current {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+</style>

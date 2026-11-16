@@ -50,6 +50,7 @@ the React compiler). Type-check: clean.
 | 046 | Delete a single message | Tested | |
 | 047 | Republish a message | Tested | |
 | 048 | Regex and JSONPath filters | Tested | JSONPath subset: fields, indexes, `*`, `..`, and one comparison. |
+| 049 | Which consumers have received a message | Planned | Added 2026-11-16. |
 | 050 | Consumers list | Tested | 1,000 consumers on one stream. |
 | 051 | Consumer detail and lag | Tested | |
 | 052 | Create, edit, delete a consumer | Tested | |

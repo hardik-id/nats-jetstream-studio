@@ -74,6 +74,11 @@ const LOGIN_PAGE = (error: string): string => `<!doctype html>
 export class Auth {
   private readonly sessions = new Map<string, Session>()
   private readonly pending = new Map<string, PendingLogin>()
+  /** Callbacks for open connections, by session id, and the timer that fires at expiry. */
+  private readonly watchers = new Map<
+    string,
+    { callbacks: Set<() => void>; timer: NodeJS.Timeout }
+  >()
   private discovery:
     | Promise<{
         authorization_endpoint: string
@@ -84,7 +89,10 @@ export class Auth {
     | undefined
   private jwks: ReturnType<typeof createRemoteJWKSet> | undefined
 
-  constructor(readonly config: AuthConfig) {}
+  constructor(
+    readonly config: AuthConfig,
+    private readonly sessionMs = SESSION_MS
+  ) {}
 
   get enabled(): boolean {
     return this.config.mode !== 'none'
@@ -104,10 +112,79 @@ export class Auth {
     return session.user
   }
 
+  /** The session id in a request's cookie (undefined without one, or with auth disabled). */
+  sessionIdFor(req: IncomingMessage): string | undefined {
+    if (this.config.mode === 'none') return undefined
+    return parseCookies(req.headers.cookie)[COOKIE]
+  }
+
+  /** True while the session exists and has not expired. */
+  sessionActive(sid: string): boolean {
+    const session = this.sessions.get(sid)
+    if (!session) return false
+    if (session.expires < Date.now()) {
+      this.endSession(sid)
+      return false
+    }
+    return true
+  }
+
+  /**
+   * Calls `onEnd` once when the session is logged out or expires, even if its connection is idle.
+   * Returns a function that stops watching (call it when the connection closes).
+   */
+  watchSession(sid: string, onEnd: () => void): () => void {
+    const session = this.sessions.get(sid)
+    if (!session) {
+      onEnd()
+      return () => {}
+    }
+    let entry = this.watchers.get(sid)
+    if (!entry) {
+      const timer = setTimeout(
+        () => this.endSession(sid),
+        Math.max(0, session.expires - Date.now()) + 1
+      )
+      timer.unref()
+      entry = { callbacks: new Set(), timer }
+      this.watchers.set(sid, entry)
+    }
+    entry.callbacks.add(onEnd)
+    return () => {
+      const current = this.watchers.get(sid)
+      if (!current) return
+      current.callbacks.delete(onEnd)
+      if (current.callbacks.size === 0) {
+        clearTimeout(current.timer)
+        this.watchers.delete(sid)
+      }
+    }
+  }
+
+  private endSession(sid: string): void {
+    this.sessions.delete(sid)
+    const entry = this.watchers.get(sid)
+    if (!entry) return
+    clearTimeout(entry.timer)
+    this.watchers.delete(sid)
+    for (const callback of entry.callbacks) callback()
+  }
+
+  /** Clears every timer (server shutdown). */
+  dispose(): void {
+    for (const entry of this.watchers.values()) clearTimeout(entry.timer)
+    this.watchers.clear()
+  }
+
   private startSession(res: ServerResponse, user: RequestUser, secure: boolean): void {
     const sid = b64url(randomBytes(32))
-    this.sessions.set(sid, { user, expires: Date.now() + SESSION_MS })
-    const flags = ['Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${SESSION_MS / 1000}`]
+    this.sessions.set(sid, { user, expires: Date.now() + this.sessionMs })
+    const flags = [
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Lax',
+      `Max-Age=${Math.floor(this.sessionMs / 1000)}`
+    ]
     if (secure) flags.push('Secure')
     res.setHeader('Set-Cookie', `${COOKIE}=${sid}; ${flags.join('; ')}`)
   }
@@ -128,7 +205,7 @@ export class Auth {
 
     if (url.pathname === '/auth/logout') {
       const sid = parseCookies(req.headers.cookie)[COOKIE]
-      if (sid) this.sessions.delete(sid)
+      if (sid) this.endSession(sid)
       res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
       this.redirect(res, '/')
       return true

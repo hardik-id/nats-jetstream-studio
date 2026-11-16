@@ -43,6 +43,8 @@ is switched to resolve to `127.0.0.1`); they get a 403. With `STUDIO_ALLOW_INSEC
 non-loopback address this check is off and there is no such protection, so only do that on a
 network you fully trust.
 
+Logging out, or a session expiring, also closes that session's open connections right away.
+
 The signed-in user is shown in the top bar and recorded with every change in the audit log.
 
 ## Settings

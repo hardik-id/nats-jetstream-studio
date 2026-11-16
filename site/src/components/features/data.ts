@@ -2,8 +2,8 @@
 // Screenshot names are file stems in site/public/media; alt text comes from manifest.json.
 
 export interface Shot {
+  /** File stem in site/public/media; size and alt text come from manifest.json. */
   name: string
-  alt: string
 }
 export interface Capability {
   title: string
@@ -26,20 +26,18 @@ export const featureContent = {
     problem:
       'Most teams run several NATS servers: dev, test, prod, and a few more. You need to reach all of them, tell them apart at a glance, and not break production by accident.',
     shot: {
-      name: 'features-connections',
-      alt: 'Sidebar with three connections, each with its own environment label and colour, and the overview of the selected server'
+      name: 'features-connections'
     },
     capabilities: [
       {
         title: 'Several servers at once',
-        text: 'Open at least five connections side by side. Each has its own tree in the sidebar, a colour and an environment label such as dev, test or prod. Every tab shows the label and colour of its connection. Connecting or disconnecting one does not touch the others.'
+        text: 'Open at least five connections side by side. Each has its own tree in the sidebar, a colour and an environment label such as dev, test or prod. Every tab shows the label and colour of its connection. Connecting or disconnecting one does not touch the others. Dropped connections reconnect on their own, and the status shows in the sidebar.'
       },
       {
         title: 'Every auth type',
         text: 'No auth, user and password, token, NKey seed, and credentials files (JWT and NKey). TLS works with a CA file, a client certificate and key, or a TLS-first handshake. You can also set the JetStream domain, API prefix and inbox prefix.',
         extra: {
-          name: 'docs-connection-form',
-          alt: 'The add connection form with server address, authentication type and environment label'
+          name: 'docs-connection-form'
         }
       },
       {
@@ -56,7 +54,7 @@ export const featureContent = {
       },
       {
         title: 'Secrets stay safe',
-        text: 'Passwords, tokens and NKey seeds are encrypted with your system keychain. Credentials files are used by path and not copied. If no keychain is available, the app warns you and can ask for the secret on each connect. Dropped connections reconnect on their own.'
+        text: 'In the desktop app, passwords, tokens and NKey seeds are encrypted with the operating system secure storage; in web mode, with a key file in the data directory. Credentials files are used by path and not copied. On the desktop, if no secure storage is available, the app warns you and can ask for the secret on each connect.'
       }
     ],
     docs: [
@@ -67,10 +65,9 @@ export const featureContent = {
   'message-browser': {
     card: 'Read stream messages without a consumer, then filter and export them.',
     problem:
-      'To see what is in a stream, the usual way is to create a consumer, which changes state and can hide messages from real consumers. The message browser reads messages directly, so nothing is acknowledged or removed.',
+      'To see what is in a stream, the usual way is to create a consumer, which adds state on the server and, on work-queue and interest streams, can be refused or change which messages the stream keeps. The message browser reads messages directly, so nothing is acknowledged or removed.',
     shot: {
-      name: 'features-message-browser',
-      alt: 'Messages of the ORDERS stream with the detail panel showing headers and a JSON payload'
+      name: 'features-message-browser'
     },
     capabilities: [
       {
@@ -105,8 +102,7 @@ export const featureContent = {
     problem:
       'Stream settings are easy to get wrong on the command line, and a list of thousands of streams is hard to read. The studio shows every stream in a fast table and lets you change one with a form.',
     shot: {
-      name: 'features-streams',
-      alt: 'List of JetStream streams with message counts, sizes, storage type and retention'
+      name: 'features-streams'
     },
     capabilities: [
       {
@@ -117,8 +113,7 @@ export const featureContent = {
         title: 'Stream detail',
         text: 'Tabs for Overview, Messages, Consumers, Subjects and Configuration. State shows sequences, byte size and deleted messages. The cluster view shows the leader and each replica, and mirrors and sources show their lag.',
         extra: {
-          name: 'docs-first-stream',
-          alt: 'The ORDERS stream open with its configuration and state'
+          name: 'docs-first-stream'
         }
       },
       {
@@ -145,8 +140,7 @@ export const featureContent = {
     problem:
       'A consumer that falls behind or keeps redelivering is easy to miss until it hurts. The studio puts lag, pending and redeliveries in one table and flags the ones that look unhealthy.',
     shot: {
-      name: 'features-consumers',
-      alt: 'Consumers of the ORDERS stream with lag, ack pending, redeliveries and health flags'
+      name: 'features-consumers'
     },
     capabilities: [
       {
@@ -177,8 +171,7 @@ export const featureContent = {
     problem:
       'When you are debugging, you need to watch traffic as it happens and send a test message right away, without writing a script or leaving the app.',
     shot: {
-      name: 'features-live-tail-and-publish',
-      alt: 'Live tail of orders.> showing messages as they arrive, with received and rate counters'
+      name: 'features-live-tail-and-publish'
     },
     capabilities: [
       {
@@ -209,8 +202,7 @@ export const featureContent = {
     problem:
       'KV and Object Store data lives in streams with odd names, and the CLI shows one key or object at a time. The studio gives them their own screens.',
     shot: {
-      name: 'features-kv-and-object-store',
-      alt: 'Keys of the app-config key-value bucket with their values and revisions'
+      name: 'features-kv-and-object-store'
     },
     capabilities: [
       {
@@ -245,8 +237,7 @@ export const featureContent = {
     problem:
       'You want to know a stream is growing or a consumer is stuck before users tell you. The studio charts the numbers while it is open and warns you when a rule trips.',
     shot: {
-      name: 'features-monitoring-and-alerts',
-      alt: 'Stream overview with live charts of messages per second, messages stored and bytes stored'
+      name: 'features-monitoring-and-alerts'
     },
     capabilities: [
       {
@@ -277,8 +268,7 @@ export const featureContent = {
     problem:
       'Daily work means jumping between many streams and servers. A few small tools make that quick, and keep a record of what you changed.',
     shot: {
-      name: 'features-productivity',
-      alt: 'Command palette searching streams, consumers and buckets for "orders"'
+      name: 'features-productivity'
     },
     capabilities: [
       {

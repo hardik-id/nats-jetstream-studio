@@ -6,14 +6,13 @@ interface Props {
   path: string
   title: string
   text: string
-  shot: { name: string; alt: string }
-  eager?: boolean
+  shot: { name: string }
 }
-const { path, title, text, shot, eager = false } = Astro.props
+const { path, title, text, shot } = Astro.props
 ---
 
 <article class="card">
-  <Screenshot name={shot.name} alt={shot.alt} eager={eager} />
+  <Screenshot name={shot.name} href={url(path)} />
   <h2><a href={url(path)}>{title}</a></h2>
   <p>{text}</p>
 </article>

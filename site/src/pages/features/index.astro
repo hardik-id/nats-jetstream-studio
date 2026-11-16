@@ -5,8 +5,9 @@ import { features, featurePages } from '../../lib/site-map'
 import { featureContent, type FeatureSlug } from '../../components/features/data'
 
 const cards = featurePages.map((p) => {
-  const slug = p.path.split('/').filter(Boolean)[1] as FeatureSlug
-  const f = featureContent[slug]
+  const slug = p.path.split('/').filter(Boolean)[1]
+  if (!(slug in featureContent)) throw new Error(`No feature content for ${p.path}`)
+  const f = featureContent[slug as FeatureSlug]
   return { path: p.path, title: p.title, text: f.card, shot: f.shot }
 })
 ---
@@ -18,7 +19,7 @@ const cards = featurePages.map((p) => {
       Everything NATS JetStream Studio can do, in eight areas. Each page shows the real app.
     </p>
     <div class="grid">
-      {cards.map((c, i) => <FeatureCard {...c} eager={i < 2} />)}
+      {cards.map((c) => <FeatureCard {...c} />)}
     </div>
   </div>
 </Layout>

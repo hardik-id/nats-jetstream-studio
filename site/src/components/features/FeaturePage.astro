@@ -6,7 +6,10 @@ import { url } from '../../lib/url'
 import { findPage } from '../../lib/site-map'
 import { featureContent, type FeatureContent, type FeatureSlug } from './data'
 
-const { slug } = Astro.props as { slug: FeatureSlug }
+interface Props {
+  slug: FeatureSlug
+}
+const { slug } = Astro.props
 const f: FeatureContent = featureContent[slug]
 const path = `/features/${slug}/`
 const page = findPage(path)
@@ -19,7 +22,7 @@ if (!page) throw new Error(`No site-map entry for ${path}`)
     <p class="lede">{f.problem}</p>
 
     <div class="hero">
-      <Screenshot name={f.shot.name} alt={f.shot.alt} eager />
+      <Screenshot name={f.shot.name} hero />
     </div>
 
     <div class="sections">
@@ -30,7 +33,7 @@ if (!page) throw new Error(`No site-map entry for ${path}`)
             <p>{c.text}</p>
             {c.extra && (
               <div class="extra">
-                <Screenshot name={c.extra.name} alt={c.extra.alt} />
+                <Screenshot name={c.extra.name} />
               </div>
             )}
           </section>

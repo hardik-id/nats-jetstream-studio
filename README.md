@@ -31,7 +31,8 @@ first time you open the app. See [docs/install.md](docs/install.md) for the step
 
 ## Try it with demo data
 
-If you have a checkout and no NATS server at hand:
+If you have a checkout and no NATS server at hand, run each command in its own terminal (the
+first two keep running):
 
 ```bash
 npm install

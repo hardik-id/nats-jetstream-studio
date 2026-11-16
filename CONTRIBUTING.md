@@ -10,7 +10,7 @@ npm install
 npm run dev              # desktop app with hot reload
 ```
 
-To work without a NATS server of your own:
+To work without a NATS server of your own, run these in two more terminals (both keep running):
 
 ```bash
 npm run nats             # local nats-server on 4222 (users app/app, viewer/viewer, sys/sys)

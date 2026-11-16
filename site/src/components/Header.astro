@@ -4,7 +4,9 @@ import { url, repo } from '../lib/url'
 import ThemeToggle from './ThemeToggle.astro'
 
 const { current } = Astro.props as { current: string }
-const isCurrent = (path: string) => current === path || (path !== '/' && current.startsWith(path))
+// 'page' for the exact page, 'true' for a section the current page is inside.
+const currentState = (path: string) =>
+  current === path ? 'page' : current.startsWith(path) ? 'true' : undefined
 ---
 
 <header class="site-header">
@@ -29,7 +31,7 @@ const isCurrent = (path: string) => current === path || (path !== '/' && current
           {
             primaryNav.map((p) => (
               <li>
-                <a href={url(p.path)} aria-current={isCurrent(p.path) ? 'true' : undefined}>
+                <a href={url(p.path)} aria-current={currentState(p.path)}>
                   {labelOf(p)}
                 </a>
               </li>
@@ -117,10 +119,20 @@ const isCurrent = (path: string) => current === path || (path !== '/' && current
     cursor: pointer;
   }
   @media (max-width: 720px) {
-    .menu-btn {
-      display: inline-flex;
+    /* Without JavaScript the links simply stack under the brand; the button only exists with it. */
+    .bar {
+      flex-wrap: wrap;
     }
     .nav-wrap {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      padding-bottom: 0.75rem;
+    }
+    :global(html[data-js]) .menu-btn {
+      display: inline-flex;
+    }
+    :global(html[data-js]) .nav-wrap {
       display: none;
       position: absolute;
       top: 100%;
@@ -132,7 +144,7 @@ const isCurrent = (path: string) => current === path || (path !== '/' && current
       border-bottom: 1px solid var(--line);
       padding: 0.5rem 1rem 1rem;
     }
-    .nav-wrap[data-open] {
+    :global(html[data-js]) .nav-wrap[data-open] {
       display: flex;
     }
     ul {

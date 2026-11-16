@@ -35,6 +35,7 @@ const description = Astro.props.description ?? page?.description ?? ''
     <script is:inline>
       // Runs before first paint: follow the system setting unless the visitor has chosen.
       ;(function () {
+        document.documentElement.dataset.js = ''
         var t
         try {
           t = localStorage.getItem('theme')

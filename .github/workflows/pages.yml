@@ -13,15 +13,17 @@ on:
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
-# One deployment at a time; a newer one waits rather than cancelling a deployment in progress.
-concurrency:
-  group: pages
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 jobs:
   # Pull requests only build (and type-check) the site. Nothing is deployed from them.
   build:
     runs-on: ubuntu-latest
+    # A newer push to a pull request replaces its run; builds on main and manual runs never cancel.
+    concurrency:
+      group: pages-build-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,6 +48,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    # One deployment at a time; a waiting deployment is never cancelled by a pull request build.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

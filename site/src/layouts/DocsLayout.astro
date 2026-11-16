@@ -15,9 +15,10 @@ const items = [docs, ...docsPages]
 
 <Layout title={Astro.props.title} description={Astro.props.description}>
   <div class="container docs">
-    <aside aria-label="Documentation">
+    <aside>
       <details open>
         <summary>Documentation</summary>
+        <nav aria-label="Documentation">
         <ul>
           {
             items.map((p) => (
@@ -29,6 +30,7 @@ const items = [docs, ...docsPages]
             ))
           }
         </ul>
+        </nav>
       </details>
     </aside>
     <article class="page">

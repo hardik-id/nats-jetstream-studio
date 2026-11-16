@@ -1,0 +1,95 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import PrevNext from '../PrevNext.astro'
+import Screenshot from './Screenshot.astro'
+import { url } from '../../lib/url'
+import { findPage } from '../../lib/site-map'
+import { featureContent, type FeatureContent, type FeatureSlug } from './data'
+
+const { slug } = Astro.props as { slug: FeatureSlug }
+const f: FeatureContent = featureContent[slug]
+const path = `/features/${slug}/`
+const page = findPage(path)
+if (!page) throw new Error(`No site-map entry for ${path}`)
+---
+
+<Layout>
+  <div class="container page">
+    <h1>{page.title}</h1>
+    <p class="lede">{f.problem}</p>
+
+    <div class="hero">
+      <Screenshot name={f.shot.name} alt={f.shot.alt} eager />
+    </div>
+
+    <div class="sections">
+      {
+        f.capabilities.map((c) => (
+          <section>
+            <h2>{c.title}</h2>
+            <p>{c.text}</p>
+            {c.extra && (
+              <div class="extra">
+                <Screenshot name={c.extra.name} alt={c.extra.alt} />
+              </div>
+            )}
+          </section>
+        ))
+      }
+    </div>
+
+    {
+      f.docs.length > 0 && (
+        <aside class="docs-links" aria-label="Related documentation">
+          <h2>Learn more</h2>
+          <ul>
+            {f.docs.map((d) => (
+              <li>
+                <a href={url(d.path)}>{d.label}</a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
+
+    <PrevNext current={path} />
+  </div>
+</Layout>
+
+<style>
+  .hero {
+    margin-bottom: 2.5rem;
+  }
+  .sections {
+    display: grid;
+    gap: 1.5rem 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  }
+  section h2 {
+    font-size: 1.15rem;
+    margin: 0 0 0.35rem;
+  }
+  section p {
+    margin: 0;
+    color: var(--muted);
+  }
+  .extra {
+    margin-top: 0.9rem;
+  }
+  .docs-links {
+    margin-top: 2.5rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+  .docs-links h2 {
+    font-size: 1rem;
+    margin: 0 0 0.4rem;
+  }
+  .docs-links ul {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+</style>

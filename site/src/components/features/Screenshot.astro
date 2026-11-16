@@ -1,0 +1,69 @@
+---
+// A screenshot in two themes. Both files are in the page; CSS shows the one that matches the theme
+// set on <html data-theme>. The hidden image is display:none, so a lazy image for the other theme is
+// never fetched. Each image is a plain link to the full file, so "open larger" works without JS.
+import { url } from '../../lib/url'
+
+interface Props {
+  /** File stem under public/media, for example "features-streams" (files end in -dark.webp / -light.webp). */
+  name: string
+  alt: string
+  width?: number
+  height?: number
+  /** Set on the first image of a page, which is above the fold. */
+  eager?: boolean
+}
+const { name, alt, width = 1440, height = 860, eager = false } = Astro.props
+const themes = ['dark', 'light'] as const
+---
+
+<figure class="shot">
+  {
+    themes.map((t) => (
+      <a
+        class={`shot-link ${t}`}
+        href={url(`/media/${name}-${t}.webp`)}
+        target="_blank"
+        rel="noopener"
+        title="Open the full-size image"
+      >
+        <img
+          src={url(`/media/${name}-${t}.webp`)}
+          alt={alt}
+          width={width}
+          height={height}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchpriority={eager ? 'high' : undefined}
+        />
+        <span class="sr-only"> (opens the full-size image)</span>
+      </a>
+    ))
+  }
+</figure>
+
+<style>
+  .shot {
+    margin: 0;
+  }
+  .shot-link {
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--panel);
+    line-height: 0;
+  }
+  .shot-link:hover {
+    border-color: var(--accent-text);
+  }
+  img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  :global([data-theme='dark']) .shot-link.light,
+  :global([data-theme='light']) .shot-link.dark {
+    display: none;
+  }
+</style>

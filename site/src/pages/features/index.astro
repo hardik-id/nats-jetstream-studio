@@ -1,12 +1,32 @@
 ---
 import Layout from '../../layouts/Layout.astro'
-import Stub from '../../components/Stub.astro'
-import PrevNext from '../../components/PrevNext.astro'
+import FeatureCard from '../../components/features/FeatureCard.astro'
+import { features, featurePages } from '../../lib/site-map'
+import { featureContent, type FeatureSlug } from '../../components/features/data'
+
+const cards = featurePages.map((p) => {
+  const slug = p.path.split('/').filter(Boolean)[1] as FeatureSlug
+  const f = featureContent[slug]
+  return { path: p.path, title: p.title, text: f.card, shot: f.shot }
+})
 ---
 
 <Layout>
   <div class="container page">
-    <Stub path="/features/" />
-    <PrevNext current="/features/" />
+    <h1>{features.title}</h1>
+    <p class="lede">
+      Everything NATS JetStream Studio can do, in eight areas. Each page shows the real app.
+    </p>
+    <div class="grid">
+      {cards.map((c, i) => <FeatureCard {...c} eager={i < 2} />)}
+    </div>
   </div>
 </Layout>
+
+<style>
+  .grid {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 21rem), 1fr));
+  }
+</style>

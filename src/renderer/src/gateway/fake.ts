@@ -23,7 +23,13 @@ import { subjectMatches } from '@shared/subject'
 
 export interface FakeStream {
   config: StreamConfigDto
-  messages: { seq: number; subject: string; payload: string; time: string }[]
+  messages: {
+    seq: number
+    subject: string
+    payload: string
+    time: string
+    headers?: [string, string][]
+  }[]
   consumers: ConsumerInfoDto[]
 }
 
@@ -217,7 +223,7 @@ export function createFakeGateway(
           subject: m.subject,
           time: m.time,
           size: m.payload.length,
-          headers: [],
+          headers: m.headers ?? [],
           payload: textToBase64(m.payload),
           truncated: false
         }))

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useQuery } from '@tanstack/react-query'
 import {
   Bookmark,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUp,
@@ -25,10 +26,11 @@ import { hasContentFilters } from '@shared/filters'
 import { formatBytes, formatCount, formatTime } from '@shared/format'
 import { validateSubject } from '@shared/subject'
 import { DataTable, type Column } from '../../components/DataTable'
-import { MessageDetail } from '../../components/MessageDetail'
+import { DetailRail, MessageDetail } from '../../components/MessageDetail'
 import { MessageConsumers } from './MessageConsumers'
 import {
   Button,
+  cx,
   Dialog,
   EmptyState,
   errorMessage,
@@ -71,6 +73,8 @@ import { requestRail } from '../../state/ui'
 import { draftFrom, FilterPanel } from './FilterPanel'
 import { DeleteMessageDialog, ExportAllDialog, RepublishDialog } from './MessageDialogs'
 
+const FILTER_PANEL_ID = 'message-filters-panel'
+
 type Walk = 'asc' | 'desc'
 type StartMode = 'latest' | 'first' | 'seq' | 'time'
 
@@ -108,17 +112,28 @@ function toLocalInput(date: Date): string {
 const DETAIL_MIN_WIDTH = 440
 const DETAIL_DEFAULT_WIDTH = 480
 const DETAIL_STEP = 24
+/** The width of a collapsed panel: a rail with the expand button. */
+const DETAIL_RAIL_WIDTH = 36
 
 /** The detail panel's frame: a separator on its left edge resizes it by pointer or arrow keys. */
 function ResizableDetail({
   width,
   onWidth,
   onCommit,
+  collapsed,
+  expanded,
+  onLeaveExpanded,
   children
 }: {
   width: number
   onWidth: (w: number) => void
   onCommit: (w: number) => void
+  /** A thin rail instead of the panel. The saved width is kept for when it opens again. */
+  collapsed?: boolean
+  /** Widened to the largest width. The saved width is not touched until the user drags. */
+  expanded?: boolean
+  /** Called when a drag or the keyboard takes over from the expanded width. */
+  onLeaveExpanded?: () => void
   children: ReactNode
 }): ReactNode {
   const frame = useRef<HTMLDivElement>(null)
@@ -130,12 +145,31 @@ function ResizableDetail({
   const clamp = (w: number): number =>
     Math.min(maxWidth(), Math.max(DETAIL_MIN_WIDTH, Math.round(w)))
   const current = Math.max(DETAIL_MIN_WIDTH, Math.round(width))
+  // What is on screen: the real width while expanded, which CSS decides (70% of the row).
+  const shown = (): number => (expanded ? frame.current?.offsetWidth || current : current)
   const drag = useRef<{ x: number; width: number; last: number } | null>(null)
+  if (collapsed) {
+    return (
+      <div
+        ref={frame}
+        className="relative shrink-0"
+        style={{ width: DETAIL_RAIL_WIDTH }}
+        data-testid="detail-frame"
+      >
+        {children}
+      </div>
+    )
+  }
   return (
     <div
       ref={frame}
       className="relative shrink-0"
-      style={{ width: current, maxWidth: '70%', minWidth: DETAIL_MIN_WIDTH }}
+      data-testid="detail-frame"
+      style={{
+        width: expanded ? '70%' : current,
+        maxWidth: '70%',
+        minWidth: DETAIL_MIN_WIDTH
+      }}
     >
       <div
         role="separator"
@@ -147,7 +181,9 @@ function ResizableDetail({
         className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId)
-          drag.current = { x: e.clientX, width: current, last: current }
+          const start = shown()
+          drag.current = { x: e.clientX, width: start, last: start }
+          if (expanded) onLeaveExpanded?.()
         }}
         onPointerMove={(e) => {
           const d = drag.current
@@ -165,8 +201,9 @@ function ResizableDetail({
             e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
           if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
           else if (e.key === 'End') onCommit(maxWidth())
-          else if (delta) onCommit(clamp(current + delta))
+          else if (delta) onCommit(clamp(shown() + delta))
           else return
+          if (expanded) onLeaveExpanded?.()
           e.preventDefault()
         }}
       />
@@ -203,7 +240,13 @@ export function MessageBrowser({
     scanLimit: 10_000
   })
   const [subjectDraft, setSubjectDraft] = useState(view.subject)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [storedOpen, setStoredOpen] = useSetting<boolean>(
+    `messages.filtersOpen:${connId}:${info.config.name}`,
+    false
+  )
+  const panelOpen = storedOpen === true
+  const setPanelOpen = (open: boolean): void => void setStoredOpen(open)
+  const filtersButton = useRef<HTMLButtonElement>(null)
   const [startMode, setStartMode] = useState<StartMode>('latest')
   const [seqInput, setSeqInput] = useState('')
   const [timeInput, setTimeInput] = useState(() => toLocalInput(new Date()))
@@ -497,9 +540,11 @@ export function MessageBrowser({
   const select = (seq: number | null): void => {
     setSelected(seq)
     setFullBytes(undefined)
+    if (seq === null) setExpanded(false)
   }
 
   const chips = filterChips(view.subject, view.filters)
+  const contentCount = hasContentFilters(view.filters) ? chips.length - (view.subject ? 1 : 0) : 0
   const readOnly = conn?.readOnly
   const denyDelete = info.config.deny_delete
 
@@ -603,6 +648,9 @@ export function MessageBrowser({
   )
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const detailWidth = dragWidth ?? storedWidth
+  const [collapsed, setCollapsed] = useSetting<boolean>('messages.detailCollapsed', false)
+  // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
+  const [expanded, setExpanded] = useState(false)
   const setDetailWidth = setDragWidth
   const saveDetailWidth = (w: number): void => {
     void setStoredWidth(w)
@@ -756,12 +804,24 @@ export function MessageBrowser({
           </Button>
         </form>
         <Button
+          ref={filtersButton}
           icon={<Filter className="h-3.5 w-3.5" aria-hidden />}
           aria-expanded={panelOpen}
-          onClick={() => setPanelOpen((v) => !v)}
+          aria-controls={FILTER_PANEL_ID}
+          aria-label={contentCount > 0 ? `Filters, ${contentCount} active` : undefined}
+          className="aria-expanded:border-accent aria-expanded:bg-accent-soft aria-expanded:text-accent"
+          onClick={() => setPanelOpen(!panelOpen)}
         >
           Filters
-          {hasContentFilters(view.filters) ? ` (${chips.length - (view.subject ? 1 : 0)})` : ''}
+          {contentCount > 0 && (
+            <span className="rounded-full bg-accent px-1.5 text-[11px] leading-4 text-accent-fg">
+              {contentCount}
+            </span>
+          )}
+          <ChevronDown
+            className={cx('h-3.5 w-3.5 transition-transform', panelOpen && 'rotate-180')}
+            aria-hidden
+          />
         </Button>
         <Menu
           items={savedItems}
@@ -838,9 +898,13 @@ export function MessageBrowser({
 
       {panelOpen && (
         <FilterPanel
+          id={FILTER_PANEL_ID}
           key={JSON.stringify(view.filters) + view.scanLimit}
           initial={draftFrom(view.filters, view.scanLimit)}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => {
+            setPanelOpen(false)
+            filtersButton.current?.focus()
+          }}
           onApply={(filters, scanLimit) => apply({ filters, scanLimit })}
         />
       )}
@@ -1051,77 +1115,101 @@ export function MessageBrowser({
               rowKey={(m) => m.seq}
               selectedKey={selected}
               onSelect={(m) => select(m.seq)}
-              onOpen={(m) => select(m.seq)}
+              onOpen={(m) => {
+                select(m.seq)
+                // Enter or double-click asks to read it, so a collapsed rail opens again.
+                if (collapsed === true) void setCollapsed(false)
+              }}
               empty={busy ? 'Loading...' : ''}
             />
           )}
         </div>
         {detail && (
-          <ResizableDetail width={detailWidth} onWidth={setDetailWidth} onCommit={saveDetailWidth}>
-            <MessageDetail
-              message={detail}
-              decoders={decoders}
-              onClose={() => {
-                select(null)
-                // The panel (and the focus in it) goes away; keep the keyboard in the table.
-                tableBox.current?.querySelector<HTMLElement>('[role=table]')?.focus()
-              }}
-              onPrevious={
-                selectedIndex > 0 ? () => select(messages[selectedIndex - 1].seq) : undefined
-              }
-              onNext={
-                selectedIndex < messages.length - 1
-                  ? () => select(messages[selectedIndex + 1].seq)
-                  : undefined
-              }
-              onLoadFull={
-                detail.truncated ? () => setFullBytes(Math.max(detail.size, 1)) : undefined
-              }
-              loadingFull={full.isFetching}
-              sections={
-                <MessageConsumers
-                  connId={connId}
-                  stream={stream}
-                  retention={info.config.retention}
-                  message={{ seq: detail.seq, subject: detail.subject, time: detail.time }}
-                />
-              }
-              actions={
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    title='Copy as a "nats pub" command'
-                    aria-label='Copy as a "nats pub" command'
-                    icon={<Terminal className="h-4 w-4" aria-hidden />}
-                    onClick={() => void copyNatsPub()}
+          <ResizableDetail
+            width={detailWidth}
+            onWidth={setDetailWidth}
+            onCommit={saveDetailWidth}
+            collapsed={collapsed === true}
+            expanded={expanded}
+            onLeaveExpanded={() => setExpanded(false)}
+          >
+            {collapsed === true ? (
+              <DetailRail
+                label={`Message #${detail.seq}`}
+                onExpand={() => void setCollapsed(false)}
+              />
+            ) : (
+              <MessageDetail
+                message={detail}
+                expanded={expanded}
+                onToggleExpanded={() => setExpanded((v) => !v)}
+                onCollapse={() => {
+                  setExpanded(false)
+                  void setCollapsed(true)
+                }}
+                decoders={decoders}
+                onClose={() => {
+                  select(null)
+                  // The panel (and the focus in it) goes away; keep the keyboard in the table.
+                  tableBox.current?.querySelector<HTMLElement>('[role=table]')?.focus()
+                }}
+                onPrevious={
+                  selectedIndex > 0 ? () => select(messages[selectedIndex - 1].seq) : undefined
+                }
+                onNext={
+                  selectedIndex < messages.length - 1
+                    ? () => select(messages[selectedIndex + 1].seq)
+                    : undefined
+                }
+                onLoadFull={
+                  detail.truncated ? () => setFullBytes(Math.max(detail.size, 1)) : undefined
+                }
+                loadingFull={full.isFetching}
+                sections={
+                  <MessageConsumers
+                    connId={connId}
+                    stream={stream}
+                    retention={info.config.retention}
+                    message={{ seq: detail.seq, subject: detail.subject, time: detail.time }}
                   />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Republish message"
-                    icon={<Repeat className="h-4 w-4" aria-hidden />}
-                    {...(readOnly ? readOnlyProps(true) : { title: 'Republish message' })}
-                    onClick={() => setDialog('republishOne')}
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Delete message"
-                    icon={<Trash2 className="h-4 w-4" aria-hidden />}
-                    {...(denyDelete
-                      ? {
-                          disabled: true,
-                          title: 'This stream does not allow deleting messages (deny_delete)'
-                        }
-                      : readOnly
-                        ? readOnlyProps(true)
-                        : { title: 'Delete message' })}
-                    onClick={() => setDialog('delete')}
-                  />
-                </>
-              }
-            />
+                }
+                actions={
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title='Copy as a "nats pub" command'
+                      aria-label='Copy as a "nats pub" command'
+                      icon={<Terminal className="h-4 w-4" aria-hidden />}
+                      onClick={() => void copyNatsPub()}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Republish message"
+                      icon={<Repeat className="h-4 w-4" aria-hidden />}
+                      {...(readOnly ? readOnlyProps(true) : { title: 'Republish message' })}
+                      onClick={() => setDialog('republishOne')}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Delete message"
+                      icon={<Trash2 className="h-4 w-4" aria-hidden />}
+                      {...(denyDelete
+                        ? {
+                            disabled: true,
+                            title: 'This stream does not allow deleting messages (deny_delete)'
+                          }
+                        : readOnly
+                          ? readOnlyProps(true)
+                          : { title: 'Delete message' })}
+                      onClick={() => setDialog('delete')}
+                    />
+                  </>
+                }
+              />
+            )}
           </ResizableDetail>
         )}
       </div>

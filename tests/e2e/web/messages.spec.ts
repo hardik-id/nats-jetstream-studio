@@ -357,6 +357,11 @@ test('PBI-049 the message panel shows which consumers have received the message'
   await openStudio(page)
   await openStream(page, name, 'Messages')
   await rowOf(page, 1, name).click()
+  // The Consumers section starts closed (PBI-125); open it.
+  await page
+    .getByRole('complementary', { name: 'Message detail' })
+    .getByRole('button', { name: /^Consumers/ })
+    .click()
   const section = page
     .getByRole('complementary', { name: 'Message detail' })
     .getByRole('region', { name: 'Consumers' })
@@ -390,4 +395,173 @@ test('PBI-049 the message panel shows which consumers have received the message'
   await expect(page.getByText('This stream has no consumers')).toBeVisible()
   await client.jsm.streams.delete(name)
   await client.jsm.streams.delete(queue)
+})
+
+test('PBI-125 the Filters button shows its state and a count, and the state is remembered', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  const button = page.getByRole('button', { name: /^Filters/ })
+  // An earlier test may have left the panel open; it is remembered per stream.
+  if ((await button.getAttribute('aria-expanded')) === 'true') await button.click()
+  await expect(button).toHaveAttribute('aria-expanded', 'false')
+  await button.click()
+  const panel = page.getByRole('form', { name: 'Message filters' })
+  await expect(button).toHaveAttribute('aria-expanded', 'true')
+  await expect(button).toHaveAttribute('aria-controls', (await panel.getAttribute('id'))!)
+
+  // Apply, Clear and Hide stay in view, and the panel never grows past its maximum height.
+  await expect(panel.getByRole('button', { name: 'Apply filters' })).toBeInViewport()
+  await expect(panel.getByRole('button', { name: 'Hide' })).toBeInViewport()
+  expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(900 * 0.55 + 1)
+
+  await panel.getByLabel('Payload contains').fill('message 12')
+  await panel.getByRole('button', { name: 'Apply filters' }).click()
+  await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
+
+  // Closed with Escape: focus is back on the button and the chip is still there.
+  await panel.getByLabel('Payload contains').press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(button).toBeFocused()
+  await expect(page.getByLabel('Active filters')).toContainText('Payload contains "message 12"')
+
+  // Open or closed survives a reload (per stream).
+  await button.click()
+  await expect(panel).toBeVisible()
+  await page.reload()
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
+
+  // Put things back for the other tests.
+  await panel.getByRole('button', { name: 'Clear' }).click()
+  await panel.getByRole('button', { name: 'Hide' }).click()
+  await expect(panel).toBeHidden()
+})
+
+test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rail and widens to read', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const frame = page.getByTestId('detail-frame')
+  const headers = detail.getByRole('button', { name: /^Headers \(2\)/ })
+
+  // A section collapses to a summary, and the choice survives a reload.
+  await headers.click()
+  await expect(headers).toHaveAttribute('aria-expanded', 'false')
+  await expect(detail.getByText('Region, Trace-Id')).toBeVisible()
+  await expect(detail.getByRole('row', { name: /Trace-Id/ })).toBeHidden()
+  await page.reload()
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  await expect(headers).toHaveAttribute('aria-expanded', 'false')
+  await headers.click()
+  await expect(detail.getByRole('row', { name: /Trace-Id/ })).toBeVisible()
+
+  // Collapse to a rail: the selection stays, the table takes the width, and it is remembered.
+  const tableWidth = async (): Promise<number> => (await table(page).boundingBox())!.width
+  const before = await tableWidth()
+  const framed = (await frame.boundingBox())!.width
+  await detail.getByRole('button', { name: 'Collapse panel' }).click()
+  const rail = page.getByRole('complementary', { name: 'Message detail (collapsed)' })
+  await expect(rail).toContainText('Message #120')
+  expect(Math.round((await frame.boundingBox())!.width)).toBe(36)
+  expect(await tableWidth()).toBeGreaterThan(before + framed - 60)
+  await page.reload()
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  await expect(rail).toBeVisible()
+  await rail.getByRole('button', { name: 'Expand message panel' }).click()
+  await expect(detail).toBeVisible()
+  expect(Math.round((await frame.boundingBox())!.width)).toBe(Math.round(framed))
+
+  // Expand to read: the split is resized (the table shrinks), Escape restores the width.
+  const separator = page.getByRole('separator', { name: 'Resize message detail' })
+  const saved = await separator.getAttribute('aria-valuenow')
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  const wide = (await frame.boundingBox())!.width
+  const row = (await frame.locator('xpath=..').boundingBox())!.width
+  expect(wide).toBeGreaterThan(row * 0.68)
+  expect(wide).toBeLessThanOrEqual(row * 0.71)
+  expect(await tableWidth()).toBeLessThan(before)
+  await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+  await page.keyboard.press('Escape')
+  await expect(detail).toBeVisible()
+  expect(Math.round((await frame.boundingBox())!.width)).toBe(Math.round(framed))
+  await expect(separator).toHaveAttribute('aria-valuenow', saved!)
+  // The column resize handles of the table (PBI-124) are still there.
+  await expect(table(page).getByRole('separator').first()).toBeAttached()
+})
+
+test('PBI-125 the panel works in a 1000 px window', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 })
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await expect(detail).toBeVisible()
+  const fits = (): Promise<boolean> =>
+    page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+  expect(await fits()).toBe(true)
+  await detail.getByRole('button', { name: 'Collapse panel' }).click()
+  await expect(table(page)).toBeVisible()
+  expect(await fits()).toBe(true)
+  await page.getByRole('button', { name: 'Expand message panel' }).click()
+  await expect(detail).toBeVisible()
+  expect(await fits()).toBe(true)
+})
+
+test('PBI-125 readable JSON: text size, levels, search and copy path', async ({
+  page,
+  context
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const body = detail.getByTestId('payload-body')
+  const tree = body.locator('> div')
+  await expect(tree).toHaveCSS('font-size', '13px')
+
+  // Text size is remembered.
+  await detail.getByRole('button', { name: 'Larger text' }).click()
+  await expect(tree).toHaveCSS('font-size', '15px')
+  await page.reload()
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  await expect(tree).toHaveCSS('font-size', '15px')
+  await detail.getByRole('button', { name: 'Smaller text' }).click()
+  await expect(tree).toHaveCSS('font-size', '13px')
+
+  // Collapse all, then a search that opens what it needs.
+  await detail.getByRole('button', { name: 'Collapse all' }).click()
+  await expect(body).not.toContainText('"A-120"')
+  await body.focus()
+  await page.keyboard.press('Control+f')
+  const search = detail.getByRole('textbox', { name: 'Search in JSON' })
+  await expect(search).toBeFocused()
+  await search.fill('a-120')
+  await expect(detail.getByTestId('json-match-count')).toHaveText('1 of 1')
+  await expect(body).toContainText('"A-120"')
+  await expect(detail.locator('mark')).toHaveText('A-120')
+
+  // Copy the path and the value of that row.
+  await body.getByText('"A-120"').hover()
+  await detail.getByRole('button', { name: 'Copy path $.order.id' }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('$.order.id')
+  await detail.getByRole('button', { name: 'Copy value of $.order.id' }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('A-120')
+
+  // Escape clears the search and leaves the panel open.
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(detail).toBeVisible()
 })

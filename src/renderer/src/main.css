@@ -166,6 +166,23 @@ body {
 .json-literal {
   color: var(--json-literal);
 }
+/* Search hits keep the text colour of the token and add a fill and an underline, so the cue is
+   not colour alone. The current match also gets an outline and a marked row. */
+.json-hit {
+  background: color-mix(in srgb, var(--warn) 32%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.json-active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.json-active .json-hit {
+  outline: 1.5px solid var(--accent);
+}
 
 @keyframes studio-spin {
   to {

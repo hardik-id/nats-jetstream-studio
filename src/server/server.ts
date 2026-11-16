@@ -17,6 +17,8 @@ export interface ServerOptions {
   /** Folder with the built UI (index.html and assets). */
   webRoot: string
   auth: AuthConfig
+  /** Session length in milliseconds. Defaults to 12 hours; tests shorten it. */
+  sessionMs?: number
   /**
    * Only accept requests whose Host (and WebSocket Origin) is a loopback name or address. This is
    * what stops DNS rebinding when nobody signs in. Defaults to true for `auth.mode === 'none'` and
@@ -99,7 +101,7 @@ function sameOrigin(req: IncomingMessage, requireLoopback: boolean): boolean {
 
 /** Starts web mode (PBI-101): the same React UI, with the gateway reached over a WebSocket. */
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
-  const auth = new Auth(opts.auth)
+  const auth = new Auth(opts.auth, opts.sessionMs)
   // Without sign-in the browser's same-origin rule is the only barrier, and DNS rebinding defeats
   // it (Host and Origin both name the attacker's domain), so insist on loopback names.
   const requireLoopback = opts.auth.mode === 'none' && opts.requireLoopback !== false
@@ -211,7 +213,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       socket.destroy()
       return
     }
+    const sid = auth.sessionIdFor(req)
     wss.handleUpgrade(req, socket, head, (ws) => {
+      // An open socket must not outlive its session: close it on logout and on expiry.
+      const endSession = (): void => ws.close(4401, 'session ended')
+      const unwatch = sid ? auth.watchSession(sid, endSession) : () => {}
       const session = new RpcSession(
         service,
         (message) => {
@@ -220,6 +226,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         auth.enabled ? user : undefined
       )
       ws.on('message', (data) => {
+        if (sid && !auth.sessionActive(sid)) return endSession()
         let message: ClientMessage
         try {
           message = JSON.parse(String(data))
@@ -228,8 +235,14 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         }
         session.handle(message)
       })
-      ws.on('close', () => session.dispose())
-      ws.on('error', () => session.dispose())
+      ws.on('close', () => {
+        unwatch()
+        session.dispose()
+      })
+      ws.on('error', () => {
+        unwatch()
+        session.dispose()
+      })
     })
   })
 
@@ -245,6 +258,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     async close() {
       for (const client of wss.clients) client.terminate()
       wss.close()
+      auth.dispose()
       await new Promise<void>((r) => server.close(() => r()))
       await service.dispose()
     }

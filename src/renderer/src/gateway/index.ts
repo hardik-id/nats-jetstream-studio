@@ -46,9 +46,14 @@ function webSocketTransport(onStatus: (status: GatewayStatus) => void): RpcTrans
       }
       for (const handler of handlers) handler(message)
     }
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (socket !== ws) return
       socket = undefined
+      // The server ends the socket with 4401 when the session was logged out or expired.
+      if (event.code === 4401) {
+        onStatus('signed-out')
+        return
+      }
       if (everOpen) {
         // In-flight calls and open streams are gone with the socket, so the page must start over.
         onStatus('lost')

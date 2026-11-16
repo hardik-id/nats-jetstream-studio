@@ -80,6 +80,18 @@ class Rpc {
   close(): void {
     this.ws.close()
   }
+
+  /** Resolves with the close code and reason once the server (or client) closes the socket. */
+  closed(): Promise<{ code: number; reason: string }> {
+    if (this.ws.readyState === WebSocket.CLOSED) return Promise.resolve({ code: 0, reason: '' })
+    return new Promise((resolve) =>
+      this.ws.once('close', (code, reason) => resolve({ code, reason: String(reason) }))
+    )
+  }
+
+  get isOpen(): boolean {
+    return this.ws.readyState === WebSocket.OPEN
+  }
 }
 
 const cookieOf = (res: Response): string => (res.headers.get('set-cookie') ?? '').split(';')[0]
@@ -291,6 +303,78 @@ describe('PBI-101 token sign-in', () => {
     // Signing out ends the session.
     await fetch(server.url + '/auth/logout', { headers: { Cookie: cookie }, redirect: 'manual' })
     await expect(Rpc.open(server, { Cookie: cookie })).rejects.toThrow('HTTP 401')
+  })
+})
+
+describe('web mode ends open sockets with their session', () => {
+  const token = 'a-long-shared-token-for-tests'
+  const signIn = async (server: RunningServer): Promise<string> =>
+    cookieOf(
+      await fetch(server.url + '/auth/token', {
+        method: 'POST',
+        body: new URLSearchParams({ token }),
+        redirect: 'manual'
+      })
+    )
+  const logout = (server: RunningServer, cookie: string): Promise<Response> =>
+    fetch(server.url + '/auth/logout', { headers: { Cookie: cookie }, redirect: 'manual' })
+
+  it('closes every socket of a session on logout, and only those', async () => {
+    const server = await start({ mode: 'token', token })
+    try {
+      const cookie = await signIn(server)
+      const other = await signIn(server)
+      const a = await Rpc.open(server, { Cookie: cookie })
+      const b = await Rpc.open(server, { Cookie: cookie })
+      const bystander = await Rpc.open(server, { Cookie: other })
+      expect(await a.call('appInfo')).toBeTruthy()
+
+      const closedA = a.closed()
+      const closedB = b.closed()
+      await logout(server, cookie)
+      expect(await closedA).toEqual({ code: 4401, reason: 'session ended' })
+      expect(await closedB).toEqual({ code: 4401, reason: 'session ended' })
+
+      // The ended socket answers nothing any more.
+      expect(a.isOpen).toBe(false)
+      const answer = await Promise.race([
+        a.call('listConnections'),
+        new Promise((r) => setTimeout(() => r('silent'), 300))
+      ])
+      expect(answer).toBe('silent')
+      expect(bystander.isOpen).toBe(true)
+      expect(await bystander.call('appInfo')).toMatchObject({ user: { name: 'token user' } })
+      bystander.close()
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('closes an idle socket when its session expires', async () => {
+    const server = await start({ mode: 'token', token }, { sessionMs: 600 })
+    try {
+      const cookie = await signIn(server)
+      const rpc = await Rpc.open(server, { Cookie: cookie })
+      expect(await rpc.call('appInfo')).toBeTruthy()
+      expect(await rpc.closed()).toEqual({ code: 4401, reason: 'session ended' })
+      await expect(Rpc.open(server, { Cookie: cookie })).rejects.toThrow('HTTP 401')
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('leaves sockets alone without sign-in', async () => {
+    const server = await start({ mode: 'none' }, { sessionMs: 50 })
+    try {
+      const rpc = await Rpc.open(server)
+      await logout(server, '')
+      await new Promise((r) => setTimeout(r, 200))
+      expect(rpc.isOpen).toBe(true)
+      expect(await rpc.call('appInfo')).toBeTruthy()
+      rpc.close()
+    } finally {
+      await server.close()
+    }
   })
 })
 

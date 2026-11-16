@@ -1,7 +1,8 @@
 # NATS JetStream Studio: notes for Claude sessions
 
-Desktop (Electron) and web studio for NATS and JetStream. Read `README.md` for the architecture and
-`docs/status.md` for what is implemented and how each backlog item was verified.
+Desktop (Electron) and web studio for NATS and JetStream. Read `docs/architecture.md` for the
+architecture, `CONTRIBUTING.md` for running and testing, and `docs/status.md` for what is
+implemented and how each backlog item was verified.
 
 ## Commands
 

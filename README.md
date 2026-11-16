@@ -1,124 +1,56 @@
 # NATS JetStream Studio
 
-A studio for NATS and JetStream. Connect to one or more NATS servers and browse streams,
-consumers, subjects and messages, filter them, and manage them from one place. It runs as a desktop
-app (Electron) and, with the same UI, as a web app served by a small Node server.
+Connect to your NATS servers and browse streams, consumers, subjects and messages from one place.
+Runs as a desktop app and, with the same UI, as a web app.
 
-## What it does
+![A tour of the studio: overview, streams, messages and consumers](docs/images/demo.gif)
 
-- **Connections**: several servers at once, colour and environment per connection, read-only mode
-  (on by default for production), automatic reconnect. Contexts from the `nats` CLI are found
-  automatically.
-- **Overview**: server details, JetStream usage against limits, unhealthy consumers, cluster
-  topology (with a system-account user).
-- **Streams**: list, search, create, edit, purge, delete, per-subject message counts, configuration
-  export and import.
-- **Messages**: page through any stream without creating a consumer or acknowledging anything.
-  Start from the latest, the first, a sequence or a time. Filter by subject, header, payload text,
-  regular expression or JSONPath. View payloads as JSON, text, hex, base64 or decoded Protobuf.
-  Export, delete and republish.
-- **Consumers**: lag, ack pending, redeliveries, health flags, create, edit, pause, resume, delete.
-- **Live**: tail any subject, publish, request/reply, message templates.
-- **KV and Object Store**: browse, edit, watch, upload, download.
-- **Monitoring**: charts for streams and consumers, alert rules with desktop notifications.
-- **Productivity**: command palette (Ctrl/Cmd+K), favourites, saved filters, audit log of every
-  change, keyboard navigation, tabs restored on restart.
+## What you can do
+
+- **Connect** to several servers at once, with a colour per environment, read-only mode and
+  automatic reconnect. Contexts from the `nats` CLI are found automatically.
+- **Browse messages** in any stream without creating a consumer or acknowledging anything. Filter
+  by subject, header, payload text, regex or JSONPath, and view payloads as JSON, text, hex, base64
+  or Protobuf.
+- **Manage streams and consumers**: create, edit, purge, delete, pause, and see lag and unhealthy
+  consumers at a glance.
+- **Tail and publish** on any subject, including request/reply.
+- **Work with KV and Object Store**: browse, edit, watch, upload, download.
+- **Monitor** streams and consumers with charts and alerts.
+- **Stay safe**: every change is written to an audit log, and read-only mode blocks writes.
 
 ## Install
 
 Download the installer for your system from the
-[latest release](https://github.com/hardik-id/nats-jetstream-studio/releases/latest):
+[latest release](https://github.com/hardik-id/nats-jetstream-studio/releases/latest): Windows
+(`.exe`), macOS (`.dmg`) or Linux (`.AppImage`, `.deb`).
 
-| System | File |
-| --- | --- |
-| Windows | `nats-jetstream-studio-<version>-setup.exe` |
-| macOS | `nats-jetstream-studio-<version>-universal.dmg` |
-| Linux | `.AppImage` (make it executable and run it) or `.deb` |
+The installers are **not code-signed yet**, so Windows SmartScreen and macOS Gatekeeper warn the
+first time you open the app. See [docs/install.md](docs/install.md) for the steps to open it.
 
-The installers are **not code-signed yet** ([Windows #17](https://github.com/hardik-id/nats-jetstream-studio/issues/17),
-[macOS #18](https://github.com/hardik-id/nats-jetstream-studio/issues/18)), so your system shows a
-warning the first time you open the app. The files are built by the public
-[release workflow](.github/workflows/release.yml) from a tagged commit.
+## Try it with demo data
 
-- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
-- **macOS:** Gatekeeper says the app "cannot be verified" or "is damaged". Open **System Settings >
-  Privacy & Security** and click **Open Anyway**, or run
-  `xattr -cr "/Applications/NATS JetStream Studio.app"` once.
-- **Linux:** no warning.
-
-Automatic updates need a signed app on macOS, so until signing is set up, download new versions by
-hand.
-
-## Getting started from source
+If you have a checkout and no NATS server at hand:
 
 ```bash
 npm install
-npm run dev              # desktop app with hot reload
+npm run nats             # a local nats-server on 4222
+npm run traffic          # demo streams, consumers, KV, objects and live traffic
+npm run dev              # the desktop app
 ```
 
-To try it without a NATS server of your own:
+Add a connection to `nats://127.0.0.1:4222` with user `app` and password `app`.
 
-```bash
-npm run nats             # local nats-server on 4222 (users app/app, viewer/viewer, sys/sys)
-npm run traffic          # demo streams, consumers, KV, objects, plus live publishers and consumers
-```
+## Web mode
 
-Then add a connection to `nats://127.0.0.1:4222` with user `app`, password `app`. The first
-command downloads the official `nats-server` binary into `.tools/` if it is not on your PATH.
+Run the same UI from a browser, with the server holding the connections and credentials. See
+[docs/web-mode.md](docs/web-mode.md).
 
-## Commands
+## Documentation and contributing
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Desktop app in development mode |
-| `npm run build` | Type-check and build the desktop app into `out/` |
-| `npm run build:linux`, `build:win`, `build:mac` | Installers into `release/` |
-| `npm run build:web`, `npm run serve` | Build and run web mode ([docs/web-mode.md](docs/web-mode.md)) |
-| `npm run lint`, `npm run typecheck`, `npm run format` | Code quality |
-| `npm test` | Unit tests, gateway tests against a real `nats-server`, UI tests |
-| `npm run test:e2e` | End-to-end tests: the UI in Chromium and the desktop app |
+- [docs/](docs/README.md): install, web mode, architecture, status
+- [CONTRIBUTING.md](CONTRIBUTING.md): running from source, tests, code rules, releases
 
-## Architecture
+## License
 
-The model is the same as AKS desktop (Headlamp): a React UI in a desktop shell, with a local
-backend that reads a config file and holds the connections.
-
-```
-┌──────────────────────────── Electron ────────────────────────────┐
-│  Renderer (React + TypeScript)        Main process (Node)         │
-│  ┌─────────────────────────┐   IPC    ┌────────────────────────┐  │
-│  │ UI, tables, viewers     │ <──────> │ StudioService          │  │      TCP / TLS
-│  │ talks to NatsGateway    │  typed   │ connections, sampler   │ ─┼──> NATS servers
-│  │ interface only          │          │ secrets (OS keychain)  │  │
-│  └─────────────────────────┘          └────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-- **Why not a pure browser app:** browsers cannot open the NATS TCP port. A browser-only app would
-  need every server to enable its WebSocket listener and would keep credentials in the browser.
-- **`src/shared`**: the `NatsGateway` contract and pure logic used on both sides (subject matching,
-  durations, filters, JSONPath, health rules).
-- **`src/core`**: `StudioService` implements the gateway with the official clients
-  (`@nats-io/transport-node`, `jetstream`, `kv`, `obj`). It knows nothing about Electron or HTTP.
-  Read-only mode and the audit log are enforced here, not in the UI.
-- **`src/main`, `src/preload`**: the Electron shell. The renderer is sandboxed and gets exactly one
-  bridge object; it has no Node or Electron access.
-- **`src/server`**: web mode. The same service behind HTTP and a WebSocket, with sign-in.
-- **`src/renderer`**: the React UI. In tests it runs against an in-memory fake gateway
-  (`src/renderer/src/gateway/fake.ts`).
-- **Config**: NATS CLI contexts (`~/.config/nats/context/*.json`) plus connections added in the
-  studio. Secrets are encrypted with the OS keychain; context files are never written to.
-
-Reading messages uses the get-message APIs (direct get when the stream allows it), never a
-consumer, so browsing is safe on work-queue and interest streams too.
-
-## Documentation
-
-- [docs/backlog.md](docs/backlog.md): the product backlog
-- [docs/status.md](docs/status.md): what is implemented and how each item was verified
-- [docs/web-mode.md](docs/web-mode.md): running the studio as a web app
-
-## Stack
-
-Electron, React, TypeScript, Vite (electron-vite), Tailwind CSS, TanStack Query and Virtual,
-Zustand, Vitest, Playwright, electron-builder.
+[Apache-2.0](LICENSE)

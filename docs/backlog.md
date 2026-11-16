@@ -957,13 +957,13 @@ screenshots of each new page (dark and light, 1280 px and 390 px wide); do not m
 - A closing call to action: download, and star or open the project on GitHub. One primary button per screen height.
 
 ### PBI-132: Features pages
-**Priority:** v1 · **Size:** M · **Depends on:** PBI-130, PBI-136 · **Files:** `site/src/pages/features/**`, `site/src/content/features/**`
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-130, PBI-136 · **Files:** `site/src/pages/features/**`, `site/src/components/features/**`
 
 **Story:** As someone comparing tools, I want to see each capability with a real screenshot, so that I know what I get before installing.
 
 **Acceptance criteria**
 - `/features/` shows one card per feature area (the eight in the site map) with a screenshot, a title and one sentence.
-- Each feature page has: a heading, one paragraph on the problem it solves, three to six capabilities as short sections with a screenshot or short recording each, and a link to the matching docs page where one exists.
+- Each feature page has: a heading, one paragraph on the problem it solves, three to six capabilities as short sections, with one screenshot per page and a screenshot or recording per capability where one exists, and a link to the matching docs page where one exists.
 - Every claim matches an implemented backlog item (`docs/status.md`); nothing unverified (signed installers, auto-update on macOS) is promised.
 - Screenshots have alt text that says what is shown, open larger on click, and switch with the site theme (dark and light versions from PBI-136).
 - "Previous" and "Next" links follow the site-map order.

@@ -1,0 +1,79 @@
+---
+// A screenshot in two themes. Both files are in the page; CSS shows the one that matches the theme
+// set on <html data-theme> and hides the other with display:none. Both images are lazy, so with JS
+// only the visible one is fetched; without JS (no theme set) both variants may load.
+// Size and alt text come from public/media/manifest.json. Each image is a plain link to the full
+// file, so "open larger" works without JS. With `href`, the image links there instead (cards).
+import { url } from '../../lib/url'
+import manifest from '../../../public/media/manifest.json'
+
+interface Props {
+  /** File stem under public/media, for example "features-streams". */
+  name: string
+  /** Hero image: ask the browser to fetch it early. */
+  hero?: boolean
+  /** Link target instead of the full-size image; the image then has no alt (a titled link sits next to it). */
+  href?: string
+}
+const { name, hero = false, href } = Astro.props
+const themes = ['dark', 'light'] as const
+const files = themes.map((t) => {
+  const file = `${name}-${t}.webp`
+  const entry = manifest.files.find((f) => f.file === file)
+  if (!entry) throw new Error(`public/media/manifest.json has no entry for ${file}`)
+  return { t, entry }
+})
+---
+
+<figure class="shot">
+  {
+    files.map(({ t, entry }) => (
+      <a
+        class={`shot-link ${t}`}
+        href={href ?? url(`/media/${entry.file}`)}
+        target={href ? undefined : '_blank'}
+        rel={href ? undefined : 'noopener'}
+        title={href ? undefined : 'Open the full-size image'}
+        aria-hidden={href ? 'true' : undefined}
+        tabindex={href ? -1 : undefined}
+      >
+        <img
+          src={url(`/media/${entry.file}`)}
+          alt={href ? '' : entry.alt}
+          width={entry.width}
+          height={entry.height}
+          loading="lazy"
+          decoding="async"
+          fetchpriority={hero ? 'high' : undefined}
+        />
+        {!href && <span class="sr-only"> (opens the full-size image in a new tab)</span>}
+      </a>
+    ))
+  }
+</figure>
+
+<style>
+  .shot {
+    margin: 0;
+  }
+  .shot-link {
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--panel);
+    line-height: 0;
+  }
+  .shot-link:hover {
+    border-color: var(--accent-text);
+  }
+  img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  :global([data-theme='dark']) .shot-link.light,
+  :global([data-theme='light']) .shot-link.dark {
+    display: none;
+  }
+</style>

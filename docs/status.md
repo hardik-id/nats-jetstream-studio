@@ -1,8 +1,8 @@
 # Implementation status
 
-The first 60 backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123) have been implemented.
-This page says how each was checked and what was **not** verified. Epic 12, the website (PBI-130 to
-PBI-137), is planned and not started.
+The first 60 backlog items in [backlog.md](backlog.md) (PBI-001 to PBI-123, except PBI-049) have
+been implemented. This page says how each was checked and what was **not** verified. Planned and
+not started: PBI-049 (added later) and Epic 12, the website (PBI-130 to PBI-137).
 
 ## How it was tested
 

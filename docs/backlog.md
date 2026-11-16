@@ -24,7 +24,8 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 9. Productivity and UX | 090 to 093 | | 4 | |
 | 10. Packaging and distribution | 100 to 101 | | 1 | 1 |
 | 11. Visual design | 110 to 123 | | 14 | |
-| **Total (60)** | | **27** | **31** | **2** |
+| 12. Website | 130 to 137 | | 8 | |
+| **Total (68)** | | **27** | **39** | **2** |
 
 ## MVP slice and build order
 
@@ -810,3 +811,168 @@ Each item below is small enough for one agent in one session. Rules for every it
 - Every screen (overview, streams, stream detail, consumers, consumer detail, messages, live tail, subjects, publish, KV, object store, monitoring, audit, decoders, connection form, command palette, dialogs) is checked in dark and light at 1280 x 720 and 1440 x 900; leftover old colours or spacing are fixed.
 - Keyboard-only walk-through: focus is visible everywhere and nothing is reachable only by mouse.
 - Full screenshot set retaken and attached to the PR; `docs/status.md` marks PBI-110 to PBI-123 done.
+
+## Epic 12: Website
+
+A public website on GitHub Pages, so that people can see what the studio does, download it and read
+the user documentation without opening the repository. Address:
+`https://hardik-id.github.io/nats-jetstream-studio/` (a custom domain can be added later without
+changing the pages).
+
+### Site plan (applies to PBI-130 to PBI-137)
+
+**Technology:** [Astro](https://astro.build) as a static site in a `site/` folder with its own
+`package.json`, so the app's dependencies and build are untouched. Pages are `.astro` and Markdown
+files; no client framework. Deployed by a GitHub Actions workflow with `actions/deploy-pages`. The
+look reuses the app's tokens from PBI-111 (Inter, JetBrains Mono, the indigo accent, dark-first with
+a light theme).
+
+**Site map**
+
+| Path | Page | What people see |
+| --- | --- | --- |
+| `/` | Home | What it is in one sentence, the demo GIF, a download button for their system, six feature highlights, "safe on production" (read-only mode, audit log, no consumer created when reading), desktop or web, link to GitHub |
+| `/features/` | Features | A card per feature area with a screenshot, linking to the pages below |
+| `/features/connections/` | Connections | Several servers, environments and colours, `nats` CLI contexts, every auth type, read-only mode |
+| `/features/message-browser/` | Message browser | Paging without a consumer, start positions, filters (subject, header, text, regex, JSONPath), payload views, Protobuf, export, republish |
+| `/features/streams/` | Streams | List, detail, create and edit, purge, per-subject counts, config export and import |
+| `/features/consumers/` | Consumers | Lag, ack pending, redeliveries, health flags, pause and resume |
+| `/features/live-tail-and-publish/` | Live tail and publish | Tail any subject, publish, request/reply, templates, subject tree |
+| `/features/kv-and-object-store/` | KV and Object Store | Browse, history, watch, upload and download |
+| `/features/monitoring-and-alerts/` | Monitoring and alerts | Charts, alert rules, desktop notifications, cluster topology |
+| `/features/productivity/` | Productivity | Command palette, favourites, saved filters, keyboard navigation, audit log, tabs restored |
+| `/download/` | Download | Buttons for Windows, macOS and Linux for the latest release, the first-run warning steps, checksums, "run in a browser instead" |
+| `/docs/` | Documentation | Index of the pages below |
+| `/docs/getting-started/` | Getting started | Install, add the first connection, open a stream, read a message |
+| `/docs/install/` | Install | From `docs/install.md` |
+| `/docs/connections/` | Connecting | Auth types, TLS, JetStream domain, CLI contexts, read-only mode |
+| `/docs/web-mode/` | Web mode | From `docs/web-mode.md`: Docker, sign-in, provisioning |
+| `/docs/keyboard-shortcuts/` | Keyboard shortcuts | The shortcut table |
+| `/docs/security/` | Security and privacy | Where secrets are stored, what leaves the machine (nothing), the audit log, unsigned builds |
+| `/docs/faq/` | FAQ and troubleshooting | Connection errors, SmartScreen and Gatekeeper, "why not a browser-only app" |
+| `/changelog/` | Changelog | One entry per GitHub release |
+| `/404` | Not found | Links to Home, Features and Docs |
+
+Contributor material (architecture, backlog, status, contributing) stays in the repository; the site
+footer links to it.
+
+**Navigation**
+
+- Header: logo and name (to Home), Features, Download, Docs, Changelog, a GitHub link, theme switch.
+  On narrow screens the links move into a menu button.
+- Breadcrumbs on every page except Home, under the header: `Home / Features / Message browser`,
+  `Home / Docs / Web mode`. The last item is the current page and is not a link. They are generated
+  from the path and a title map, and are also published as `BreadcrumbList` structured data.
+- Feature and docs pages end with "Previous" and "Next" links in site-map order. Docs pages have a
+  sidebar listing the docs pages and an "On this page" list for long pages.
+- Footer: Product (Features, Download, Changelog), Docs, Project (GitHub, Issues, Contributing,
+  License), and the version of the latest release.
+
+**For agents:** branch from `main` as `site/pbi-13N-short-name`; touch only `site/`, the workflow
+and the files the item lists; run `npm run build` and `npm run check` in `site/`; attach
+screenshots of each new page (dark and light, 1280 px and 390 px wide); do not merge.
+
+| Wave | Items | Can run in parallel? |
+| --- | --- | --- |
+| 1 | PBI-130 scaffold and deploy, PBI-136 media | Yes, separate folders |
+| 2 | PBI-131 home, PBI-132 features, PBI-133 download, PBI-134 docs, PBI-135 changelog | Yes, separate pages; all need 130, and 131 and 132 need 136 |
+| 3 | PBI-137 search-engine, accessibility and speed pass | No, needs all the others |
+
+### PBI-130: Site scaffold, layout and deployment
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-111 (tokens) · **Files:** `site/**`, `.github/workflows/pages.yml`, `.gitignore`
+
+**Story:** As a visitor, I want a fast site with the same look as the app and clear navigation, so that I can find my way from any page.
+
+**Acceptance criteria**
+- An Astro project in `site/` builds to static files with `npm run build`; `npm run check` type-checks it. The app's root `package.json`, lint and tests are not affected.
+- The base path is `/nats-jetstream-studio/` and comes from one setting, so a custom domain later needs one change. Every internal link and asset uses it.
+- A shared layout provides the header, breadcrumbs, footer, a skip link and the theme switch (follows the system setting, remembers a manual choice). Colours and fonts come from the PBI-111 tokens; fonts are served from the site, not from a third party.
+- Breadcrumbs behave as described in the site plan and are hidden on Home.
+- A `404` page exists, and every page in the site map exists as a stub with its title, so later items only fill in content.
+- `.github/workflows/pages.yml` builds and deploys on pushes to `main` that change `site/**` or the docs it reads, and on manual runs. Pull requests build the site but do not deploy. GitHub Pages is switched to "GitHub Actions" as its source (a repository setting: needs the owner's go-ahead).
+- The repository homepage URL points to the site once it is live.
+
+### PBI-131: Home page
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-130, PBI-136 · **Files:** `site/src/pages/index.astro`, `site/src/components/home/**`
+
+**Story:** As someone who has just heard of the studio, I want to understand in a few seconds what it is and whether it is for me.
+
+**Acceptance criteria**
+- Above the fold at 1280 x 720: the name, one sentence ("A free GUI and desktop client for NATS and JetStream"), a primary download button that names the visitor's system (falls back to "Download"), a secondary "See features" link and the demo recording.
+- The recording does not autoplay for people who prefer reduced motion; a still image is shown instead.
+- Six highlights, each with an icon, a title, one sentence and a link to its feature page: message browser, consumers health, live tail and publish, several connections, KV and Object Store, monitoring.
+- A "Safe on production" section: read-only mode, the audit log, reading without creating a consumer.
+- A "Desktop or web" section linking to Download and to the web-mode docs.
+- A closing call to action: download, and star or open the project on GitHub. One primary button per screen height.
+
+### PBI-132: Features pages
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-130, PBI-136 · **Files:** `site/src/pages/features/**`, `site/src/content/features/**`
+
+**Story:** As someone comparing tools, I want to see each capability with a real screenshot, so that I know what I get before installing.
+
+**Acceptance criteria**
+- `/features/` shows one card per feature area (the eight in the site map) with a screenshot, a title and one sentence.
+- Each feature page has: a heading, one paragraph on the problem it solves, three to six capabilities as short sections with a screenshot or short recording each, and a link to the matching docs page where one exists.
+- Every claim matches an implemented backlog item (`docs/status.md`); nothing unverified (signed installers, auto-update on macOS) is promised.
+- Screenshots have alt text that says what is shown, open larger on click, and switch with the site theme (dark and light versions from PBI-136).
+- "Previous" and "Next" links follow the site-map order.
+
+### PBI-133: Download page
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-130 · **Files:** `site/src/pages/download.astro`, `site/src/lib/releases.ts`
+
+**Story:** As a visitor who wants to try the studio, I want the right installer for my system and to know about the first-run warning before I see it.
+
+**Acceptance criteria**
+- The version, date and file links of the latest release are read from the GitHub releases API when the site is built, so the page needs no script to show them. If the API call fails, the build falls back to a link to the releases page instead of failing.
+- Three cards: Windows (`.exe`), macOS (`.dmg`, universal), Linux (`.AppImage` and `.deb`), with file sizes. The visitor's system is highlighted.
+- The first-run steps for SmartScreen and Gatekeeper are on the page, next to the matching card, with the links to issues #17 and #18.
+- A "Run it in a browser" box links to the web-mode docs, and a "Build from source" line links to `CONTRIBUTING.md`.
+- The release workflow triggers a site deployment after a release is published, so the page shows the new version without a manual step.
+
+### PBI-134: Documentation pages
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-130 · **Files:** `site/src/pages/docs/**`, `site/src/content/docs/**`, `docs/install.md`, `docs/web-mode.md` (only if wording must change to be shared)
+
+**Story:** As a user, I want the how-to pages on the website, so that I do not have to read them on GitHub.
+
+**Acceptance criteria**
+- The seven docs pages in the site map exist. Install and Web mode are built from the existing files in `docs/` (one source, no copies); the others are new.
+- Getting started takes a new user from install to reading a message, with screenshots, and offers the demo data route (`npm run nats`, `npm run traffic`) for people without a server.
+- Connecting covers every auth type the connection form offers, TLS options, JetStream domain and API prefix, CLI contexts and read-only mode.
+- Keyboard shortcuts lists every shortcut the app has, checked against the code.
+- Security and privacy states where secrets are stored on each system and in web mode, that the app sends no telemetry, and what the audit log records.
+- Docs pages have the sidebar, the "On this page" list, "Previous" and "Next" links and an "Edit this page on GitHub" link.
+
+### PBI-135: Changelog page
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-130 · **Files:** `site/src/pages/changelog.astro`, `site/src/lib/releases.ts`
+
+**Story:** As a user, I want to see what changed in each version.
+
+**Acceptance criteria**
+- One entry per published GitHub release, newest first: version, date, the release notes rendered from Markdown and a link to its downloads. Drafts and pre-releases are left out.
+- Read at build time with the same helper as the Download page, with the same fallback.
+- An RSS feed of the entries is published and linked from the page head.
+
+### PBI-136: Screenshots and recordings
+**Priority:** v1 · **Size:** S · **Depends on:** nothing · **Files:** `scripts/site-media.mjs`, `site/public/media/**`, `package.json` (one script)
+
+**Story:** As the maintainer, I want the site's pictures made by a script, so that they can be retaken after every UI change.
+
+**Acceptance criteria**
+- `npm run site:media` starts a local `nats-server` with the demo data and traffic, starts web mode, and uses Playwright to save every picture the site needs, in dark and light, at a fixed size. It stops only the processes it started.
+- It produces: the home recording (WebM or MP4 with a GIF fallback under 4 MB), a still of it, one screenshot per feature card and the screenshots the feature and docs pages name.
+- Pictures are stored as WebP or AVIF with width and height known, so pages do not shift while loading. File names are stable, so retaking them needs no page change.
+- The README's `docs/images/demo.gif` and `docs/images/social-preview.png` are made by the same script.
+
+### PBI-137: Search engines, accessibility and speed
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-130 to PBI-136 · **Files:** `site/**`, `.github/workflows/pages.yml`
+
+**Story:** As the product owner, I want the site to be found, to be usable by everyone and to load fast, before it is announced.
+
+**Acceptance criteria**
+- Every page has its own title and description, a canonical address, and Open Graph and Twitter card tags using the social preview image.
+- `sitemap.xml` and `robots.txt` are generated. Home carries `SoftwareApplication` structured data (name, systems, price 0, license, download address); every other page carries `BreadcrumbList`.
+- Lighthouse on Home, Features, one feature page, Download and one docs page scores at least 95 for performance, accessibility, best practices and SEO, on mobile settings. The workflow fails a pull request that drops below.
+- Keyboard-only walk-through of every page; text contrast at least 4.5:1 in both themes; one `h1` per page and headings in order; all pictures have alt text.
+- The site loads no third-party scripts, fonts or trackers. If visit counts are wanted later, that is a separate decision.
+- A link checker runs in the workflow and fails on broken internal links.
+- The README links to the site, and `docs/status.md` marks PBI-130 to PBI-137 done.

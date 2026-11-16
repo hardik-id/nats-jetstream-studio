@@ -208,20 +208,12 @@
       "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers"
     },
     {
-      "file": "home.gif",
-      "kind": "video-fallback",
-      "width": 900,
-      "height": 540,
-      "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers"
-    },
-    {
       "file": "home.mp4",
       "kind": "video",
       "width": 1100,
       "height": 660,
       "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers",
-      "poster": "home-still.webp",
-      "fallback": "home.gif"
+      "poster": "home-still.webp"
     }
   ]
 }

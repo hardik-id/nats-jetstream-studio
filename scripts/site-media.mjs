@@ -7,7 +7,7 @@
 // dark and light, a manifest.json, a home recording) plus docs/images/demo.gif and
 // docs/images/social-preview.png. Only the processes started here are stopped, also on Ctrl+C.
 //
-// ffmpeg (FFMPEG env var, else PATH) is needed for the recording (MP4, GIF, still) only; without it
+// ffmpeg (FFMPEG env var, else PATH) is needed for the recording (MP4, still, demo.gif) only; without it
 // the screenshots and the social card are still made and the recording step is skipped with a note.
 // dist/ is not built here: if it is missing the script stops and says to run "npm run build:web".
 import { spawn, spawnSync } from 'node:child_process'
@@ -170,7 +170,13 @@ const scenes = [
     alt: 'Consumers of the ORDERS stream with lag, ack pending, redeliveries and health flags',
     async run(page) {
       await openStream(page, 'ORDERS', 'Consumers')
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click()
       await sleep(3500)
+    },
+    // The collapsed state is kept by the server, so the next scene would start with the rail.
+    async after(page) {
+      await page.getByRole('button', { name: 'Expand sidebar' }).click()
+      await sleep(300)
     }
   },
   {
@@ -341,6 +347,7 @@ system_account: SYS
         await dismissToasts(page)
         await page.mouse.move(SIZE.width - 1, SIZE.height - 1)
         const png = await page.screenshot()
+        await scene.after?.(page)
         const file = `${scene.group}-${scene.name}-${scheme}.webp`
         await writeFile(join(mediaDir, file), await toWebp(helper, png))
         shots[`${scene.name}-${scheme}`] = png
@@ -370,7 +377,7 @@ system_account: SYS
     const ff = findFfmpeg()
     if (!ff)
       console.warn(
-        'ffmpeg not found: skipping the home recording (MP4, GIF, still). Install ffmpeg or set FFMPEG=/path/to/ffmpeg.'
+        'ffmpeg not found: skipping the home recording (MP4, still, demo.gif). Install ffmpeg or set FFMPEG=/path/to/ffmpeg.'
       )
     else await record(browser, studioUrl, work, ff, helper)
 
@@ -446,7 +453,6 @@ async function record(browser, studioUrl, work, ff, helper) {
   ])
   ffmpeg(ff, work, ['-ss', '8', '-i', 'in.webm', '-frames:v', '1', 'still.png'])
   await copyFile(join(work, 'home.mp4'), join(mediaDir, 'home.mp4'))
-  await copyFile(join(work, 'home.gif'), join(mediaDir, 'home.gif'))
   await copyFile(join(work, 'home.gif'), join(imagesDir, 'demo.gif'))
   await writeFile(
     join(mediaDir, 'home-still.webp'),
@@ -461,20 +467,11 @@ async function record(browser, studioUrl, work, ff, helper) {
       width: VIDEO.width,
       height: VIDEO.height,
       alt,
-      poster: 'home-still.webp',
-      fallback: 'home.gif'
-    },
-    {
-      file: 'home.gif',
-      kind: 'video-fallback',
-      width: 900,
-      height: Math.round((900 * VIDEO.height) / VIDEO.width),
-      alt
+      poster: 'home-still.webp'
     },
     { file: 'home-still.webp', kind: 'still', width: VIDEO.width, height: VIDEO.height, alt }
   )
-  for (const f of ['home.mp4', 'home.gif', 'home-still.webp'])
-    console.log(`  ${f} ${kb(join(mediaDir, f))}`)
+  for (const f of ['home.mp4', 'home-still.webp']) console.log(`  ${f} ${kb(join(mediaDir, f))}`)
   console.log(`  docs/images/demo.gif ${kb(join(imagesDir, 'demo.gif'))}`)
 }
 

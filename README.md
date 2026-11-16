@@ -4,6 +4,8 @@ A free GUI and desktop client for NATS and JetStream. Connect to your NATS serve
 streams, consumers, subjects and messages from one place. Runs as a desktop app (Windows, macOS,
 Linux) and, with the same UI, as a web app.
 
+**Website: [hardik-id.github.io/nats-jetstream-studio](https://hardik-id.github.io/nats-jetstream-studio/)** with features, downloads and documentation.
+
 ![NATS JetStream Studio: a tour of the overview, streams, messages and consumers](docs/images/demo.gif)
 
 ## What you can do

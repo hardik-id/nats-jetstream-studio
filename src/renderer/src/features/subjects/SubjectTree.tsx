@@ -247,7 +247,7 @@ export function SubjectTree({
           Live
         </div>
         {!compact && (
-          <div role="columnheader" title="Streams that store this subject">
+          <div role="columnheader" className="pl-2" title="Streams that store this subject">
             Streams
           </div>
         )}
@@ -386,7 +386,7 @@ export function SubjectTree({
                   )}
                 </div>
                 {!compact && (
-                  <div role="gridcell" className="flex min-w-0 items-center gap-1">
+                  <div role="gridcell" className="flex min-w-0 items-center gap-1 pl-2">
                     {row.showStreams && (
                       <>
                         <Badge

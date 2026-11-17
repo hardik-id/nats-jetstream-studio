@@ -63,6 +63,8 @@ export function useSubjectsUi(connId: string): {
   ui: SubjectsUiState
   /** The stored value was read, or reading failed (then the state only lives in memory). */
   ready: boolean
+  /** The saved view could not be read, so changes are not saved. */
+  loadFailed: boolean
   update: (patch: Partial<SubjectsUiState>) => void
 } {
   const [raw, setRaw, loaded, loadError] = useSetting<unknown>(subjectsUiKey(connId), null)
@@ -85,5 +87,5 @@ export function useSubjectsUi(connId: string): {
     if (cur.failed) setMemory(next)
     else void setRaw(next)
   }
-  return { ui, ready: loaded || failed, update }
+  return { ui, ready: loaded || failed, loadFailed: failed, update }
 }

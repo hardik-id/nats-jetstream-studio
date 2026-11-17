@@ -552,6 +552,24 @@ describe('expansion', () => {
     const r = expandAllPaths(t, 5000, { search })
     expect(r.expanded).toEqual(new Set(['a', 'a.b']))
     expect(r.branches).toBe(2)
+    // a match opens its own subtree too: 'b' matches a.b and its children
+    const onBranch = expandAllPaths(t, 5000, { search: searchSubjects(t, 'b') })
+    expect(onBranch.expanded).toEqual(new Set(['a', 'a.b']))
+    expect(onBranch.branches).toBe(2)
+    // the filters decide what counts
+    expect(expandAllPaths(t, 5000, { source: 'live' }).branches).toBe(0)
+  })
+
+  it('counts every branch in the total, also the ones behind a closed branch', () => {
+    const subjects: { subject: string; count: number }[] = []
+    for (let a = 0; a < 20; a++)
+      for (let b = 0; b < 20; b++) subjects.push({ subject: `r${a}.g${b}.leaf`, count: 1 })
+    const t = buildTree([{ stream: 'S', subjects }], {})
+    const r = expandAllPaths(t, 25)
+    expect(r.capped).toBe(true)
+    // 20 roots + 400 groups have children
+    expect(r.branches).toBe(420)
+    expect(r.open).toBeLessThan(420)
   })
 })
 

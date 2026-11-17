@@ -196,6 +196,34 @@ describe('PBI-127 subjects screen', () => {
     await waitFor(() => expect(screen.queryByText(/Opened 11 of 13/)).toBeNull())
   })
 
+  it('Expand all while searching also opens the subtree of a match', async () => {
+    renderWithGateway(<SubjectsTab connId="dev" />, setup())
+    await waitFor(() => expect(hasRow('orders')).toBe(true))
+    await userEvent.type(screen.getByLabelText('Search subjects'), 'orders')
+    await waitFor(() => expect(hasRow('telemetry')).toBe(false))
+    expect(hasRow('orders.eu')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(hasRow('orders.eu.created')).toBe(true)
+    expect(hasRow('telemetry')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    expect(hasRow('orders.eu')).toBe(false)
+  })
+
+  it('says so when Expand all cannot open anything more because of the cap', async () => {
+    const many: [string, number][] = Array.from({ length: 6000 }, (_, i) => [
+      `big.g${i % 12}.s${i}`,
+      1
+    ])
+    renderWithGateway(<SubjectsTab connId="dev" />, setup({ BIG: many }))
+    await waitFor(() => expect(hasRow('big')).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(await screen.findByText(/Opened 11 of 13 branches/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(
+      await screen.findByText(/Already showing [\d,]+ rows; the limit is 5,000/)
+    ).toBeInTheDocument()
+  })
+
   it('a pattern query matches whole tokens', async () => {
     renderWithGateway(<SubjectsTab connId="dev" />, setup())
     await waitFor(() => expect(hasRow('orders')).toBe(true))
@@ -493,6 +521,77 @@ describe('PBI-127 subjects screen', () => {
     expect(hasRow('orders')).toBe(true)
     // Nothing is ever written.
     expect(gateway.calls.some((c) => c.method === 'setSetting')).toBe(false)
+  })
+
+  it('the scope chosen in the pane does not reach the menu after the subject is reselected', async () => {
+    renderWithGateway(<SubjectsTab connId="dev" />, setup())
+    await waitFor(() => expect(hasRow('orders')).toBe(true))
+    await userEvent.click(row('orders.eu'))
+    await userEvent.click(screen.getByLabelText(/^One level below/))
+    await userEvent.click(row('orders.us'))
+    await userEvent.click(row('orders.eu'))
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
+    expect(
+      screen.getByRole('menuitem', { name: /Start live tail on orders.eu.>/ })
+    ).toBeInTheDocument()
+  })
+
+  it('shows a quiet note when the saved view cannot be read', async () => {
+    const gateway = setup()
+    gateway.getSetting = async () => {
+      throw new Error('settings are unavailable')
+    }
+    renderWithGateway(<SubjectsTab connId="dev" />, gateway)
+    expect(
+      await screen.findByText('View settings could not be loaded; changes will not be saved.')
+    ).toBeInTheDocument()
+  })
+
+  describe('narrow screen', () => {
+    const original = globalThis.ResizeObserver
+    const narrow = (): void => {
+      globalThis.ResizeObserver = class {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe(el: Element): void {
+          this.cb(
+            [{ target: el, contentRect: { width: 600 } } as ResizeObserverEntry],
+            this as never
+          )
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+      } as unknown as typeof ResizeObserver
+    }
+    it('starts as a rail, and a click selection opens the pane unless it was collapsed on purpose', async () => {
+      narrow()
+      try {
+        renderWithGateway(<SubjectsTab connId="dev" />, setup())
+        await waitFor(() => expect(hasRow('orders')).toBe(true))
+        expect(
+          screen.getByRole('complementary', { name: 'Subject details (collapsed)' })
+        ).toBeVisible()
+        await userEvent.click(row('orders.eu'))
+        const pane = await screen.findByTestId('subject-detail')
+        expect(within(pane).getByRole('button', { name: 'Browse stored messages' })).toBeVisible()
+      } finally {
+        globalThis.ResizeObserver = original
+      }
+    })
+
+    it('keeps a pane the user collapsed on purpose closed on click', async () => {
+      narrow()
+      try {
+        const gateway = setup()
+        gateway.settings.set('subjects.ui.dev', { paneCollapsed: true })
+        renderWithGateway(<SubjectsTab connId="dev" />, gateway)
+        await waitFor(() => expect(hasRow('orders')).toBe(true))
+        await userEvent.click(row('orders.eu'))
+        expect(row('orders.eu')).toHaveAttribute('aria-selected', 'true')
+        expect(screen.queryByTestId('subject-detail')).toBeNull()
+      } finally {
+        globalThis.ResizeObserver = original
+      }
+    })
   })
 
   it('the row menu of the selected row uses the scope chosen in the pane', async () => {

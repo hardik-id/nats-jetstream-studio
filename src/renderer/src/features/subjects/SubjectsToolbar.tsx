@@ -54,41 +54,38 @@ export function SubjectsToolbar({
     <div
       role="toolbar"
       aria-label="Subject tree controls"
-      className="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-line bg-panel px-4 py-2"
+      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-panel px-4 py-2"
     >
-      <div className="relative w-40 max-w-full">
-        <Search
-          className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-faint"
-          aria-hidden
-        />
-        <Input
-          ref={searchRef}
-          compact
-          type="search"
-          className={matchCount !== null ? 'pr-24 pl-8' : 'pl-8'}
-          aria-label="Search subjects"
-          placeholder="Search"
-          title="Substring of the subject, or a subject pattern with * or >. Press / to jump here."
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape' && search) {
-              e.preventDefault()
-              e.stopPropagation()
-              onSearch('')
-            }
-          }}
-        />
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-2">
+        <div className="relative max-w-[360px] min-w-[240px] flex-1">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-faint"
+            aria-hidden
+          />
+          <Input
+            ref={searchRef}
+            compact
+            type="search"
+            className="pl-8"
+            aria-label="Search subjects"
+            placeholder="Search"
+            title="Substring of the subject, or a subject pattern with * or >. Press / to jump here."
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && search) {
+                e.preventDefault()
+                e.stopPropagation()
+                onSearch('')
+              }
+            }}
+          />
+        </div>
         {matchCount !== null && (
-          <span
-            role="status"
-            className="pointer-events-none absolute top-1/2 right-7 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted"
-          >
+          <span role="status" className="text-xs whitespace-nowrap text-muted">
             {matchCount === 1 ? '1 match' : `${matchCount.toLocaleString('en-US')} matches`}
           </span>
         )}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           size="sm"
           icon={<ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />}
@@ -106,6 +103,7 @@ export function SubjectsToolbar({
           Collapse all
         </Button>
         <span className="inline-flex items-center gap-0.5" role="group" aria-label="Levels">
+          <span className="pr-1 text-xs text-faint">Levels</span>
           {([1, 2, 3, 'all'] as LevelChoice[]).map((l) => (
             <button
               key={l}
@@ -113,7 +111,7 @@ export function SubjectsToolbar({
               disabled={disabled}
               className={toolButton()}
               title={
-                l === 'all' ? 'Open every level (up to 5,000 rows)' : `Open down to level ${l}`
+                l === 'all' ? 'Expand to every level (up to 5,000 rows)' : `Expand to level ${l}`
               }
               onClick={() => onLevel(l)}
             >
@@ -123,40 +121,40 @@ export function SubjectsToolbar({
         </span>
       </div>
 
-      <Select
-        compact
-        className="w-36"
-        aria-label="Sort subjects"
-        title="Sort the subjects under each parent"
-        value={sort}
-        onChange={(e) => onSort(e.target.value as SubjectSort)}
-      >
-        <option value="messages">By messages</option>
-        <option value="name">By name (A-Z)</option>
-        <option value="live">By live count</option>
-      </Select>
-
-      <Checkbox
-        className="items-center text-xs text-muted"
-        label="With messages"
-        checked={onlyWithMessages}
-        onChange={(e) => onOnlyWithMessages(e.target.checked)}
-      />
-
-      <Select
-        compact
-        className="w-36"
-        aria-label="Source"
-        title="Which subjects to show: stored ones, seen in a live tail, or both"
-        value={source}
-        onChange={(e) => onSource(e.target.value as SubjectSource)}
-      >
-        {SOURCES.map((o) => (
-          <option key={o.id} value={o.id} title={o.hint}>
-            Source: {o.label}
-          </option>
-        ))}
-      </Select>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+        <Select
+          compact
+          className="w-auto"
+          aria-label="Sort subjects"
+          title="Sort the subjects under each parent"
+          value={sort}
+          onChange={(e) => onSort(e.target.value as SubjectSort)}
+        >
+          <option value="messages">By messages</option>
+          <option value="name">By name (A-Z)</option>
+          <option value="live">By live count</option>
+        </Select>
+        <Select
+          compact
+          className="w-auto"
+          aria-label="Source"
+          title="Which subjects to show: stored ones, seen in a live tail, or both"
+          value={source}
+          onChange={(e) => onSource(e.target.value as SubjectSource)}
+        >
+          {SOURCES.map((o) => (
+            <option key={o.id} value={o.id} title={o.hint}>
+              Source: {o.label}
+            </option>
+          ))}
+        </Select>
+        <Checkbox
+          className="items-center text-xs text-muted"
+          label="With messages"
+          checked={onlyWithMessages}
+          onChange={(e) => onOnlyWithMessages(e.target.checked)}
+        />
+      </div>
     </div>
   )
 }

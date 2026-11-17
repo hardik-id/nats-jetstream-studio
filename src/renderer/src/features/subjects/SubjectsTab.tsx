@@ -31,7 +31,7 @@ import {
 
 const PER_STREAM = 5000
 /** Below this width of the screen the detail pane starts as a rail. */
-const NARROW_WIDTH = 900
+const NARROW_WIDTH = 700
 
 const EMPTY_SET: ReadonlySet<string> = new Set()
 
@@ -51,7 +51,7 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
   const tabs = useTabs()
   const conn = useConnection(connId)
   const readOnly = conn?.readOnly === true
-  const { ui, ready, update } = useSubjectsUi(connId)
+  const { ui, ready, loadFailed, update } = useSubjectsUi(connId)
   const [search, setSearch] = useState('')
   const query = useDebounced(search.trim(), 200)
   const [searchOpen, setSearchOpen] = useState<SearchOpen>({
@@ -193,13 +193,18 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
         ? new Set(rows.filter((r) => r.isOpen).map((r) => r.path))
         : expanded
       const r = expandAllPaths(tree, EXPAND_ALL_CAP, { ...filters, search: searchArg, current })
-      if (r.capped)
-        text = `Opened ${formatCount(r.open)} of ${formatCount(r.branches)} branches (limit of ${formatCount(EXPAND_ALL_CAP)} rows)`
+      if (r.capped) {
+        const added = r.expanded.size - current.size
+        text =
+          added === 0
+            ? `Already showing ${formatCount(rows.length)} rows; the limit is ${formatCount(EXPAND_ALL_CAP)}`
+            : `Opened ${formatCount(r.open)} of ${formatCount(r.branches)} branches (limit of ${formatCount(EXPAND_ALL_CAP)} rows)`
+      }
       if (searchResult) {
         const collapsed = new Set([...sCollapsed].filter((p) => !r.expanded.has(p)))
         const opened = new Set(sExpanded)
-        for (const p of r.expanded)
-          if (!(searchResult.matched.has(p) && searchResult.revealed.has(p))) opened.add(p)
+        // A match that is opened shows everything below it, so Expand all reaches the subtrees.
+        for (const p of r.expanded) opened.add(p)
         setSearchOpen({ query, collapsed, expanded: opened })
       } else update({ expanded: [...r.expanded] })
     } else {
@@ -246,7 +251,12 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
 
   /** Click and Space select; Enter and double-click also open the details pane if it is a rail. */
   const select = (row: SubjectRow, open: boolean): void => {
-    if (open && paneCollapsed) {
+    // The pane's scope belongs to the subject it was chosen for.
+    if (row.path !== ui.selected) setPaneScope(null)
+    // Enter and double-click open a rail the user collapsed; a plain click opens it too when the
+    // user never chose to collapse it (it is only a rail because the window is narrow).
+    const opens = paneCollapsed && (open || ui.paneCollapsed === null)
+    if (opens) {
       focusAfter.current = 'panel'
       update({ selected: row.path, paneCollapsed: false })
     } else update({ selected: row.path })
@@ -340,7 +350,7 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
           onSource={(source) => update({ source })}
           disabled={tree.nodeCount === 0}
         />
-        {(note || truncated.length > 0 || streams.error || failed.length > 0) && (
+        {(note || loadFailed || truncated.length > 0 || streams.error || failed.length > 0) && (
           <div className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-1.5">
             <ErrorNote error={streams.error} onRetry={() => void streams.refetch()} />
             {failed.map((f) => (
@@ -352,6 +362,11 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
                 onRetry={() => void subjectQueries[f.index]?.refetch()}
               />
             ))}
+            {loadFailed && (
+              <p role="status" className="truncate text-xs text-muted">
+                View settings could not be loaded; changes will not be saved.
+              </p>
+            )}
             {note && (
               <p role="status" className="truncate text-xs text-accent" title={note}>
                 {note}

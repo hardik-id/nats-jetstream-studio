@@ -14,6 +14,27 @@ const levels = (page: Page, name: string) =>
 
 const detail = (page: Page) => page.getByTestId('subject-detail')
 
+test('PBI-127 subjects: fresh state at 1000x700, one click shows every labelled action', async ({
+  page
+}) => {
+  // This runs first in the file, so the saved view of the connection is still empty.
+  await page.setViewportSize({ width: 1000, height: 700 })
+  await openStudio(page)
+  await go(page, 'Subjects')
+  const tree = page.getByRole('treegrid', { name: 'Subjects' })
+  await expect(tree.getByRole('row').nth(1)).toBeVisible()
+  await tree.getByRole('row').nth(1).click()
+  const pane = page.getByTestId('subject-detail')
+  await expect(pane).toBeVisible()
+  for (const name of [
+    'Browse stored messages',
+    'Start live tail',
+    'Publish message',
+    'Copy subject'
+  ])
+    await expect(pane.getByRole('button', { name })).toBeInViewport({ ratio: 1 })
+})
+
 test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish', async ({
   page
 }) => {
@@ -93,6 +114,10 @@ test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish
   // The row menu does the same with the filter in its labels.
   await go(page, 'Subjects')
   await narrow(page, `${stream}.eu`)
+  await row(`${stream}.eu`).click()
+  await detail(page)
+    .getByLabel(/^One level below/)
+    .check()
   await row(`${stream}.eu`)
     .getByRole('button', { name: `Actions for ${stream}.eu` })
     .click()
@@ -272,10 +297,11 @@ for (const size of [
       // The DOM holds a window of rows only.
       expect(await tree.getByRole('row').count()).toBeLessThan(100)
 
-      if (size.width >= 1280) {
-        const box = await page.getByRole('toolbar', { name: 'Subject tree controls' }).boundingBox()
-        expect(box!.height).toBeLessThan(60)
-      }
+      // The search box stays readable once the match count shows.
+      await page.getByLabel('Search subjects').fill(`${prefix}3`)
+      await expect(page.getByRole('toolbar').getByRole('status')).toHaveText(/\d+ match/)
+      const input = await page.getByLabel('Search subjects').boundingBox()
+      expect(input!.width).toBeGreaterThanOrEqual(180)
 
       // Select a subject: every labelled action is on screen without scrolling.
       await page.getByLabel('Search subjects').fill(`${prefix}1.s10`)

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect, type KeyboardEvent, type ReactNod
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Radio, RefreshCw, Send } from 'lucide-react'
 import { formatCount } from '@shared/format'
-import { Button, ErrorNote, errorMessage, Notice, Page, readOnlyProps } from '../../components/ui'
+import { Button, ErrorNote, errorMessage, Page, readOnlyProps } from '../../components/ui'
 import type { MenuItem } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useConnection, useDebounced } from '../../lib/hooks'
@@ -11,7 +11,7 @@ import { useTabs } from '../../state/tabs'
 import { PANE_DEFAULT_WIDTH, useSubjectsUi } from '../../state/subjectsUi'
 import { PaneFrame, PaneRail } from './SubjectsPane'
 import { SubjectDetail } from './SubjectDetail'
-import { describeActions, resolveScope, rowMenuItems, runBrowse, runTail } from './subjectActions'
+import { rowMenuItems } from './subjectActions'
 import { SubjectTree } from './SubjectTree'
 import { SubjectsToolbar, type LevelChoice } from './SubjectsToolbar'
 import {
@@ -25,6 +25,7 @@ import {
   pruneExpanded,
   searchSubjects,
   type SubjectRow,
+  type SubjectScope,
   type SubjectTreeNode
 } from './subjectTree'
 
@@ -58,7 +59,8 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
     collapsed: EMPTY_SET,
     expanded: EMPTY_SET
   })
-  const [note, setNote] = useState<string | null>(null)
+  const [noteState, setNote] = useState<{ text: string; key: string } | null>(null)
+  const [paneScope, setPaneScope] = useState<{ path: string; scope: SubjectScope } | null>(null)
   const seen = useSeenSubjects((s) => s.byConn[connId])
   const searchInput = useRef<HTMLInputElement>(null)
   const root = useRef<HTMLDivElement>(null)
@@ -86,6 +88,10 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
     subjectQueries[i]?.error ? [{ stream, error: subjectQueries[i].error, index: i }] : []
   )
   const dataKey = `${names.join(',')}|${subjectQueries.map((q) => q.dataUpdatedAt).join(',')}`
+
+  // The note belongs to the query and the data it was made for.
+  const noteKey = `${query}|${dataKey}`
+  const note = noteState?.key === noteKey ? noteState.text : null
 
   const patterns = useMemo(
     () =>
@@ -179,53 +185,84 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
   }
 
   const applyExpansion = (choice: LevelChoice | 'none'): void => {
-    const result =
-      choice === 'none'
-        ? { expanded: new Set<string>(), level: 1, capped: false }
-        : choice === 'all'
-          ? expandAllPaths(tree, EXPAND_ALL_CAP, filters)
-          : expandToLevel(tree, choice, filters)
-    setNote(
-      result.capped
-        ? `Expanded to level ${result.level} (limit of ${formatCount(EXPAND_ALL_CAP)} rows)`
-        : null
-    )
-    if (searchResult) {
-      // The search view. The levels count over the whole tree (a match opens to show its
-      // descendants), so ancestors and the user's own open nodes that fall outside the result
-      // are closed for this search, and the result's nodes are opened.
-      const closed = new Set<string>()
-      for (const p of searchResult.revealed) if (!result.expanded.has(p)) closed.add(p)
-      for (const p of expanded) if (!result.expanded.has(p)) closed.add(p)
-      setSearchOpen({ query, collapsed: closed, expanded: new Set(result.expanded) })
-    } else update({ expanded: [...result.expanded] })
+    const searchArg = searchResult ?? undefined
+    let text: string | null = null
+    if (choice === 'all') {
+      // Open what is open now plus branches breadth first up to the row cap; never close any.
+      const current = searchResult
+        ? new Set(rows.filter((r) => r.isOpen).map((r) => r.path))
+        : expanded
+      const r = expandAllPaths(tree, EXPAND_ALL_CAP, { ...filters, search: searchArg, current })
+      if (r.capped)
+        text = `Opened ${formatCount(r.open)} of ${formatCount(r.branches)} branches (limit of ${formatCount(EXPAND_ALL_CAP)} rows)`
+      if (searchResult) {
+        const collapsed = new Set([...sCollapsed].filter((p) => !r.expanded.has(p)))
+        const opened = new Set(sExpanded)
+        for (const p of r.expanded)
+          if (!(searchResult.matched.has(p) && searchResult.revealed.has(p))) opened.add(p)
+        setSearchOpen({ query, collapsed, expanded: opened })
+      } else update({ expanded: [...r.expanded] })
+    } else {
+      const result =
+        choice === 'none'
+          ? { expanded: new Set<string>() }
+          : expandToLevel(tree, choice, { ...filters, search: searchArg })
+      if (searchResult) {
+        // The search view: ancestors are open unless closed, so close the ones outside the result
+        // and the user's own open nodes that fall outside it.
+        const closed = new Set<string>()
+        for (const p of searchResult.revealed) if (!result.expanded.has(p)) closed.add(p)
+        for (const p of expanded) if (!result.expanded.has(p)) closed.add(p)
+        setSearchOpen({ query, collapsed: closed, expanded: new Set(result.expanded) })
+      } else update({ expanded: [...result.expanded] })
+    }
+    setNote(text === null ? null : { text, key: noteKey })
   }
 
   // ---- selection and the detail pane ----
 
-  const narrow = useNarrow(root)
-  const paneCollapsed = ui.paneCollapsed ?? narrow
+  const width = useWidth(root)
+  const paneCollapsed = ui.paneCollapsed ?? (width !== null && width < NARROW_WIDTH)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
 
-  const select = (row: SubjectRow, open: boolean): void => {
-    update({
-      selected: row.path,
-      ...(open && paneCollapsed ? { paneCollapsed: false } : {})
-    })
-    if (open) runDefault(row.node)
+  // After the pane collapses or opens again, the button that was pressed is gone: keyboard focus
+  // goes to its counterpart.
+  const focusAfter = useRef<'rail' | 'panel' | null>(null)
+  useEffect(() => {
+    const want = focusAfter.current
+    if (!want) return
+    const el = root.current?.querySelector<HTMLElement>(
+      want === 'rail' ? '[aria-label="Show subject details"]' : '[aria-label="Collapse details"]'
+    )
+    if (el) {
+      focusAfter.current = null
+      el.focus()
+    }
+  })
+  const setCollapsed = (collapsed: boolean): void => {
+    focusAfter.current = collapsed ? 'rail' : 'panel'
+    update({ paneCollapsed: collapsed })
   }
 
-  // ---- row menu and the default action ----
+  /** Click and Space select; Enter and double-click also open the details pane if it is a rail. */
+  const select = (row: SubjectRow, open: boolean): void => {
+    if (open && paneCollapsed) {
+      focusAfter.current = 'panel'
+      update({ selected: row.path, paneCollapsed: false })
+    } else update({ selected: row.path })
+  }
+
+  // ---- row menu ----
 
   const menuItems = (node: SubjectTreeNode): MenuItem[] =>
-    rowMenuItems(node, { connId, tabs, streams: patterns, readOnly })
-
-  /** Enter and double-click: browse the subject when a stream stores it, else tail it. */
-  const runDefault = (node: SubjectTreeNode): void => {
-    const a = describeActions(node, resolveScope(node), patterns, readOnly)
-    if (a.browse.enabled) runBrowse(tabs, connId, a.browse)
-    else runTail(tabs, connId, a.tail)
-  }
+    rowMenuItems(node, {
+      connId,
+      tabs,
+      streams: patterns,
+      readOnly,
+      // The selected row's menu agrees with the scope chosen in the pane.
+      scope: paneScope && paneScope.path === node.path ? paneScope.scope : undefined
+    })
 
   const refresh = (): void => {
     void streams.refetch()
@@ -243,6 +280,13 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
   }
 
   const clearSearch = (): void => setSearch('')
+  const filtersOn = ui.onlyWithMessages || ui.source !== 'all'
+  const filterText = [
+    ui.onlyWithMessages ? '"Only with messages"' : null,
+    ui.source !== 'all' ? `Source: ${ui.source === 'streams' ? 'Streams' : 'Live'}` : null
+  ]
+    .filter(Boolean)
+    .join(' and ')
   const empty = settled && tree.nodeCount === 0
   const showSkeleton = (!settled && tree.nodeCount === 0) || !ready
   const subtitle = !settled
@@ -258,7 +302,8 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
         node={paneNode}
         streams={patterns}
         readOnly={readOnly}
-        onCollapse={() => update({ paneCollapsed: true })}
+        onCollapse={() => setCollapsed(true)}
+        onScopeChange={(path, scope) => setPaneScope({ path, scope })}
       />
     </div>
   )
@@ -296,7 +341,7 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
           disabled={tree.nodeCount === 0}
         />
         {(note || truncated.length > 0 || streams.error || failed.length > 0) && (
-          <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-panel px-4 py-2">
+          <div className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-1.5">
             <ErrorNote error={streams.error} onRetry={() => void streams.refetch()} />
             {failed.map((f) => (
               <ErrorNote
@@ -308,15 +353,18 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
               />
             ))}
             {note && (
-              <div role="status">
-                <Notice tone="accent">{note}</Notice>
-              </div>
+              <p role="status" className="truncate text-xs text-accent" title={note}>
+                {note}
+              </p>
             )}
             {truncated.length > 0 && (
-              <Notice>
+              <p
+                className="truncate text-xs text-muted"
+                title={`Showing the ${formatCount(PER_STREAM)} busiest subjects of ${truncated.join(', ')}. Open the stream's Subjects tab to page through all of them.`}
+              >
                 Showing the {formatCount(PER_STREAM)} busiest subjects of {truncated.join(', ')}.
-                Open the stream&apos;s Subjects tab to page through all of them.
-              </Notice>
+                Open the stream&apos;s Subjects tab for all of them.
+              </p>
             )}
           </div>
         )}
@@ -349,9 +397,18 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
             ) : rows.length === 0 ? (
               <div className="flex flex-col items-start gap-3 p-6">
                 <p className="text-muted">
-                  {searching ? `No subjects match "${query}".` : 'No subjects match the filters.'}
+                  {searching
+                    ? `No subjects match "${query}"${filtersOn ? ` with ${filterText}` : ''}.`
+                    : `No subjects to show with ${filterText}.`}
                 </p>
-                {searching && <Button onClick={clearSearch}>Clear search</Button>}
+                <div className="flex gap-2">
+                  {searching && <Button onClick={clearSearch}>Clear search</Button>}
+                  {filtersOn && (
+                    <Button onClick={() => update({ onlyWithMessages: false, source: 'all' })}>
+                      Reset filters
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <SubjectTree
@@ -371,11 +428,12 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
               setDragWidth(null)
             }}
             collapsed={paneCollapsed}
+            containerWidth={width}
           >
             {paneCollapsed ? (
               <PaneRail
                 label={paneNode ? paneNode.path : 'Subject details'}
-                onExpand={() => update({ paneCollapsed: false })}
+                onExpand={() => setCollapsed(false)}
               />
             ) : (
               detail
@@ -397,18 +455,18 @@ function Skeleton(): ReactNode {
   )
 }
 
-/** True when the screen is narrower than `NARROW_WIDTH`; the pane is a rail by default then. */
-function useNarrow(ref: React.RefObject<HTMLElement | null>): boolean {
-  const [narrow, setNarrow] = useState(false)
+/** The width of the screen's content in px (null until measured, and in tests without layout). */
+function useWidth(ref: React.RefObject<HTMLElement | null>): number | null {
+  const [width, setWidth] = useState<number | null>(null)
   useEffect(() => {
     const el = ref.current
     if (!el || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? el.clientWidth
-      setNarrow(w > 0 && w < NARROW_WIDTH)
+      setWidth(w > 0 ? Math.round(w) : null)
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [ref])
-  return narrow
+  return width
 }

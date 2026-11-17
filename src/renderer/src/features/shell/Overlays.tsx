@@ -33,7 +33,10 @@ const SHORTCUTS: [keys: string[], what: string][] = [
     ['A–Z'],
     'In the Subjects tree: type to jump to the next subject that starts with those letters'
   ],
-  [['Enter', 'Space'], 'In the Subjects tree: select the row (Enter also opens the details panel)'],
+  [
+    ['Enter', 'Space'],
+    'In the Subjects tree: select the row (Enter also opens the details panel when it is collapsed)'
+  ],
   [['Shift', 'F10'], 'In the Subjects tree: open the actions menu of the row'],
   [['/'], 'In the Subjects tree: focus the search box (Esc clears it)'],
   [['Ctrl/⌘', 'Enter'], 'Send, in the publish form'],

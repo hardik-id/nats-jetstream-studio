@@ -74,6 +74,8 @@ export const INVALID_REASON =
 export const NO_STREAM_REASON = 'No stream stores or captures this subject.'
 export const WILDCARD_REASON =
   'Publishing needs one exact subject. Choose "This subject" or pick a leaf.'
+export const NO_CONCRETE_REASON =
+  'Publish needs a concrete subject; select a leaf or a subject with its own messages.'
 export const READ_ONLY_REASON = readOnlyProps(true).title as string
 
 /** Stored messages of one stream within a scope. */
@@ -167,7 +169,10 @@ export function describeActions(
     defaultStream: browseStreams[0] ?? null
   }
   const publishReasons: string[] = []
-  if (!canPublish(node.path, scope)) publishReasons.push(WILDCARD_REASON)
+  if (!canPublish(node.path, scope))
+    publishReasons.push(
+      availableScopes(node).includes('subject') ? WILDCARD_REASON : NO_CONCRETE_REASON
+    )
   if (readOnly) publishReasons.push(READ_ONLY_REASON)
   return {
     scope,

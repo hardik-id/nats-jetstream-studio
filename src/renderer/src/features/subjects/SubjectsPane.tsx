@@ -16,12 +16,15 @@ export function PaneFrame({
   onWidth,
   onCommit,
   collapsed,
+  containerWidth,
   children
 }: {
   width: number
   onWidth: (w: number) => void
   onCommit: (w: number) => void
   collapsed: boolean
+  /** Width of the row the pane sits in, for the largest width the separator reports. */
+  containerWidth?: number | null
   children: ReactNode
 }): ReactNode {
   const frame = useRef<HTMLDivElement>(null)
@@ -58,6 +61,7 @@ export function PaneFrame({
         aria-label="Resize subject details"
         aria-valuenow={current}
         aria-valuemin={PANE_MIN_WIDTH}
+        aria-valuemax={Math.max(PANE_MIN_WIDTH, Math.floor((containerWidth ?? 1600) * 0.6))}
         tabIndex={0}
         className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
         onPointerDown={(e) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SubjectSort, SubjectSource } from '../features/subjects/subjectTree'
 import { useSetting } from '../lib/hooks'
 
@@ -61,23 +61,29 @@ export function sanitizeSubjectsUi(raw: unknown): SubjectsUiState {
  */
 export function useSubjectsUi(connId: string): {
   ui: SubjectsUiState
-  /** The stored value was read, or reading failed (then nothing is ever written). */
+  /** The stored value was read, or reading failed (then the state only lives in memory). */
   ready: boolean
   update: (patch: Partial<SubjectsUiState>) => void
 } {
   const [raw, setRaw, loaded, loadError] = useSetting<unknown>(subjectsUiKey(connId), null)
-  const ui = useMemo(() => sanitizeSubjectsUi(raw), [raw])
-  const latestRef = useRef({ ui, loaded })
+  // When the stored value cannot be read, the screen still works from memory: nothing is written,
+  // because the defaults would replace what is stored.
+  const [memory, setMemory] = useState<SubjectsUiState | null>(null)
+  const failed = !loaded && loadError !== null
+  const stored = useMemo(() => sanitizeSubjectsUi(raw), [raw])
+  const ui = failed ? (memory ?? SUBJECTS_UI_DEFAULTS) : stored
+  const latestRef = useRef({ ui, loaded, failed })
   useEffect(() => {
-    latestRef.current = { ui, loaded }
+    latestRef.current = { ui, loaded, failed }
   })
   const update = (patch: Partial<SubjectsUiState>): void => {
-    const { ui: current, loaded: ready } = latestRef.current
-    if (!ready) return
-    const next = { ...current, ...patch }
+    const cur = latestRef.current
+    if (!cur.loaded && !cur.failed) return
+    const next = { ...cur.ui, ...patch }
     // Two updates in one event must both land: the next call starts from this value.
-    latestRef.current = { ui: next, loaded: ready }
-    void setRaw(next)
+    latestRef.current = { ...cur, ui: next }
+    if (cur.failed) setMemory(next)
+    else void setRaw(next)
   }
-  return { ui, ready: loaded || loadError !== null, update }
+  return { ui, ready: loaded || failed, update }
 }

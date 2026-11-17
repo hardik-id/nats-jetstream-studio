@@ -32,6 +32,8 @@ export interface SubjectDetailProps {
   readOnly?: boolean
   /** Shows a button that collapses the pane to its rail (the layout belongs to the screen). */
   onCollapse?: () => void
+  /** The scope the user chose (or the default one after a change of selection). */
+  onScopeChange?: (path: string, scope: SubjectScope) => void
 }
 
 const REASON = 'text-xs text-muted'
@@ -46,7 +48,8 @@ export function SubjectDetail({
   node,
   streams,
   readOnly = false,
-  onCollapse
+  onCollapse,
+  onScopeChange
 }: SubjectDetailProps): ReactNode {
   // Section state lives above the keyed Body so it survives a change of selection.
   const [countsOpen, setCountsOpen] = useState(true)
@@ -55,10 +58,10 @@ export function SubjectDetail({
     <aside
       aria-label="Subject details"
       data-testid="subject-detail"
-      className="flex h-full min-h-0 flex-col overflow-y-auto bg-panel"
+      className="relative flex h-full min-h-0 flex-col overflow-y-auto bg-panel"
     >
       {onCollapse && (
-        <div className="flex shrink-0 justify-end px-2 pt-2">
+        <div className="absolute top-2 right-2 z-10">
           <Button
             size="sm"
             variant="ghost"
@@ -77,13 +80,14 @@ export function SubjectDetail({
           node={node}
           streams={streams}
           readOnly={readOnly}
+          onScopeChange={onScopeChange}
           countsOpen={countsOpen}
           setCountsOpen={setCountsOpen}
           streamsOpen={streamsOpen}
           setStreamsOpen={setStreamsOpen}
         />
       ) : (
-        <p className="p-4 text-muted">
+        <p className="p-4 pr-12 text-muted">
           Select a subject to see its streams and to browse, tail or publish on it.
         </p>
       )}
@@ -96,6 +100,7 @@ function Body({
   node,
   streams,
   readOnly,
+  onScopeChange,
   countsOpen,
   setCountsOpen,
   streamsOpen,
@@ -105,6 +110,7 @@ function Body({
   node: SubjectInfo
   streams: readonly StreamPatterns[]
   readOnly: boolean
+  onScopeChange?: (path: string, scope: SubjectScope) => void
   countsOpen: boolean
   setCountsOpen: (f: (v: boolean) => boolean) => void
   streamsOpen: boolean
@@ -146,7 +152,7 @@ function Body({
       <div>
         <div className="flex items-start gap-1">
           <h3
-            className="min-w-0 flex-1 font-mono text-sm font-semibold break-all"
+            className="min-w-0 flex-1 pr-9 font-mono text-sm font-semibold break-all"
             title={node.path}
           >
             {node.path}
@@ -174,6 +180,120 @@ function Body({
             filter or action is offered for it.
           </p>
         )}
+      </div>
+
+      {scopes.length > 0 && (
+        <fieldset className="flex min-w-0 flex-col gap-1.5">
+          <legend className="mb-1 text-xs font-semibold text-muted">Scope</legend>
+          <div className="flex flex-col gap-1">
+            {scopes.map((s) => (
+              <label key={s} className="flex cursor-pointer items-start gap-2 text-[13px]">
+                <input
+                  type="radio"
+                  name={groupId}
+                  className="mt-0.5 accent-[var(--color-accent)]"
+                  checked={scope === s}
+                  onChange={() => {
+                    setChosen(s)
+                    onScopeChange?.(node.path, s)
+                  }}
+                />
+                <span className="min-w-0 break-words">{scopeLabel(node, s)}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted">
+            Filter used:{' '}
+            <code data-testid="subject-filter" className="font-mono text-fg">
+              {actions.filter}
+            </code>
+          </p>
+        </fieldset>
+      )}
+
+      <div role="group" aria-label="Actions" className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Database className="h-3.5 w-3.5" aria-hidden />}
+            disabled={!browse.enabled}
+            title={browse.reason}
+            aria-describedby={browseDesc}
+            onClick={() => runBrowse(tabs, connId, browse, stream)}
+          >
+            {browse.label}
+          </Button>
+          {browse.streams.length > 1 && stream && (
+            <Menu
+              trigger={(p) => (
+                <Button
+                  size="sm"
+                  {...p}
+                  aria-label={`Stream to browse: ${stream}`}
+                  title="Choose the stream to browse"
+                  icon={<ChevronDown className="h-3.5 w-3.5" aria-hidden />}
+                >
+                  {stream}
+                </Button>
+              )}
+              items={browse.streams.map((s) => ({
+                label: s === stream ? `${s} (selected)` : s,
+                onSelect: () => setChosenStream({ key: streamKey, stream: s })
+              }))}
+            />
+          )}
+        </div>
+        <Reason action={browse} id={`${groupId}-browse`} hide={!node.valid} />
+        {browse.enabled && stream && browseEmpty && (
+          <p id={`${groupId}-browse-empty`} className={REASON}>
+            No stored messages yet in {stream} for this filter; the Messages tab will be empty.
+          </p>
+        )}
+        {browse.enabled && browse.streams.length > 1 && (
+          <p className={REASON}>
+            Stored in {browse.streams.length} streams; browsing {stream}.
+          </p>
+        )}
+
+        <div>
+          <Button
+            size="sm"
+            icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
+            disabled={!actions.tail.enabled}
+            title={actions.tail.reason}
+            aria-describedby={actions.tail.reason ? tailDesc : undefined}
+            onClick={() => runTail(tabs, connId, actions.tail)}
+          >
+            {actions.tail.label}
+          </Button>
+          <Reason action={actions.tail} id={`${groupId}-tail`} hide={!node.valid} />
+        </div>
+
+        <div>
+          <Button
+            size="sm"
+            icon={<Send className="h-3.5 w-3.5" aria-hidden />}
+            disabled={!actions.publish.enabled}
+            title={actions.publish.reason}
+            aria-describedby={actions.publish.reason ? publishDesc : undefined}
+            onClick={() => runPublish(tabs, connId, actions.publish)}
+          >
+            {actions.publish.label}
+          </Button>
+          <Reason action={actions.publish} id={`${groupId}-publish`} hide={!node.valid} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <CopyAction text={node.path} label={actions.copySubject.label} done="Copied subject" />
+          {actions.filter && (
+            <CopyAction
+              text={actions.filter}
+              label={`${actions.copyFilter.label} (${actions.filter})`}
+              done="Copied filter"
+            />
+          )}
+        </div>
       </div>
 
       <CollapsibleSection
@@ -227,113 +347,6 @@ function Body({
           </ul>
         )}
       </CollapsibleSection>
-
-      {scopes.length > 0 && (
-        <fieldset className="flex min-w-0 flex-col gap-1.5">
-          <legend className="mb-1 text-xs font-semibold text-muted">Scope</legend>
-          <div className="flex flex-col gap-1">
-            {scopes.map((s) => (
-              <label key={s} className="flex cursor-pointer items-start gap-2 text-[13px]">
-                <input
-                  type="radio"
-                  name={groupId}
-                  className="mt-0.5 accent-[var(--color-accent)]"
-                  checked={scope === s}
-                  onChange={() => setChosen(s)}
-                />
-                <span className="min-w-0 break-words">{scopeLabel(node, s)}</span>
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-muted">
-            Filter used:{' '}
-            <code data-testid="subject-filter" className="font-mono text-fg">
-              {actions.filter}
-            </code>
-          </p>
-        </fieldset>
-      )}
-
-      <div role="group" aria-label="Actions" className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            icon={<Database className="h-3.5 w-3.5" aria-hidden />}
-            disabled={!browse.enabled}
-            title={browse.reason}
-            aria-describedby={browseDesc}
-            onClick={() => runBrowse(tabs, connId, browse, stream)}
-          >
-            {browse.label}
-          </Button>
-          {browse.streams.length > 1 && stream && (
-            <Menu
-              trigger={(p) => (
-                <Button
-                  {...p}
-                  aria-label={`Stream to browse: ${stream}`}
-                  title="Choose the stream to browse"
-                  icon={<ChevronDown className="h-3.5 w-3.5" aria-hidden />}
-                >
-                  {stream}
-                </Button>
-              )}
-              items={browse.streams.map((s) => ({
-                label: s === stream ? `${s} (selected)` : s,
-                onSelect: () => setChosenStream({ key: streamKey, stream: s })
-              }))}
-            />
-          )}
-        </div>
-        <Reason action={browse} id={`${groupId}-browse`} hide={!node.valid} />
-        {browse.enabled && stream && browseEmpty && (
-          <p id={`${groupId}-browse-empty`} className={REASON}>
-            No stored messages yet in {stream} for this filter; the Messages tab will be empty.
-          </p>
-        )}
-        {browse.enabled && browse.streams.length > 1 && (
-          <p className={REASON}>
-            Stored in {browse.streams.length} streams; browsing {stream}.
-          </p>
-        )}
-
-        <div>
-          <Button
-            icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
-            disabled={!actions.tail.enabled}
-            title={actions.tail.reason}
-            aria-describedby={actions.tail.reason ? tailDesc : undefined}
-            onClick={() => runTail(tabs, connId, actions.tail)}
-          >
-            {actions.tail.label}
-          </Button>
-          <Reason action={actions.tail} id={`${groupId}-tail`} hide={!node.valid} />
-        </div>
-
-        <div>
-          <Button
-            icon={<Send className="h-3.5 w-3.5" aria-hidden />}
-            disabled={!actions.publish.enabled}
-            title={actions.publish.reason}
-            aria-describedby={actions.publish.reason ? publishDesc : undefined}
-            onClick={() => runPublish(tabs, connId, actions.publish)}
-          >
-            {actions.publish.label}
-          </Button>
-          <Reason action={actions.publish} id={`${groupId}-publish`} hide={!node.valid} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <CopyAction text={node.path} label={actions.copySubject.label} done="Copied subject" />
-          {actions.filter && (
-            <CopyAction
-              text={actions.filter}
-              label={`${actions.copyFilter.label} (${actions.filter})`}
-              done="Copied filter"
-            />
-          )}
-        </div>
-      </div>
     </div>
   )
 }
@@ -371,6 +384,7 @@ function CopyAction({
   return (
     <span className="inline-flex items-center gap-1.5">
       <Button
+        size="sm"
         icon={<Copy className="h-3.5 w-3.5" aria-hidden />}
         onClick={() => void copyText(text).then((ok) => setResult(ok ? 'ok' : 'failed'))}
       >

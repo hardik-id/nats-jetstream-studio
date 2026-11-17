@@ -255,7 +255,17 @@ export function SubjectTree({
           <span className="sr-only">Actions</span>
         </div>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-auto" onScroll={() => setMenu(null)}>
+      <div
+        ref={scroller}
+        className="min-h-0 flex-1 overflow-auto"
+        onScroll={() => {
+          if (!menu) return
+          // Scrolling moves the row away from its menu: close it and go back to the row.
+          pendingFocus.current = menu.path
+          setFocusPath(menu.path)
+          setMenu(null)
+        }}
+      >
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map((v) => {
             const row = rows[v.index]
@@ -440,7 +450,7 @@ export function SubjectTree({
   )
 }
 
-const MENU_ROW = 34
+const MENU_ROW = 44
 
 /**
  * The row menu. It is drawn in a portal at fixed coordinates, so the scrolling tree cannot clip
@@ -459,7 +469,7 @@ function RowMenu({
 }): ReactNode {
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    box.current?.querySelector<HTMLElement>('[role=menuitem]:not(:disabled)')?.focus()
+    box.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
   }, [])
   useEffect(() => {
     const down = (e: globalThis.MouseEvent): void => {
@@ -483,11 +493,9 @@ function RowMenu({
       role="menu"
       aria-label={label}
       style={style}
-      className="z-50 w-max max-w-80 min-w-52 rounded-md border border-line bg-panel py-1 shadow-lg"
+      className="z-50 w-max max-w-96 min-w-52 rounded-md border border-line bg-panel py-1 shadow-lg"
       onKeyDown={(e) => {
-        const els = [
-          ...(box.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not(:disabled)') ?? [])
-        ]
+        const els = [...(box.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? [])]
         const at = els.indexOf(document.activeElement as HTMLElement)
         if (e.key === 'Escape') onClose(true)
         else if (e.key === 'Tab') onClose(true)
@@ -506,19 +514,26 @@ function RowMenu({
           role="menuitem"
           type="button"
           tabIndex={-1}
-          disabled={item.disabled}
+          aria-disabled={item.disabled || undefined}
           title={item.title ?? item.label}
           onClick={() => {
+            if (item.disabled) return
             onClose(true)
             item.onSelect()
           }}
           className={cx(
-            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover focus:bg-hover disabled:cursor-not-allowed disabled:opacity-50',
+            'flex w-full items-start gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover focus:bg-hover',
+            item.disabled && 'cursor-not-allowed opacity-60',
             item.danger && 'text-danger'
           )}
         >
-          {item.icon}
-          <span className="min-w-0 truncate">{item.label}</span>
+          <span className="mt-0.5 shrink-0">{item.icon}</span>
+          <span className="min-w-0 break-words">
+            {item.label}
+            {item.disabled && item.title && (
+              <span className="block text-xs text-muted">{item.title}</span>
+            )}
+          </span>
         </button>
       ))}
     </div>,

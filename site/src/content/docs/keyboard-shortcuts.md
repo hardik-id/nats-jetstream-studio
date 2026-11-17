@@ -49,7 +49,7 @@ The Subjects screen is one tab stop. Tab moves to the row you last used, then to
 | <kbd>←</kbd> | Close an open node; otherwise move to the parent. |
 | <kbd>*</kbd> | Open all siblings of the row. |
 | A letter | Jump to the next subject that starts with the letters you type. |
-| <kbd>Enter</kbd> / <kbd>Space</kbd> | Select the row. Enter also opens the details panel when it is collapsed. |
+| <kbd>Enter</kbd> / <kbd>Space</kbd> | Select the row. Enter (and a double-click) also opens the details panel when it is collapsed; it never leaves the tree. Use the buttons in the panel or the row menu to browse, tail or publish. |
 | <kbd>Shift</kbd> + <kbd>F10</kbd> | Open the actions menu of the row (<kbd>Esc</kbd> closes it). |
 | <kbd>/</kbd> or <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>F</kbd> | Focus the search box. <kbd>Esc</kbd> there clears the search. |
 

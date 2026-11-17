@@ -108,7 +108,7 @@ describe('PBI-127 subjects screen', () => {
     renderWithGateway(<SubjectsTab connId="dev" />, setup({ BIG: many }))
     await waitFor(() => expect(hasRow('big')).toBe(true))
     await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
-    expect(await screen.findByText(/Expanded to level 2/)).toBeInTheDocument()
+    expect(await screen.findByText(/Opened 11 of 13 branches/)).toBeInTheDocument()
   })
 
   it('searches: keeps ancestors, marks the match, counts, and restores the tree on clear', async () => {
@@ -156,16 +156,44 @@ describe('PBI-127 subjects screen', () => {
     expect(hasRow('orders.eu.created')).toBe(false)
   })
 
-  it('Expand all while searching shows everything below a match', async () => {
+  it('Expand all and Levels while searching only open what the search shows', async () => {
     renderWithGateway(<SubjectsTab connId="dev" />, setup())
     await waitFor(() => expect(hasRow('orders')).toBe(true))
-    await userEvent.type(screen.getByLabelText('Search subjects'), 'orders')
-    await waitFor(() => expect(hasRow('telemetry')).toBe(false))
+    await userEvent.type(screen.getByLabelText('Search subjects'), 'created')
+    await waitFor(() => expect(hasRow('orders.eu.created')).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
     expect(hasRow('orders.eu')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
     expect(hasRow('orders.eu.created')).toBe(true)
+    // Nothing outside the search appears: eu.shipped does not match.
+    expect(hasRow('orders.eu.shipped')).toBe(false)
+    expect(hasRow('telemetry')).toBe(false)
+    const levels = within(screen.getByRole('group', { name: 'Levels' }))
+    await userEvent.click(levels.getByRole('button', { name: '2' }))
+    expect(hasRow('orders.eu')).toBe(true)
+    expect(hasRow('orders.eu.created')).toBe(false)
+    expect(hasRow('telemetry')).toBe(false)
+  })
+
+  it('Expand all on a big tree with an active query opens branches up to the cap', async () => {
+    const many: [string, number][] = Array.from({ length: 6000 }, (_, i) => [
+      `big.g${i % 12}.s${i}`,
+      1
+    ])
+    renderWithGateway(<SubjectsTab connId="dev" />, setup({ BIG: many }))
+    await waitFor(() => expect(hasRow('big')).toBe(true))
+    await userEvent.type(screen.getByLabelText('Search subjects'), 's')
+    await waitFor(() => expect(screen.getByText('6,000 matches')).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
-    expect(hasRow('orders.eu')).toBe(false)
+    expect(hasRow('big.g0')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(await screen.findByText(/Opened 11 of 13 branches/)).toBeInTheDocument()
+    expect(hasRow('big.g0')).toBe(true)
+    const tree = await grid()
+    expect(Number(tree.getAttribute('aria-rowcount'))).toBeGreaterThan(5000)
+    // Another query clears the note.
+    await userEvent.type(screen.getByLabelText('Search subjects'), '1')
+    await waitFor(() => expect(screen.queryByText(/Opened 11 of 13/)).toBeNull())
   })
 
   it('a pattern query matches whole tokens', async () => {
@@ -201,10 +229,10 @@ describe('PBI-127 subjects screen', () => {
     expect(names()).toContain('telemetry')
     // Live-only subject is labelled and can be filtered.
     expect(within(row('zlive')).getByText('live')).toBeInTheDocument()
-    await userEvent.click(screen.getByLabelText('Only with messages'))
+    await userEvent.click(screen.getByLabelText('With messages'))
     expect(hasRow('zlive')).toBe(false)
-    await userEvent.click(screen.getByLabelText('Only with messages'))
-    await userEvent.click(screen.getByRole('button', { name: 'Live' }))
+    await userEvent.click(screen.getByLabelText('With messages'))
+    await userEvent.selectOptions(screen.getByLabelText('Source'), 'live')
     expect(hasRow('zlive')).toBe(true)
     expect(hasRow('orders')).toBe(false)
     useSeenSubjects.setState({ byConn: {} })
@@ -248,37 +276,25 @@ describe('PBI-127 subjects screen', () => {
       expect(row('telemetry')).toHaveFocus()
     })
 
-    it('Space selects; Enter and double-click run the default action', async () => {
-      renderWithGateway(<SubjectsTab connId="dev" />, setup())
+    it('Space selects; Enter and double-click select and open the pane, never navigate', async () => {
+      const gateway = setup()
+      gateway.settings.set('subjects.ui.dev', { paneCollapsed: true })
+      renderWithGateway(<SubjectsTab connId="dev" />, gateway)
       await waitFor(() => expect(hasRow('orders')).toBe(true))
       row('orders.us').focus()
       await userEvent.keyboard(' ')
       expect(row('orders.us')).toHaveAttribute('aria-selected', 'true')
-      const pane = screen.getByTestId('subject-detail')
-      expect(within(pane).getByRole('heading', { name: 'orders.us' })).toBeInTheDocument()
-      expect(useTabs.getState().tabs).toHaveLength(0)
-      // Enter selects and browses the subject in the stream that stores it.
+      // Space leaves a collapsed pane alone.
+      expect(screen.queryByTestId('subject-detail')).toBeNull()
       row('orders.eu').focus()
       await userEvent.keyboard('{Enter}')
       expect(row('orders.eu')).toHaveAttribute('aria-selected', 'true')
-      expect(useTabs.getState().tabs.at(-1)!.spec).toMatchObject({
-        kind: 'stream',
-        stream: 'ORDERS',
-        subject: 'orders.eu.>'
-      })
-    })
-
-    it('Enter tails a subject that no stream stores', async () => {
-      useSeenSubjects.setState({ byConn: { dev: { 'core.ping': 2 } } })
-      renderWithGateway(<SubjectsTab connId="dev" />, setup())
-      await waitFor(() => expect(hasRow('core')).toBe(true))
-      row('core.ping').focus()
-      await userEvent.keyboard('{Enter}')
-      expect(useTabs.getState().tabs.at(-1)!.spec).toMatchObject({
-        kind: 'tail',
-        subject: 'core.ping'
-      })
-      useSeenSubjects.setState({ byConn: {} })
+      const pane = await screen.findByTestId('subject-detail')
+      expect(within(pane).getByRole('heading', { name: 'orders.eu' })).toBeInTheDocument()
+      expect(useTabs.getState().tabs).toHaveLength(0)
+      await userEvent.dblClick(row('orders.us'))
+      expect(within(pane).getByRole('heading', { name: 'orders.us' })).toBeInTheDocument()
+      expect(useTabs.getState().tabs).toHaveLength(0)
     })
 
     it('Shift+F10 opens the row menu, Esc closes it and returns to the row', async () => {
@@ -319,7 +335,10 @@ describe('PBI-127 subjects screen', () => {
       renderWithGateway(<SubjectsTab connId="dev" />, gateway)
       await waitFor(() => expect(hasRow('orders')).toBe(true))
       await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
-      expect(screen.getByRole('menuitem', { name: /Publish message to orders.eu/ })).toBeDisabled()
+      const item = screen.getByRole('menuitem', { name: /Publish message to orders.eu/ })
+      expect(item).toHaveAttribute('aria-disabled', 'true')
+      // The reason is on screen, and the item can still be reached with the arrow keys.
+      expect(within(item).getByText(/read-only/)).toBeInTheDocument()
       expect(gateway.calls.some((c) => c.method === 'publish')).toBe(false)
     })
   })
@@ -439,6 +458,52 @@ describe('PBI-127 subjects screen', () => {
       expect(screen.getByRole('button', { name: 'Start a live tail' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Publish a message' })).toBeInTheDocument()
     })
+  })
+
+  it('focus goes to the counterpart button when the pane collapses and opens', async () => {
+    renderWithGateway(<SubjectsTab connId="dev" />, setup())
+    await waitFor(() => expect(hasRow('orders')).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse details' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Show subject details' })).toHaveFocus()
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Show subject details' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Collapse details' })).toHaveFocus()
+    )
+  })
+
+  it('works from memory when the saved view cannot be read', async () => {
+    const gateway = setup()
+    gateway.getSetting = async () => {
+      throw new Error('settings are unavailable')
+    }
+    renderWithGateway(<SubjectsTab connId="dev" />, gateway)
+    await waitFor(() => expect(hasRow('orders')).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    expect(hasRow('orders.eu')).toBe(false)
+    await userEvent.click(row('orders'))
+    expect(row('orders')).toHaveAttribute('aria-selected', 'true')
+    await userEvent.selectOptions(screen.getByLabelText('Sort subjects'), 'name')
+    expect(screen.getByLabelText('Sort subjects')).toHaveValue('name')
+    await userEvent.selectOptions(screen.getByLabelText('Source'), 'live')
+    expect(hasRow('orders')).toBe(false)
+    expect(await screen.findByText(/No subjects to show with Source: Live/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reset filters' }))
+    expect(hasRow('orders')).toBe(true)
+    // Nothing is ever written.
+    expect(gateway.calls.some((c) => c.method === 'setSetting')).toBe(false)
+  })
+
+  it('the row menu of the selected row uses the scope chosen in the pane', async () => {
+    renderWithGateway(<SubjectsTab connId="dev" />, setup())
+    await waitFor(() => expect(hasRow('orders')).toBe(true))
+    await userEvent.click(row('orders.eu'))
+    await userEvent.click(screen.getByLabelText(/^One level below/))
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
+    expect(
+      screen.getByRole('menuitem', { name: /Start live tail on orders.eu.\*/ })
+    ).toBeInTheDocument()
   })
 
   it('collapses the pane to a rail and back', async () => {

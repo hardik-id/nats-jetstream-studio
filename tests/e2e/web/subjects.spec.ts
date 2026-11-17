@@ -37,7 +37,8 @@ test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish
   await expect(page.getByTestId('subject-filter')).toHaveText(`${stream}.eu.>`)
 
   // Expand all and Collapse all.
-  await narrow(page, `${stream}.`)
+  // Expand all opens what the search shows: the ancestors of the matches.
+  await narrow(page, `${stream}.*.created`)
   await page.getByRole('button', { name: 'Collapse all' }).click()
   await expect(row(`${stream}.eu`)).toHaveCount(0)
   await page.getByRole('button', { name: 'Expand all' }).click()
@@ -96,15 +97,18 @@ test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish
     .getByRole('button', { name: `Actions for ${stream}.eu` })
     .click()
   await expect(page.getByRole('menu')).toBeVisible()
-  await page.getByRole('menuitem', { name: `Browse stored messages on ${stream}.eu.>` }).click()
-  await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.eu.>`)
+  // The selected row's menu uses the scope chosen in the pane (one level below).
+  await page.getByRole('menuitem', { name: `Browse stored messages on ${stream}.eu.*` }).click()
+  await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.eu.*`)
 
-  // Enter on a row runs the default action: browse.
+  // Enter selects the row and stays in the tree: nothing is opened.
   await go(page, 'Subjects')
   await narrow(page, `${stream}.us`)
   await row(`${stream}.us`).focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.us.>`)
+  await expect(row(`${stream}.us`)).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('subject-filter')).toHaveText(`${stream}.us.>`)
+  await expect(page.getByRole('tab', { name: 'Subjects' })).toHaveAttribute('aria-selected', 'true')
 
   await jsm.streams.delete(stream)
   await nc.close()
@@ -170,7 +174,7 @@ test('PBI-127 subjects: keyboard navigation and the collapsible pane', async ({ 
 
   await openStudio(page)
   await go(page, 'Subjects')
-  const tree = await narrow(page, `${stream}.`)
+  const tree = await narrow(page, `${stream}.*.*`)
   const row = (name: string) => tree.getByRole('row', { name, exact: true })
   await levels(page, 'All').click()
   await expect(row(`${stream}.a.one`)).toBeVisible()
@@ -209,3 +213,87 @@ test('PBI-127 subjects: keyboard navigation and the collapsible pane', async ({ 
   await jsm.streams.delete(stream)
   await nc.close()
 })
+
+/** Six streams of 5,000 subjects each: 30,000 subjects, one level with 5,000 siblings per root. */
+async function bigData(): Promise<{ prefix: string; cleanup: () => Promise<void> }> {
+  const prefix = unique('bg').toLowerCase()
+  const { jsm, nc } = await nats()
+  const names: string[] = []
+  for (let n = 0; n < 6; n++) {
+    const name = `${prefix.toUpperCase()}_${n}`
+    names.push(name)
+    await jsm.streams.add({ name, subjects: [`${prefix}${n}.>`] })
+    for (let i = 0; i < 5000; i++) nc.publish(`${prefix}${n}.s${i}`, 'x')
+  }
+  await nc.flush()
+  await expect
+    .poll(
+      async () => {
+        let total = 0
+        for (const name of names) total += (await jsm.streams.info(name)).state.messages
+        return total
+      },
+      { timeout: 60000 }
+    )
+    .toBe(30000)
+  return {
+    prefix,
+    cleanup: async () => {
+      for (const name of names) await jsm.streams.delete(name)
+      await nc.close()
+    }
+  }
+}
+
+for (const size of [
+  { width: 1280, height: 720 },
+  { width: 1000, height: 700 }
+]) {
+  test(`PBI-127 subjects: 30,000 subjects at ${size.width}x${size.height}, actions visible`, async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    const { prefix, cleanup } = await bigData()
+    try {
+      await page.setViewportSize(size)
+      await openStudio(page)
+      await go(page, 'Subjects')
+      const tree = page.getByRole('treegrid', { name: 'Subjects' })
+      await expect(tree.getByRole('row', { name: `${prefix}0`, exact: true })).toBeVisible({
+        timeout: 30_000
+      })
+      const rowCount = async (): Promise<number> => Number(await tree.getAttribute('aria-rowcount'))
+      await page.getByRole('group', { name: 'Levels' }).getByRole('button', { name: '2' }).click()
+      await expect.poll(rowCount, { timeout: 30_000 }).toBeGreaterThan(30000)
+      const before = await rowCount()
+      // Expand all never closes anything, even when the cap is already passed.
+      await page.getByRole('button', { name: 'Expand all' }).click()
+      expect(await rowCount()).toBeGreaterThanOrEqual(before)
+      // The DOM holds a window of rows only.
+      expect(await tree.getByRole('row').count()).toBeLessThan(100)
+
+      if (size.width >= 1280) {
+        const box = await page.getByRole('toolbar', { name: 'Subject tree controls' }).boundingBox()
+        expect(box!.height).toBeLessThan(60)
+      }
+
+      // Select a subject: every labelled action is on screen without scrolling.
+      await page.getByLabel('Search subjects').fill(`${prefix}1.s10`)
+      const leaf = tree.getByRole('row', { name: `${prefix}1.s10`, exact: true })
+      await leaf.click()
+      const rail = page.getByRole('button', { name: 'Show subject details' })
+      if (await rail.isVisible()) await rail.click()
+      const pane = page.getByTestId('subject-detail')
+      await expect(pane.getByRole('heading', { level: 3 })).toHaveText(`${prefix}1.s10`)
+      for (const name of [
+        'Browse stored messages',
+        'Start live tail',
+        'Publish message',
+        'Copy subject'
+      ])
+        await expect(pane.getByRole('button', { name })).toBeInViewport({ ratio: 1 })
+    } finally {
+      await cleanup()
+    }
+  })
+}

@@ -24,6 +24,18 @@ const SHORTCUTS: [keys: string[], what: string][] = [
     'On a line of a JSON payload: move between lines, open or close a node (Tab reaches Copy path and Copy value)'
   ],
   [['Ctrl/⌘', 'F'], 'Search inside a JSON payload'],
+  [
+    ['↑', '↓', '←', '→', 'Home', 'End', 'PgUp', 'PgDn'],
+    'In the Subjects tree: move between rows, open or close a node (→ again enters it, ← goes to the parent)'
+  ],
+  [['*'], 'In the Subjects tree: open all siblings of the row'],
+  [
+    ['A–Z'],
+    'In the Subjects tree: type to jump to the next subject that starts with those letters'
+  ],
+  [['Enter', 'Space'], 'In the Subjects tree: select the row (Enter also opens the details panel)'],
+  [['Shift', 'F10'], 'In the Subjects tree: open the actions menu of the row'],
+  [['/'], 'In the Subjects tree: focus the search box (Esc clears it)'],
   [['Ctrl/⌘', 'Enter'], 'Send, in the publish form'],
   [['Ctrl/⌘', '+ / − / 0'], 'Zoom in, zoom out, reset zoom (desktop app)'],
   [

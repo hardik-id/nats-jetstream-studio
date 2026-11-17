@@ -38,6 +38,21 @@ These work in every table, such as the lists of streams, consumers and messages,
 
 Columns can also be resized by dragging the handle; double-click it to reset the column. The widths are remembered for each table.
 
+## Subjects tree
+
+The Subjects screen is one tab stop. Tab moves to the row you last used, then to its **Actions** button.
+
+| Keys | What it does |
+| --- | --- |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Previous or next row. <kbd>PgUp</kbd> / <kbd>PgDn</kbd> move by a page, <kbd>Home</kbd> / <kbd>End</kbd> go to the first or last row. |
+| <kbd>→</kbd> | Open a closed node; on an open node, move to its first child. |
+| <kbd>←</kbd> | Close an open node; otherwise move to the parent. |
+| <kbd>*</kbd> | Open all siblings of the row. |
+| A letter | Jump to the next subject that starts with the letters you type. |
+| <kbd>Enter</kbd> / <kbd>Space</kbd> | Select the row. Enter also opens the details panel when it is collapsed. |
+| <kbd>Shift</kbd> + <kbd>F10</kbd> | Open the actions menu of the row (<kbd>Esc</kbd> closes it). |
+| <kbd>/</kbd> or <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>F</kbd> | Focus the search box. <kbd>Esc</kbd> there clears the search. |
+
 ## Message browser
 
 | Keys | What it does |

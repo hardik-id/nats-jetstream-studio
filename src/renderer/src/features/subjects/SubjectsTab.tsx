@@ -1,77 +1,72 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, useEffect, type KeyboardEvent, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Database, Radio, RefreshCw, Send } from 'lucide-react'
+import { Copy, Database, Radio, RefreshCw, Send } from 'lucide-react'
 import { formatCount } from '@shared/format'
-import { subjectMatches, type SubjectNode } from '@shared/subject'
-import {
-  Badge,
-  Button,
-  ErrorNote,
-  Input,
-  Notice,
-  Page,
-  readOnlyProps,
-  Spinner
-} from '../../components/ui'
+import { Button, ErrorNote, errorMessage, Notice, Page, readOnlyProps } from '../../components/ui'
+import type { MenuItem } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useConnection, useDebounced } from '../../lib/hooks'
 import { useSeenSubjects } from '../../state/seenSubjects'
 import { useTabs } from '../../state/tabs'
+import { PANE_DEFAULT_WIDTH, useSubjectsUi } from '../../state/subjectsUi'
+import { PaneFrame, PaneRail, SubjectDetailPlaceholder } from './SubjectsPane'
+import { SubjectTree } from './SubjectTree'
+import { SubjectsToolbar, type LevelChoice } from './SubjectsToolbar'
+import {
+  buildTree,
+  defaultExpanded,
+  EXPAND_ALL_CAP,
+  excludeSystemStreams,
+  expandAllPaths,
+  expandToLevel,
+  flatten,
+  pruneExpanded,
+  searchSubjects,
+  type SubjectRow,
+  type SubjectTreeNode
+} from './subjectTree'
 
 const PER_STREAM = 5000
-const CHILD_CHUNK = 200
+/** Below this width of the screen the detail pane starts as a rail. */
+const NARROW_WIDTH = 900
 
-interface TreeNode extends SubjectNode {
-  children: Map<string, TreeNode>
-  /** Messages seen in live tails on exactly this subject. */
-  live: number
-  liveTotal: number
-}
+const EMPTY_SET: ReadonlySet<string> = new Set()
 
-function emptyNode(token: string, path: string): TreeNode {
-  return { token, path, count: 0, total: 0, live: 0, liveTotal: 0, children: new Map() }
-}
-
-function addSubject(root: TreeNode, subject: string, stored: number, live: number): void {
-  let node = root
-  root.total += stored
-  root.liveTotal += live
-  const tokens = subject.split('.')
-  tokens.forEach((token, i) => {
-    let child = node.children.get(token)
-    if (!child) {
-      child = emptyNode(token, node.path ? `${node.path}.${token}` : token)
-      node.children.set(token, child)
-    }
-    child.total += stored
-    child.liveTotal += live
-    if (i === tokens.length - 1) {
-      child.count += stored
-      child.live += live
-    }
-    node = child
-  })
+/** Search-time opening and closing the user did, for one query. Cleared when the query changes. */
+interface SearchOpen {
+  query: string
+  collapsed: ReadonlySet<string>
+  expanded: ReadonlySet<string>
 }
 
 /**
- * Subjects as a hierarchy (PBI-061), built from the subjects stored in every stream plus the
- * subjects seen in live tails during this session.
+ * Subjects as a hierarchy (PBI-061, PBI-127): a virtualised tree of the subjects stored in every
+ * stream plus those seen in live tails, with a detail pane for the selected subject.
  */
 export function SubjectsTab({ connId }: { connId: string }): ReactNode {
   const gateway = useGateway()
+  const tabs = useTabs()
+  const conn = useConnection(connId)
+  const readOnly = conn?.readOnly === true
+  const { ui, ready, update } = useSubjectsUi(connId)
   const [search, setSearch] = useState('')
-  const query = useDebounced(search.trim().toLowerCase(), 200)
+  const query = useDebounced(search.trim(), 200)
+  const [searchOpen, setSearchOpen] = useState<SearchOpen>({
+    query: '',
+    collapsed: EMPTY_SET,
+    expanded: EMPTY_SET
+  })
+  const [note, setNote] = useState<string | null>(null)
   const seen = useSeenSubjects((s) => s.byConn[connId])
+  const searchInput = useRef<HTMLInputElement>(null)
+  const root = useRef<HTMLDivElement>(null)
 
   const streams = useQuery({
     queryKey: ['streams', connId],
     queryFn: () => gateway.listStreams(connId)
   })
   const names = useMemo(
-    () =>
-      (streams.data ?? [])
-        .map((s) => s.config.name)
-        .filter((n) => !n.startsWith('KV_') && !n.startsWith('OBJ_')),
+    () => excludeSystemStreams((streams.data ?? []).map((s) => s.config.name)),
     [streams.data]
   )
   const subjectQueries = useQueries({
@@ -82,246 +77,361 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
       staleTime: 30_000
     }))
   })
-  const loading = streams.isLoading || subjectQueries.some((q) => q.isLoading)
+  const waiting = subjectQueries.filter((q) => q.isLoading).length
+  const settled = ready && !streams.isLoading && waiting === 0
   const truncated = names.filter((_, i) => (subjectQueries[i]?.data?.total ?? 0) > PER_STREAM)
-  const dataKey = subjectQueries.map((q) => q.dataUpdatedAt).join(',')
+  const failed = names.flatMap((stream, i) =>
+    subjectQueries[i]?.error ? [{ stream, error: subjectQueries[i].error, index: i }] : []
+  )
+  const dataKey = `${names.join(',')}|${subjectQueries.map((q) => q.dataUpdatedAt).join(',')}`
 
-  const root = useMemo(() => {
-    const tree = emptyNode('', '')
-    subjectQueries.forEach((q) => {
-      for (const { subject, count } of q.data?.subjects ?? []) addSubject(tree, subject, count, 0)
-    })
-    for (const [subject, count] of Object.entries(seen ?? {})) addSubject(tree, subject, 0, count)
-    return tree
+  const patterns = useMemo(
+    () =>
+      (streams.data ?? [])
+        .filter((s) => names.includes(s.config.name))
+        .map((s) => ({ name: s.config.name, subjects: s.config.subjects ?? [] })),
+    [streams.data, names]
+  )
+
+  // Rows appear as each stream answers: the tree is built from the streams that have data.
+  const tree = useMemo(
+    () =>
+      buildTree(
+        names.flatMap((stream, i) => {
+          const data = subjectQueries[i]?.data
+          return data ? [{ stream, subjects: data.subjects }] : []
+        }),
+        seen,
+        patterns
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataKey, seen])
+    [dataKey, seen, patterns]
+  )
 
-  /** Which stream stores a subject: the first one whose subject patterns match it. */
-  const streamFor = useMemo(() => {
-    const patterns = (streams.data ?? [])
-      .filter((s) => names.includes(s.config.name))
-      .map((s) => ({ name: s.config.name, subjects: s.config.subjects ?? [] }))
-    return (subject: string): string | undefined =>
-      patterns.find((p) => p.subjects.some((pattern) => subjectMatches(pattern, subject)))?.name
-  }, [streams.data, names])
+  const filters = useMemo(
+    () => ({ onlyWithMessages: ui.onlyWithMessages, source: ui.source }),
+    [ui.onlyWithMessages, ui.source]
+  )
+
+  // The open nodes: what the user chose, else the top level. Paths that are gone are dropped,
+  // but only once every stream has answered (a partial tree must not forget anything).
+  const expanded = useMemo(() => {
+    if (ui.expanded === null) return defaultExpanded(tree)
+    return settled ? pruneExpanded(tree, ui.expanded) : new Set(ui.expanded)
+  }, [tree, ui.expanded, settled])
+
+  const searching = query !== ''
+  const searchResult = useMemo(
+    () => (searching ? searchSubjects(tree, query, filters) : null),
+    [tree, query, filters, searching]
+  )
+  const sCollapsed = searching && searchOpen.query === query ? searchOpen.collapsed : EMPTY_SET
+  const sExpanded = searching && searchOpen.query === query ? searchOpen.expanded : EMPTY_SET
+
+  const rows = useMemo(() => {
+    let open: ReadonlySet<string> = expanded
+    if (searching && sCollapsed.size)
+      open = new Set([...expanded].filter((p) => !sCollapsed.has(p)))
+    return flatten(tree, {
+      expanded: open,
+      search: searchResult ?? undefined,
+      sort: ui.sort,
+      searchCollapsed: sCollapsed,
+      searchExpanded: sExpanded,
+      ...filters
+    })
+  }, [tree, expanded, searching, searchResult, sCollapsed, sExpanded, ui.sort, filters])
+
+  const selectedNode: SubjectTreeNode | null = ui.selected
+    ? (tree.byPath.get(ui.selected) ?? null)
+    : null
+
+  // ---- opening and closing ----
+
+  /** Opens or closes rows. While searching this changes the search view only, never `expanded`. */
+  const setOpen = (targets: SubjectRow[], open: boolean): void => {
+    setNote(null)
+    if (searchResult) {
+      const collapsed = new Set(sCollapsed)
+      const opened = new Set(sExpanded)
+      for (const t of targets) {
+        if (!open) {
+          opened.delete(t.path)
+          collapsed.add(t.path)
+        } else {
+          collapsed.delete(t.path)
+          // A match that is also an ancestor is open unless closed; opening it again must not
+          // switch it to "show everything below".
+          if (!(t.match && searchResult.revealed.has(t.path))) opened.add(t.path)
+        }
+      }
+      setSearchOpen({ query, collapsed, expanded: opened })
+      return
+    }
+    const next = new Set(expanded)
+    for (const t of targets) {
+      if (open) next.add(t.path)
+      else next.delete(t.path)
+    }
+    update({ expanded: [...next] })
+  }
+
+  const applyExpansion = (choice: LevelChoice | 'none'): void => {
+    const result =
+      choice === 'none'
+        ? { expanded: new Set<string>(), level: 1, capped: false }
+        : choice === 'all'
+          ? expandAllPaths(tree, EXPAND_ALL_CAP, filters)
+          : expandToLevel(tree, choice, filters)
+    setNote(
+      result.capped
+        ? `Expanded to level ${result.level} (limit of ${formatCount(EXPAND_ALL_CAP)} rows)`
+        : null
+    )
+    if (searchResult) {
+      // The search view. The levels count over the whole tree (a match opens to show its
+      // descendants), so ancestors and the user's own open nodes that fall outside the result
+      // are closed for this search, and the result's nodes are opened.
+      const closed = new Set<string>()
+      for (const p of searchResult.revealed) if (!result.expanded.has(p)) closed.add(p)
+      for (const p of expanded) if (!result.expanded.has(p)) closed.add(p)
+      setSearchOpen({ query, collapsed: closed, expanded: new Set(result.expanded) })
+    } else update({ expanded: [...result.expanded] })
+  }
+
+  // ---- selection and the detail pane ----
+
+  const narrow = useNarrow(root)
+  const paneCollapsed = ui.paneCollapsed ?? narrow
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+
+  const select = (row: SubjectRow, open: boolean): void => {
+    update({
+      selected: row.path,
+      ...(open && paneCollapsed ? { paneCollapsed: false } : {})
+    })
+  }
+
+  // ---- row menu (PLACEHOLDER: slice C replaces this with the shared action descriptors) ----
+
+  const menuItems = (node: SubjectTreeNode): MenuItem[] => {
+    const filter = node.hasChildren ? `${node.path}.>` : node.path
+    const stream = node.streams[0]
+    return [
+      {
+        label: `Browse stored messages on ${filter}`,
+        icon: <Database className="h-3.5 w-3.5" aria-hidden />,
+        disabled: !stream,
+        title: stream ? undefined : 'No stream stores this subject',
+        onSelect: () =>
+          tabs.open({
+            kind: 'stream',
+            connId,
+            stream,
+            section: 'messages',
+            subject: filter,
+            seq: undefined
+          })
+      },
+      {
+        label: `Live tail on ${filter}`,
+        icon: <Radio className="h-3.5 w-3.5" aria-hidden />,
+        onSelect: () => tabs.openNew('tail', connId, filter)
+      },
+      {
+        label: `Publish to ${node.path}`,
+        icon: <Send className="h-3.5 w-3.5" aria-hidden />,
+        ...(readOnly ? readOnlyProps(true) : { disabled: !node.valid }),
+        onSelect: () => tabs.openNew('publish', connId, node.path)
+      },
+      {
+        label: 'Copy subject',
+        icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
+        onSelect: () => void navigator.clipboard.writeText(node.path)
+      }
+    ]
+  }
 
   const refresh = (): void => {
     void streams.refetch()
     subjectQueries.forEach((q) => void q.refetch())
   }
 
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const el = e.target as HTMLElement
+    const typing = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+    if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) {
+      e.preventDefault()
+      searchInput.current?.focus()
+      searchInput.current?.select()
+    }
+  }
+
+  const clearSearch = (): void => setSearch('')
+  const empty = settled && tree.nodeCount === 0
+  const showSkeleton = (!settled && tree.nodeCount === 0) || !ready
+  const subtitle = !settled
+    ? streams.isLoading || !ready
+      ? 'Reading streams...'
+      : `Reading ${formatCount(waiting)} of ${formatCount(names.length)} streams...`
+    : `${formatCount(tree.total)} stored messages · ${formatCount(names.length)} streams · ${formatCount(tree.subjectCount)} subjects`
+  const paneNode = selectedNode
+  const detail = (
+    <SubjectDetailPlaceholder
+      connId={connId}
+      node={paneNode}
+      streams={patterns}
+      readOnly={readOnly}
+      onCollapse={() => update({ paneCollapsed: true })}
+    />
+  )
+
   return (
     <Page
       scroll={false}
       title="Subjects"
-      subtitle={`${formatCount(root.total)} stored messages across ${formatCount(names.length)} streams`}
+      subtitle={subtitle}
       actions={
         <Button
           icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-          busy={subjectQueries.some((q) => q.isFetching) && !loading}
+          busy={subjectQueries.some((q) => q.isFetching) && settled}
           onClick={refresh}
         >
           Refresh
         </Button>
       }
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-line bg-panel px-4 py-2">
-        <Input
-          className="w-80"
-          type="search"
-          aria-label="Search subjects"
-          placeholder="Search subjects"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+        <SubjectsToolbar
+          searchRef={searchInput}
+          search={search}
+          onSearch={setSearch}
+          matchCount={searchResult ? searchResult.count : null}
+          onExpandAll={() => applyExpansion('all')}
+          onCollapseAll={() => applyExpansion('none')}
+          onLevel={applyExpansion}
+          sort={ui.sort}
+          onSort={(sort) => update({ sort })}
+          onlyWithMessages={ui.onlyWithMessages}
+          onOnlyWithMessages={(onlyWithMessages) => update({ onlyWithMessages })}
+          source={ui.source}
+          onSource={(source) => update({ source })}
+          disabled={tree.nodeCount === 0}
         />
-        <span className="text-xs text-muted">
-          Counts are stored messages. Subjects seen only in a live tail are marked live.
-        </span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-panel p-3">
-        <ErrorNote error={streams.error ?? subjectQueries.find((q) => q.error)?.error} />
-        {truncated.length > 0 && (
-          <Notice className="mb-2">
-            Showing the {formatCount(PER_STREAM)} busiest subjects of {truncated.join(', ')}. Open
-            the stream&apos;s Subjects tab to page through all of them.
-          </Notice>
+        {(note || truncated.length > 0 || streams.error || failed.length > 0) && (
+          <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-panel px-4 py-2">
+            <ErrorNote error={streams.error} onRetry={() => void streams.refetch()} />
+            {failed.map((f) => (
+              <ErrorNote
+                key={f.stream}
+                error={
+                  new Error(`Could not read the subjects of ${f.stream}. ${errorMessage(f.error)}`)
+                }
+                onRetry={() => void subjectQueries[f.index]?.refetch()}
+              />
+            ))}
+            {note && (
+              <div role="status">
+                <Notice tone="accent">{note}</Notice>
+              </div>
+            )}
+            {truncated.length > 0 && (
+              <Notice>
+                Showing the {formatCount(PER_STREAM)} busiest subjects of {truncated.join(', ')}.
+                Open the stream&apos;s Subjects tab to page through all of them.
+              </Notice>
+            )}
+          </div>
         )}
-        {loading ? (
-          <Spinner label="Reading subjects from every stream" />
-        ) : root.children.size === 0 ? (
-          <p className="p-4 text-muted">
-            No subjects yet. Publish to a stream, or start a live tail to see core NATS subjects
-            here.
-          </p>
-        ) : (
-          <ul role="tree" aria-label="Subjects">
-            <Children node={root} depth={0} query={query} connId={connId} streamFor={streamFor} />
-          </ul>
-        )}
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
+            {showSkeleton ? (
+              <Skeleton />
+            ) : empty ? (
+              <div className="flex flex-col items-start gap-3 p-6">
+                <p className="text-muted">
+                  No subjects yet. Publish to a stream, or start a live tail to see core NATS
+                  subjects here.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
+                    onClick={() => tabs.openNew('tail', connId)}
+                  >
+                    Start a live tail
+                  </Button>
+                  <Button
+                    icon={<Send className="h-3.5 w-3.5" aria-hidden />}
+                    {...readOnlyProps(readOnly)}
+                    onClick={() => tabs.openNew('publish', connId)}
+                  >
+                    Publish a message
+                  </Button>
+                </div>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="flex flex-col items-start gap-3 p-6">
+                <p className="text-muted">
+                  {searching ? `No subjects match "${query}".` : 'No subjects match the filters.'}
+                </p>
+                {searching && <Button onClick={clearSearch}>Clear search</Button>}
+              </div>
+            ) : (
+              <SubjectTree
+                rows={rows}
+                selectedPath={ui.selected}
+                onSelect={select}
+                onSetOpen={setOpen}
+                menuItems={menuItems}
+              />
+            )}
+          </div>
+          <PaneFrame
+            width={dragWidth ?? ui.paneWidth ?? PANE_DEFAULT_WIDTH}
+            onWidth={setDragWidth}
+            onCommit={(w) => {
+              update({ paneWidth: w })
+              setDragWidth(null)
+            }}
+            collapsed={paneCollapsed}
+          >
+            {paneCollapsed ? (
+              <PaneRail
+                label={paneNode ? paneNode.path : 'Subject details'}
+                onExpand={() => update({ paneCollapsed: false })}
+              />
+            ) : (
+              detail
+            )}
+          </PaneFrame>
+        </div>
       </div>
     </Page>
   )
 }
 
-function matches(node: TreeNode, query: string): boolean {
-  if (!query) return true
-  if (node.path.toLowerCase().includes(query)) return true
-  for (const child of node.children.values()) if (matches(child, query)) return true
-  return false
-}
-
-function Children({
-  node,
-  depth,
-  query,
-  connId,
-  streamFor
-}: {
-  node: TreeNode
-  depth: number
-  query: string
-  connId: string
-  streamFor: (subject: string) => string | undefined
-}): ReactNode {
-  const [shown, setShown] = useState(CHILD_CHUNK)
-  const children = useMemo(
-    () =>
-      [...node.children.values()]
-        .filter((c) => matches(c, query))
-        .sort(
-          (a, b) =>
-            b.total + b.liveTotal - (a.total + a.liveTotal) || a.token.localeCompare(b.token)
-        ),
-    [node, query]
-  )
+function Skeleton(): ReactNode {
   return (
-    <>
-      {children.slice(0, shown).map((child) => (
-        <Branch
-          key={child.token}
-          node={child}
-          depth={depth}
-          query={query}
-          connId={connId}
-          streamFor={streamFor}
-        />
+    <div role="status" aria-label="Reading subjects" className="flex flex-col gap-2 p-4">
+      {[70, 45, 60, 35, 52, 40].map((w, i) => (
+        <div key={i} className="h-5 animate-pulse rounded bg-hover" style={{ width: `${w}%` }} />
       ))}
-      {children.length > shown && (
-        <li style={{ paddingLeft: depth * 18 + 22 }}>
-          <button
-            className="py-1 text-accent hover:underline"
-            onClick={() => setShown((n) => n + CHILD_CHUNK * 5)}
-          >
-            Show more ({formatCount(children.length - shown)} hidden)
-          </button>
-        </li>
-      )}
-    </>
+    </div>
   )
 }
 
-function Branch({
-  node,
-  depth,
-  query,
-  connId,
-  streamFor
-}: {
-  node: TreeNode
-  depth: number
-  query: string
-  connId: string
-  streamFor: (subject: string) => string | undefined
-}): ReactNode {
-  const tabs = useTabs()
-  const conn = useConnection(connId)
-  const hasChildren = node.children.size > 0
-  // Children are rendered only once a branch is opened; a search opens the branches that match.
-  const [open, setOpen] = useState(depth < 1)
-  const expanded = open || (query !== '' && hasChildren)
-  const wildcard = hasChildren ? `${node.path}.>` : node.path
-  const stream = streamFor(node.count > 0 || !hasChildren ? node.path : `${node.path}.x`)
-
-  return (
-    <li role="treeitem" aria-expanded={hasChildren ? expanded : undefined} aria-label={node.path}>
-      <div
-        className="group flex h-7 items-center gap-1.5 rounded-md pr-2 hover:bg-hover"
-        style={{ paddingLeft: depth * 18 }}
-      >
-        {hasChildren ? (
-          <button
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-faint hover:text-fg"
-            aria-label={expanded ? `Collapse ${node.path}` : `Expand ${node.path}`}
-            onClick={() => setOpen(!expanded)}
-          >
-            {expanded ? (
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-            )}
-          </button>
-        ) : (
-          <span className="w-5 shrink-0" />
-        )}
-        <span className="font-mono text-xs" title={node.path}>
-          {node.token}
-        </span>
-        <span className="tabular text-xs text-muted">{formatCount(node.total)}</span>
-        {node.total === 0 && node.liveTotal > 0 && (
-          <Badge tone="accent" title="Seen in a live tail; not stored in a stream">
-            live
-          </Badge>
-        )}
-        {stream && <Badge title={`Stored in stream ${stream}`}>{stream}</Badge>}
-        <span className="ml-auto flex gap-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-          {stream && (
-            <Button
-              size="sm"
-              variant="ghost"
-              title={`Browse stored messages on ${wildcard}`}
-              aria-label={`Browse stored messages on ${wildcard}`}
-              icon={<Database className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() =>
-                tabs.open({
-                  kind: 'stream',
-                  connId,
-                  stream,
-                  section: 'messages',
-                  subject: wildcard,
-                  seq: undefined
-                })
-              }
-            />
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            title={`Live tail on ${wildcard}`}
-            aria-label={`Live tail on ${wildcard}`}
-            icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
-            onClick={() => tabs.openNew('tail', connId, wildcard)}
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={`Publish to ${node.path}`}
-            icon={<Send className="h-3.5 w-3.5" aria-hidden />}
-            {...(conn?.readOnly ? readOnlyProps(true) : { title: `Publish to ${node.path}` })}
-            onClick={() => tabs.openNew('publish', connId, node.path)}
-          />
-        </span>
-      </div>
-      {hasChildren && expanded && (
-        <ul role="group">
-          <Children
-            node={node}
-            depth={depth + 1}
-            query={query}
-            connId={connId}
-            streamFor={streamFor}
-          />
-        </ul>
-      )}
-    </li>
-  )
+/** True when the screen is narrower than `NARROW_WIDTH`; the pane is a rail by default then. */
+function useNarrow(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? el.clientWidth
+      setNarrow(w > 0 && w < NARROW_WIDTH)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return narrow
 }

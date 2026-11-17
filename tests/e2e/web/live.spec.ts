@@ -270,32 +270,35 @@ test('PBI-061 subject tree: hierarchy, counts, search and actions', async ({ pag
 
   await openStudio(page)
   await go(page, 'Subjects')
-  const tree = page.getByRole('tree', { name: 'Subjects' })
-  const root = tree.getByRole('treeitem', { name: stream, exact: true })
-  await expect(root).toContainText('7')
-  await expect(root).toContainText(stream)
-  // Top-level branches start open; deeper ones open on demand.
-  const eu = tree.getByRole('treeitem', { name: `${stream}.eu`, exact: true })
-  await expect(eu).toContainText('6')
-  await expect(
-    tree.getByRole('treeitem', { name: `${stream}.eu.created`, exact: true })
-  ).toHaveCount(0)
-  await eu.getByRole('button', { name: `Expand ${stream}.eu` }).click()
-  await expect(
-    tree.getByRole('treeitem', { name: `${stream}.eu.created`, exact: true })
-  ).toContainText('4')
+  const tree = page.getByRole('treegrid', { name: 'Subjects' })
+  const row = (name: string) => tree.getByRole('row', { name, exact: true })
+  // The demo server has many subjects; search narrows the virtualised tree to this stream.
+  await page.getByLabel('Search subjects').fill(`${stream}.`)
+  await expect(row(stream)).toContainText('7')
+  await expect(row(stream)).toContainText(stream)
+  await expect(page.getByText(/matches$/)).toBeVisible()
+  await page.getByRole('group', { name: 'Levels' }).getByRole('button', { name: '1' }).click()
+  await expect(row(`${stream}.eu`)).toHaveCount(0)
+  await page.getByRole('group', { name: 'Levels' }).getByRole('button', { name: '2' }).click()
+  await expect(row(`${stream}.eu`)).toContainText('6')
+  await expect(row(`${stream}.eu.created`)).toHaveCount(0)
+  await row(`${stream}.eu`)
+    .getByRole('button', { name: `Expand ${stream}.eu` })
+    .click()
+  await expect(row(`${stream}.eu.created`)).toContainText('4')
 
-  // Search opens the branches that match.
+  // Search keeps the ancestors of a match and drops the rest.
   await page.getByLabel('Search subjects').fill(`${stream}.us.cre`)
-  await expect(
-    tree.getByRole('treeitem', { name: `${stream}.us.created`, exact: true })
-  ).toBeVisible()
-  await expect(tree.getByRole('treeitem', { name: `${stream}.eu`, exact: true })).toHaveCount(0)
-  await page.getByLabel('Search subjects').fill('')
+  await expect(row(`${stream}.us.created`)).toBeVisible()
+  await expect(row(`${stream}.us`)).toBeVisible()
+  await expect(row(`${stream}.eu`)).toHaveCount(0)
+  await page.getByLabel('Search subjects').fill(`${stream}.eu`)
 
-  // Browse stored messages for a branch.
-  await eu.hover()
-  await eu.getByRole('button', { name: `Browse stored messages on ${stream}.eu.>` }).click()
+  // Browse stored messages for a branch, from the row menu.
+  await row(`${stream}.eu`)
+    .getByRole('button', { name: `Actions for ${stream}.eu` })
+    .click()
+  await page.getByRole('menuitem', { name: `Browse stored messages on ${stream}.eu.>` }).click()
   await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.eu.>`)
   await expect(page.getByTestId('message-range')).toContainText('6 messages')
 
@@ -309,7 +312,8 @@ test('PBI-061 subject tree: hierarchy, counts, search and actions', async ({ pag
   await expect(page.getByTestId('tail-received')).toHaveText('1')
   await page.getByRole('button', { name: 'Stop' }).click()
   await go(page, 'Subjects')
-  await expect(tree.getByRole('treeitem', { name: live, exact: true })).toContainText('live')
+  await page.getByLabel('Search subjects').fill(live)
+  await expect(row(live)).toContainText('live')
   await jsm.streams.delete(stream)
   await nc.close()
 })

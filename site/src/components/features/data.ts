@@ -188,7 +188,7 @@ export const featureContent = {
       },
       {
         title: 'Subject tree',
-        text: 'See your subjects as a tree built token by token from stream subject counts and from subjects seen in tails. Each node shows its stored message count and the stream that captures it. Search the tree, and from a node browse stored messages, start a tail or publish. The tree shows the 5,000 busiest subjects per stream.'
+        text: 'See your subjects as a tree built token by token from stream subject counts and from subjects seen in tails. Columns show the stored messages (with a bar to compare siblings), the messages seen live and the stream that captures each subject. Expand all, Collapse all and Levels open the hierarchy; search by text or by a pattern such as orders.*.created, sort, show only subjects with messages, or filter by stream or live source. Select a subject for its details, and use the actions menu on a row to browse stored messages, start a tail or publish. The tree is keyboard navigable, remembers what you opened for each connection, and draws only the rows on screen, so large trees stay light on the page. It shows the 5,000 busiest subjects per stream.'
       },
       {
         title: 'Publish',

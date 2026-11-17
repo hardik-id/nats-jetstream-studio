@@ -886,6 +886,21 @@ Each item below is small enough for one agent in one session. Rules for every it
 - JSON: the default text is 13 px with A- and A+ buttons (3 steps, remembered) that also apply to the Text, Hex and Base64 views. Expand all, Collapse all and a levels control (1, 2, 3, all) replace the fixed depth. A search box with next and previous and a match count highlights matches and expands the tree to show them (Ctrl or Cmd+F in the payload focuses it, Esc clears it); the work is capped so 1 MB payloads stay responsive. "Copy path" (for example `$.order.items[0]`) and "Copy value" are available on a hovered or focused row and by keyboard. The wrap toggle, the truncation notice and the decoders keep working.
 - Everything is keyboard accessible with accessible names, icons come with text or a label (never colour alone), contrast is fine in both themes, and the panel works at 1000 px window width. The DataTable column resize (PBI-124) and the Live tail keep working.
 
+### PBI-127: Subjects screen: treegrid, detail pane and labelled actions
+**Priority:** v1 · **Size:** L · **Depends on:** PBI-061, PBI-125 · **Files:** `src/renderer/src/features/subjects/`, `src/renderer/src/state/subjectsUi.ts`, `src/renderer/src/state/seenSubjects.ts`, tests
+
+**Story:** As a user exploring subjects, I want to expand the whole hierarchy at once, see what each action does and on which wildcard, and compare counts at a glance, so that I can find a subject and browse, tail or publish on it without hunting for hover icons. This extends PBI-061.
+
+**Delivered in three slices.** A: the pure tree model and its unit tests (`subjectTree.ts`, no UI). B: the screen (treegrid, toolbar, virtualisation, persistence; merges last). C: the detail pane, labelled actions and live metadata (`seenSubjects` gets a timestamp). KV and Object Store streams stay excluded, and only subjects seen in live tails count as core subjects.
+
+**Acceptance criteria**
+- Layout: a virtualised `role="treegrid"` on the left (columns Subject, Messages, Live, Streams; counts right aligned; the stream badge is shown only where the owners differ from the parent's) and a detail pane on the right that follows the PBI-125 pattern (resizable, collapses to a rail, width and state remembered, collapsed under 1000 px).
+- Toolbar: search (substring on the full path, or a subject pattern with `*` or `>`) that keeps ancestors, highlights, shows a match count and does not change the expanded set; Expand all and Collapse all with text; Levels 1, 2, 3, All; sort by Messages, Name or Live; "Only with messages"; source filter All, Streams or Live. Expand all is capped at 5,000 rows with a notice ("Expanded to level N").
+- Actions in the detail pane, with text: Browse stored messages, Start live tail, Publish message, Copy subject, Copy filter, and the same in a visible row menu; the hover-only icons are removed. A scope control "This subject", "Everything below" (`.>`, default for a branch) and "One level below" (`.*`) shows the exact filter that Browse and Live tail receive; a node with its own messages and children can browse its own subject. Browse says why it is disabled when no stream stores the subject and offers a stream choice when several do. Publish uses the exact subject, is disabled for a wildcard scope and in read-only mode, and adds no new mutating gateway method.
+- Keyboard and accessibility: one tab stop with roving focus; Up, Down, Home, End, Left, Right, `*`, Enter, Space, type-ahead; `aria-level`, `aria-expanded`, `aria-selected`, `aria-posinset`, `aria-setsize`, `aria-rowindex` and `aria-rowcount`; colour is never the only signal.
+- Data: loading shows rows as each stream answers, a failed stream keeps the others, live-only subjects are labelled "live"; 10,000 subjects stay responsive and the DOM holds under 100 rows. Expanded paths, selection, sort, filters and pane state are remembered per connection; the top level is open on the first visit.
+- Not in this work: deleting a branch, payload preview per subject, rate and last-seen columns, discovery of core subjects nobody tailed.
+
 ## Epic 12: Website
 
 A public website on GitHub Pages, so that people can see what the studio does, download it and read

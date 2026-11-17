@@ -108,22 +108,46 @@ export function removeCondition(
   return canonicalFilters({ conditions: normalizeFilters(filters).filter((_, i) => i !== index) })
 }
 
+/** `$.items[0].sku` becomes `$.items[*].sku`: array steps match any item. Quoted names are kept. */
+export function anyItemPath(path: string): string {
+  let out = ''
+  for (let i = 0; i < path.length;) {
+    if (path[i] === '[' && path[i + 1] === '"') {
+      // A quoted name: copy it up to the closing quote (backslash escapes the next character).
+      let j = i + 2
+      while (j < path.length && path[j] !== '"') j += path[j] === '\\' ? 2 : 1
+      out += path.slice(i, j + 2)
+      i = j + 2
+    } else {
+      const m = /^\[-?\d+\]/.exec(path.slice(i))
+      if (m) {
+        out += '[*]'
+        i += m[0].length
+      } else out += path[i++]
+    }
+  }
+  return out
+}
+
 /**
- * The condition for "this field has this value": `<path> == <literal>`, or for a value inside an
- * array `<array path> contains <literal>` (an index is not a stable way to find a value).
+ * The condition for "this field has this value": `<path> == <literal>`, or for a value directly
+ * in an array `<array path> contains <literal>` (an index is not a stable way to find a value).
+ * Array steps further up the path are written `[*]`, so the condition means "any item".
  */
 export function valueCondition(
   target: { path: string; value: string | number | boolean | null; arrayPath?: string },
   exclude: boolean
 ): FilterCondition {
   const expr = target.arrayPath
-    ? `${target.arrayPath} contains ${jsonPathLiteral(target.value)}`
-    : `${target.path} == ${jsonPathLiteral(target.value)}`
+    ? `${anyItemPath(target.arrayPath)} contains ${jsonPathLiteral(target.value)}`
+    : `${anyItemPath(target.path)} == ${jsonPathLiteral(target.value)}`
   return exclude ? { kind: 'jsonPath', expr, exclude: true } : { kind: 'jsonPath', expr }
 }
 
 /** Checks one condition before a scan starts: an error message, or undefined when it is valid. */
 export function validateCondition(c: FilterCondition): string | undefined {
+  if (!['jsonPath', 'contains', 'regex', 'header'].includes(c.kind))
+    return `Unknown condition kind "${String(c.kind)}"`
   try {
     if (c.kind === 'regex' && c.expr) new RegExp(c.expr)
     else if (c.kind === 'jsonPath' && c.expr.trim()) parseJsonPathFilter(c.expr)
@@ -142,7 +166,10 @@ export interface ConditionError {
 /** Checks filter expressions before a scan starts, one error per invalid condition. */
 export function validateFilters(filters: ContentFilters): ConditionError[] {
   const errors: ConditionError[] = []
-  normalizeFilters(filters).forEach((c, index) => {
+  const list = normalizeFilters(filters)
+  if (list.length > MAX_CONDITIONS)
+    errors.push({ index: MAX_CONDITIONS, message: `At most ${MAX_CONDITIONS} conditions` })
+  list.forEach((c, index) => {
     const message = validateCondition(c)
     if (message) errors.push({ index, message })
   })
@@ -184,7 +211,14 @@ interface Subject {
  * (and counts it in `nonJson`) and as an exclude it lets the message through.
  */
 export function compileFilters(filters: ContentFilters): CompiledFilter {
-  const tests = normalizeFilters(filters).map((c): [boolean, (s: Subject) => Outcome] => {
+  const conditions = normalizeFilters(filters)
+  if (conditions.length > MAX_CONDITIONS)
+    throw new Error(`A filter can have at most ${MAX_CONDITIONS} conditions`)
+  for (const c of conditions) {
+    const message = validateCondition(c)
+    if (message) throw new Error(message)
+  }
+  const tests = conditions.map((c): [boolean, (s: Subject) => Outcome] => {
     const exclude = c.exclude === true
     if (c.kind === 'header') {
       const key = c.key.trim().toLowerCase()
@@ -206,6 +240,7 @@ export function compileFilters(filters: ContentFilters): CompiledFilter {
       const regex = new RegExp(c.expr)
       return [exclude, (s) => (regex.test(s.text()) ? 'yes' : 'no')]
     }
+    if (c.kind !== 'jsonPath') throw new Error(`Unknown condition kind "${String(c.kind)}"`)
     const path: JsonPathFilter = parseJsonPathFilter(c.expr)
     return [
       exclude,

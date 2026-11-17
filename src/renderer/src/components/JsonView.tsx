@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Ban, Check, ChevronDown, ChevronRight, Copy, ListFilter } from 'lucide-react'
 import type { FilterCondition } from '@shared/api'
-import { valueCondition } from '@shared/filters'
+import { anyItemPath, valueCondition } from '@shared/filters'
 import { appendSegment, valueText, type JsonSearch } from '@shared/jsonTree'
 import { cx } from './ui'
 
@@ -226,7 +226,7 @@ function Row({
       data-level={level}
       data-active-match={active ? '' : undefined}
       className={cx(
-        'group relative flex items-start hover:bg-hover focus-visible:outline-offset-[-2px]',
+        'group flex items-start hover:bg-hover focus-visible:outline-offset-[-2px]',
         onToggle && 'cursor-pointer',
         active && 'json-active',
         className
@@ -253,8 +253,8 @@ function Row({
       }}
     >
       {children}
-      {/* Over the end of the row, so the value keeps its width while the buttons are hidden. */}
-      <span className="absolute top-px right-0 flex gap-1 rounded bg-panel pl-1 opacity-0 group-focus-within:opacity-100 group-hover:bg-hover group-hover:opacity-100">
+      {/* In the row, after the value: the value keeps its own space and is never covered, and nothing moves on hover. */}
+      <span className="ml-auto flex shrink-0 gap-1 pl-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
         <CopyChip
           label="path"
           title={`Copy path ${id}`}
@@ -309,11 +309,14 @@ function FilterChip({
   onFilter: (condition: FilterCondition) => void
 }): ReactNode {
   const verb = filter.arrayPath ? 'contains' : 'equals'
+  const target = filter.arrayPath ?? id
+  const anyItem = anyItemPath(target) !== target ? ' in any item' : ''
   return (
     <FilterButton
       exclude={exclude}
+      text=""
       tabIndex={tabIndex}
-      label={`${exclude ? 'Exclude' : 'Filter to'} ${filter.name} ${verb} ${shortValue(filter.value)}`}
+      label={`${exclude ? 'Exclude' : 'Filter to'} ${filter.name} ${verb} ${shortValue(filter.value)}${anyItem}`}
       data-path={id}
       onClick={() =>
         onFilter(

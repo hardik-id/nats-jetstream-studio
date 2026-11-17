@@ -1048,7 +1048,7 @@ export function MessageBrowser({
               )}
             >
               {chip.exclude && (
-                <span className="shrink-0 rounded bg-danger/15 px-1 text-[11px] leading-4 font-semibold text-danger uppercase">
+                <span className="shrink-0 rounded bg-danger px-1 text-[11px] leading-4 font-semibold text-panel uppercase">
                   not
                 </span>
               )}

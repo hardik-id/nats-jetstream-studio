@@ -743,6 +743,24 @@ describe('PBI-042 and PBI-048 filters', () => {
     expect(path.done.error?.message).toMatch(/must start with \$/)
   })
 
+  it('refuses too many conditions and an unknown kind on the server (PBI-126)', async () => {
+    const many = await scan({
+      filters: {
+        conditions: Array.from({ length: 51 }, (_, i) => ({
+          kind: 'contains' as const,
+          expr: `x${i}`
+        }))
+      }
+    })
+    expect(many.done).toMatchObject({ reason: 'error', scanned: 0 })
+    expect(many.done.error?.kind).toBe('validation')
+    const unknown = await scan({
+      filters: { conditions: [{ kind: 'xpath', expr: '$.a' } as never] }
+    })
+    expect(unknown.done.error?.kind).toBe('validation')
+    expect(unknown.done.error?.message).toMatch(/Unknown condition kind/)
+  })
+
   it('reports progress while scanning', async () => {
     const result = await scan({ filters: { payloadContains: 'no-such-text' } })
     const progress = result.events.filter((e) => e.type === 'progress') as Extract<

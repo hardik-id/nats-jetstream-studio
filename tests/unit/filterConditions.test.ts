@@ -3,6 +3,8 @@ import type { ContentFilters, FilterCondition } from '@shared/api'
 import { utf8Encode } from '@shared/encoding'
 import {
   addCondition,
+  anyItemPath,
+  MAX_CONDITIONS,
   canonicalFilters,
   compileFilters,
   hasContentFilters,
@@ -257,6 +259,21 @@ describe('PBI-126 JSONPath literals round-trip', () => {
     expect(field).toEqual({ kind: 'jsonPath', expr: '$.type == "x"', exclude: true })
   })
 
+  it('writes array steps as [*] so a nested value means "any item"', () => {
+    expect(anyItemPath('$.items[0].sku')).toBe('$.items[*].sku')
+    expect(anyItemPath('$.a[1][2].b[-1]')).toBe('$.a[*][*].b[*]')
+    // Quoted names are kept, even when they look like an index.
+    expect(anyItemPath('$["a[1]"].b["x\\"[2]"][3]')).toBe('$["a[1]"].b["x\\"[2]"][*]')
+    const doc = { items: [{ sku: 'A' }, { sku: 'B' }] }
+    const c = valueCondition({ path: '$.items[1].sku', value: 'B' }, false)
+    expect(c).toEqual({ kind: 'jsonPath', expr: '$.items[*].sku == "B"' })
+    expect(test({ conditions: [c] }, doc)).toBe(true)
+    expect(test({ conditions: [c] }, { items: [{ sku: 'A' }] })).toBe(false)
+    expect(
+      valueCondition({ path: '$.a[0].tags[1]', value: 'x', arrayPath: '$.a[0].tags' }, false)
+    ).toEqual({ kind: 'jsonPath', expr: '$.a[*].tags contains "x"' })
+  })
+
   it('does not match a different value', () => {
     for (const s of awkward) {
       const c = valueCondition({ path: '$.v', value: s }, false) as { expr: string }
@@ -269,5 +286,22 @@ describe('PBI-126 JSONPath literals round-trip', () => {
     expect(jsonPathLiteral(true)).toBe('true')
     expect(jsonPathLiteral(null)).toBe('null')
     expect(jsonPathLiteral('a"b')).toBe('"a\\"b"')
+  })
+})
+
+describe('PBI-126 limits and kinds are checked when compiling', () => {
+  it('refuses more than MAX_CONDITIONS conditions', () => {
+    const many = (n: number): ContentFilters => ({
+      conditions: Array.from({ length: n }, (_, i) => ({ kind: 'contains', expr: `x${i}` }))
+    })
+    expect(() => compileFilters(many(MAX_CONDITIONS))).not.toThrow()
+    expect(() => compileFilters(many(MAX_CONDITIONS + 1))).toThrow(/at most 50/)
+    expect(validateFilters(many(MAX_CONDITIONS + 1))).toHaveLength(1)
+  })
+
+  it('refuses an unknown kind instead of treating it as JSONPath', () => {
+    const bad = { conditions: [{ kind: 'xpath', expr: '$.a' }] } as unknown as ContentFilters
+    expect(() => compileFilters(bad)).toThrow(/Unknown condition kind "xpath"/)
+    expect(validateFilters(bad)[0].message).toMatch(/xpath/)
   })
 })

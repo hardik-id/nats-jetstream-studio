@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ContentFilters, ScanRequest } from '@shared/api'
+import { MessageDetail } from '@renderer/components/MessageDetail'
 import { MessageBrowser } from '@renderer/features/messages/MessageBrowser'
 import { createFakeGateway } from '@renderer/gateway/fake'
 import { renderWithGateway } from './render'
@@ -175,6 +176,28 @@ describe('PBI-126 filter from a message', () => {
     await waitFor(() => expect(rows()).toHaveLength(3))
     expect(scans(gateway)).toHaveLength(1)
     expect(screen.getByRole('button', { name: /^Filters/ })).toHaveFocus()
+  })
+
+  it('a value in an object inside an array means any item', async () => {
+    const onFilter = vi.fn()
+    renderWithGateway(
+      <MessageDetail
+        message={{
+          subject: 's',
+          time: 0,
+          size: 9,
+          headers: [],
+          payload: btoa('{"items":[{"sku":"A"},{"sku":"B"}]}'),
+          truncated: false
+        }}
+        onClose={() => {}}
+        onFilter={onFilter}
+      />
+    )
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Filter to sku equals B in any item' })
+    )
+    expect(onFilter).toHaveBeenCalledWith({ kind: 'jsonPath', expr: '$.items[*].sku == "B"' })
   })
 
   it('shows no filter buttons without onFilter (Live tail)', async () => {

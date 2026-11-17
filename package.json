@@ -1,7 +1,7 @@
 {
   "name": "nats-jetstream-studio",
   "productName": "NATS JetStream Studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desktop studio for NATS and JetStream: browse streams, consumers, subjects and messages.",
   "main": "./out/main/index.js",
   "desktopName": "nats-jetstream-studio.desktop",

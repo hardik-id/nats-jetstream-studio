@@ -86,7 +86,8 @@ describe('PBI-125 filters toggle', () => {
     const panel = await screen.findByRole('form', { name: 'Message filters' })
     expect(button).toHaveAttribute('aria-expanded', 'true')
     expect(button).toHaveAttribute('aria-controls', panel.id)
-    await userEvent.type(within(panel).getByLabelText('Payload contains'), 'urgent')
+    await userEvent.selectOptions(within(panel).getByLabelText('Condition 1 type'), 'contains')
+    await userEvent.type(within(panel).getByLabelText('Condition 1 expression'), 'urgent')
     await userEvent.click(within(panel).getByRole('button', { name: 'Apply filters' }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Filters, 1 active' })).toBeInTheDocument()
@@ -98,7 +99,7 @@ describe('PBI-125 filters toggle', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
     const field = within(
       await screen.findByRole('form', { name: 'Message filters' })
-    ).getByLabelText('Payload contains')
+    ).getByLabelText('Condition 1 expression')
     await userEvent.type(field, '{Escape}')
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Message filters' })).toBeNull())
     expect(screen.getByRole('button', { name: /^Filters/ })).toHaveFocus()

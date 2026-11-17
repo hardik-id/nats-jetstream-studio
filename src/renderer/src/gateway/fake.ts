@@ -18,7 +18,8 @@ import {
   type StreamInfoDto
 } from '@shared/api'
 import { validateConnectionInput } from '@shared/connection'
-import { textToBase64 } from '@shared/encoding'
+import { textToBase64, utf8Encode } from '@shared/encoding'
+import { compileFilters } from '@shared/filters'
 import { subjectMatches } from '@shared/subject'
 
 export interface FakeStream {
@@ -256,6 +257,56 @@ export function createFakeGateway(
       onEvent: (event: GatewayStreams[K]['event']) => void
     ): () => void {
       calls.push({ method: `open:${channel}`, args: [_args] })
+      if (channel === 'scan') {
+        // Runs the real filter over the fake stream, so a UI test sees what a scan would show.
+        let open = true
+        const { stream: name, request } = _args as GatewayStreams['scan']['args']
+        const emitScan = onEvent as (event: GatewayStreams['scan']['event']) => void
+        void Promise.resolve().then(() => {
+          if (!open) return
+          const test = compileFilters(request.filters)
+          const all = [...stream(name).messages]
+          const from =
+            request.start.kind === 'seq'
+              ? request.start.seq
+              : request.direction === 'asc'
+                ? 0
+                : Infinity
+          const ordered = (
+            request.direction === 'asc'
+              ? all.filter((m) => m.seq >= from)
+              : all.filter((m) => m.seq <= from).reverse()
+          ).filter((m) => !request.subject || subjectMatches(request.subject, m.subject))
+          const messages: MessageDto[] = []
+          let scanned = 0
+          for (const m of ordered) {
+            scanned++
+            if (test(m.headers ?? [], utf8Encode(m.payload)).match)
+              messages.push({
+                seq: m.seq,
+                subject: m.subject,
+                time: m.time,
+                size: m.payload.length,
+                headers: m.headers ?? [],
+                payload: textToBase64(m.payload),
+                truncated: false
+              })
+            if (messages.length >= request.limit) break
+          }
+          if (messages.length) emitScan({ type: 'matches', messages })
+          emitScan({
+            type: 'done',
+            reason: scanned < ordered.length ? 'page' : 'end',
+            scanned,
+            matched: messages.length,
+            skippedNonJson: 0,
+            resumeSeq: null
+          })
+        })
+        return () => {
+          open = false
+        }
+      }
       if (channel !== 'events') return () => {}
       const listener = onEvent as (event: GlobalEvent) => void
       listeners.add(listener)

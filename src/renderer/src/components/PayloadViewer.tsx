@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronsDownUp, ChevronsUpDown, ChevronUp, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, FoldVertical, Search, UnfoldVertical, X } from 'lucide-react'
+import type { FilterCondition } from '@shared/api'
 import { fromBase64, toHexDump, tryDecodeText, utf8Decode } from '@shared/encoding'
 import { formatBytes } from '@shared/format'
 import { fitDepth, maxDepth, searchJson, SEARCH_MAX_MATCHES } from '@shared/jsonTree'
@@ -28,6 +29,8 @@ export interface PayloadViewerProps {
   className?: string
   /** Show the size at the right of the toolbar (default). A caller that shows it elsewhere hides it. */
   showSize?: boolean
+  /** Adds "Filter" and "Exclude" buttons to the JSON tree's primitive rows (message browser). */
+  onFilter?: (condition: FilterCondition) => void
 }
 
 /**
@@ -43,7 +46,8 @@ export function PayloadViewer({
   onLoadFull,
   loadingFull,
   className,
-  showSize = true
+  showSize = true,
+  onFilter
 }: PayloadViewerProps): ReactNode {
   const parsed = useMemo(() => {
     const bytes = fromBase64(payload)
@@ -265,21 +269,21 @@ export function PayloadViewer({
           </span>
           <button
             type="button"
-            className={cx(toolButton(), 'w-6 justify-center px-0')}
-            title="Expand all"
+            className={cx(toolButton(), 'w-7 justify-center px-0')}
+            title="Expand all levels"
             aria-label="Expand all"
             onClick={() => setLevel('all')}
           >
-            <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+            <UnfoldVertical className="h-4 w-4 text-fg" aria-hidden />
           </button>
           <button
             type="button"
-            className={cx(toolButton(), 'w-6 justify-center px-0')}
-            title="Collapse all"
+            className={cx(toolButton(), 'w-7 justify-center px-0')}
+            title="Collapse all levels"
             aria-label="Collapse all"
             onClick={() => setLevel(0)}
           >
-            <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+            <FoldVertical className="h-4 w-4 text-fg" aria-hidden />
           </button>
           <span className="relative ml-auto inline-flex min-w-0 items-center gap-0.5">
             <Search
@@ -404,6 +408,7 @@ export function PayloadViewer({
             value={treeValue}
             expandDepth={depth}
             resetKey={resetKey}
+            onFilter={onFilter}
             wrap={wrap}
             fontSize={fontSize}
             search={

@@ -174,6 +174,20 @@ export function parseJsonPathFilter(source: string): JsonPathFilter {
   }
 }
 
+/**
+ * A string as the parser above reads it: in double quotes, with only `\` and `"` escaped (the
+ * parser takes a backslash to mean "the next character, as it is", so JSON escapes such as `\n`
+ * would not come back as a newline).
+ */
+export function quoteJsonPath(text: string): string {
+  return `"${text.replace(/[\\"]/g, '\\$&')}"`
+}
+
+/** A JSON primitive as a comparison value: `"text"`, `12.5`, `true`, `false` or `null`. */
+export function jsonPathLiteral(value: string | number | boolean | null): string {
+  return typeof value === 'string' ? quoteJsonPath(value) : String(value)
+}
+
 /** Returns every value the path selects. */
 export function queryJsonPath(steps: Step[], doc: unknown): unknown[] {
   let current: unknown[] = [doc]

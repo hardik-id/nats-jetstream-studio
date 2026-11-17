@@ -1,5 +1,10 @@
-import type { ContentFilters, HeaderFilter } from '@shared/api'
-import { validateFilters } from '@shared/filters'
+import type { ContentFilters, FilterCondition, HeaderFilter } from '@shared/api'
+import {
+  canonicalFilters,
+  MAX_CONDITIONS,
+  normalizeFilters,
+  validateCondition
+} from '@shared/filters'
 import { formatCount } from '@shared/format'
 import { validateSubject } from '@shared/subject'
 import { favoriteKey, MAX_FAVORITES, type Favorite } from './favorites'
@@ -17,17 +22,10 @@ export interface SavedExport {
 
 const FAVORITE_KINDS = ['stream', 'consumer', 'subject'] as const
 
-// Only the fields the studio knows are copied, on the way out and on the way in.
+// Only the fields the studio knows are copied, on the way out and on the way in. A filter is
+// always written as a list of conditions; the single fields of older files are read on import.
 function copyFilters(filters: ContentFilters): ContentFilters {
-  const out: ContentFilters = {}
-  if (filters.headers !== undefined)
-    out.headers = filters.headers.map((h): HeaderFilter =>
-      h.value === undefined ? { key: h.key } : { key: h.key, value: h.value }
-    )
-  if (filters.payloadContains !== undefined) out.payloadContains = filters.payloadContains
-  if (filters.payloadRegex !== undefined) out.payloadRegex = filters.payloadRegex
-  if (filters.jsonPath !== undefined) out.jsonPath = filters.jsonPath
-  return out
+  return canonicalFilters(filters)
 }
 
 function copyFavorite(f: Favorite): Favorite {
@@ -59,6 +57,32 @@ const isText = (value: unknown): value is string => typeof value === 'string'
 
 const withStop = (sentence: string): string => (/[.!?]$/.test(sentence) ? sentence : `${sentence}.`)
 
+function parseCondition(c: unknown, where: string): FilterCondition {
+  if (!isRecord(c)) throw new Error(`${where} has a condition that is not an object.`)
+  if (c.exclude !== undefined && typeof c.exclude !== 'boolean')
+    throw new Error(`${where} has a condition with an "exclude" value that is not true or false.`)
+  const exclude = c.exclude === true ? { exclude: true } : {}
+  if (c.kind === 'header') {
+    if (!isText(c.key) || c.key.trim() === '')
+      throw new Error(`${where} has a header condition without a header name.`)
+    if (c.value !== undefined && !isText(c.value))
+      throw new Error(`${where} has a header condition with a value that is not text.`)
+    return {
+      kind: 'header',
+      key: c.key.trim(),
+      ...(c.value === undefined ? {} : { value: c.value }),
+      ...exclude
+    }
+  }
+  if (c.kind !== 'jsonPath' && c.kind !== 'contains' && c.kind !== 'regex')
+    throw new Error(
+      `${where} has a condition ${isText(c.kind) ? `of the unknown kind "${c.kind}"` : 'without a kind'}. ` +
+        'The kind must be "jsonPath", "contains", "regex" or "header".'
+    )
+  if (!isText(c.expr)) throw new Error(`${where} has a ${c.kind} condition without text.`)
+  return { kind: c.kind, expr: c.expr, ...exclude }
+}
+
 function parseFilters(value: unknown, where: string): ContentFilters {
   if (!isRecord(value)) throw new Error(`${where} has no "filters" object.`)
   const out: ContentFilters = {}
@@ -80,14 +104,21 @@ function parseFilters(value: unknown, where: string): ContentFilters {
     if (!isText(text)) throw new Error(`${where} has a "${key}" value that is not text.`)
     out[key] = text
   }
-  const errors = validateFilters(out)
-  if (errors.payloadRegex)
-    throw new Error(
-      `${where} has an invalid payload regular expression. ${withStop(errors.payloadRegex)}`
-    )
-  if (errors.jsonPath)
-    throw new Error(`${where} has an invalid JSONPath. ${withStop(errors.jsonPath)}`)
-  return out
+  if (value.conditions !== undefined) {
+    if (!Array.isArray(value.conditions))
+      throw new Error(`${where} has a "conditions" value that is not a list.`)
+    if (value.conditions.length > MAX_CONDITIONS)
+      throw new Error(`${where} has more than ${MAX_CONDITIONS} conditions.`)
+    out.conditions = value.conditions.map((c: unknown) => parseCondition(c, where))
+  }
+  for (const c of normalizeFilters(out)) {
+    const message = validateCondition(c)
+    if (!message) continue
+    if (c.kind === 'regex')
+      throw new Error(`${where} has an invalid payload regular expression. ${withStop(message)}`)
+    throw new Error(`${where} has an invalid JSONPath. ${withStop(message)}`)
+  }
+  return canonicalFilters(out)
 }
 
 function parseSavedFilter(value: unknown, index: number): SavedFilter {

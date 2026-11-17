@@ -341,11 +341,35 @@ export interface HeaderFilter {
   value?: string
 }
 
-/** Filters that the gateway applies while scanning (the server only filters by subject). */
+/**
+ * One condition of a content filter (PBI-126). `exclude` turns it around: a message that the
+ * condition matches is rejected. All conditions of a filter must hold (AND).
+ */
+export type FilterCondition =
+  | { kind: 'jsonPath' | 'contains' | 'regex'; expr: string; exclude?: boolean }
+  | {
+      kind: 'header'
+      key: string
+      /** When omitted or empty the condition only checks that the header exists. */
+      value?: string
+      exclude?: boolean
+    }
+
+/**
+ * Filters that the gateway applies while scanning (the server only filters by subject). The list
+ * `conditions` is the current shape. The four single fields are the shape before PBI-126; they
+ * are still read (see `normalizeFilters` in `shared/filters.ts`) so stored and exported filters
+ * keep working, but new code writes `conditions` only.
+ */
 export interface ContentFilters {
+  conditions?: FilterCondition[]
+  /** @deprecated Before PBI-126. Read through `normalizeFilters`. */
   headers?: HeaderFilter[]
+  /** @deprecated Before PBI-126. */
   payloadContains?: string
+  /** @deprecated Before PBI-126. */
   payloadRegex?: string
+  /** @deprecated Before PBI-126. */
   jsonPath?: string
 }
 

@@ -886,6 +886,20 @@ Each item below is small enough for one agent in one session. Rules for every it
 - JSON: the default text is 13 px with A- and A+ buttons (3 steps, remembered) that also apply to the Text, Hex and Base64 views. Expand all, Collapse all and a levels control (1, 2, 3, all) replace the fixed depth. A search box with next and previous and a match count highlights matches and expands the tree to show them (Ctrl or Cmd+F in the payload focuses it, Esc clears it); the work is capped so 1 MB payloads stay responsive. "Copy path" (for example `$.order.items[0]`) and "Copy value" are available on a hovered or focused row and by keyboard. The wrap toggle, the truncation notice and the decoders keep working.
 - Everything is keyboard accessible with accessible names, icons come with text or a label (never colour alone), contrast is fine in both themes, and the panel works at 1000 px window width. The DataTable column resize (PBI-124) and the Live tail keep working.
 
+### PBI-126: Filter from a message, and multiple include/exclude conditions
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-125 · **Files:** `src/shared/filters.ts`, `src/shared/api.ts`, `src/renderer/src/features/messages/`, `src/renderer/src/components/JsonView.tsx`, `MessageDetail.tsx`, `PayloadViewer.tsx`, tests, site docs
+
+**Story:** As a user reading a message, I want to click a value or a header and add it to the filter as "only this" or "not this", and to combine several such conditions, so that I can narrow a stream down while reading it without typing JSONPath.
+
+**Acceptance criteria**
+- Model: `ContentFilters` gets a list of conditions `{ kind: 'jsonPath' | 'contains' | 'regex' | 'header', expr (or key and value), exclude? }`. All conditions AND together; an exclude condition rejects the messages it matches (an exclude JSONPath on a payload that is not JSON does not reject it). The single fields of before (`jsonPath`, `payloadContains`, `payloadRegex`, `headers`) are still read, in one shared place, so stored and exported saved filters keep working; validation reports errors per condition; the scan stays read-only.
+- JSON tree: every string, number, boolean and null row gets "Filter" (adds `<path> == <literal>`) and "Exclude", beside Copy path and Copy value, visible on hover and keyboard focus, with names such as "Filter to event_type equals x". A value directly in an array uses `<array path> contains <literal>`; array steps further up are written `[*]` (`$.items[*].sku == "A"`), so a nested value means "any item". Literals are quoted so every generated expression parses and matches its message. Only in the Message browser, not in Live tail.
+- Headers: each header row has Include and Exclude.
+- Applying: a click adds the condition to the applied filters (the same condition is never added twice; the opposite one flips the existing condition) and reruns the scan from the current start position. One chip per condition, excluded ones marked "not" (text, not only colour), each with a flip and a remove button; the Filters badge counts conditions. Focus stays on the pressed button while the message is still in the result, otherwise it moves to the new chip.
+- Filters panel: a list of conditions (type, expression, Include/Exclude, remove), "Add condition", errors per row, the scan limit, and the Apply, Clear and Hide footer of PBI-125 unchanged and compact.
+- Saved filters store and restore conditions; export writes the new shape and import still reads old files.
+- Also: an open Consumers section shows its list (at least four rows at 1440 x 900), and Expand all and Collapse all are icon-only buttons (unfold and fold icons, with a title and an accessible name), as tall as the level buttons and on the same row.
+
 ### PBI-127: Subjects screen: treegrid, detail pane and labelled actions
 **Priority:** v1 · **Size:** L · **Depends on:** PBI-061, PBI-125 · **Files:** `src/renderer/src/features/subjects/`, `src/renderer/src/state/subjectsUi.ts`, `src/renderer/src/state/seenSubjects.ts`, tests
 

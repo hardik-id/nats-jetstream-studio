@@ -1,83 +1,280 @@
-import type { ContentFilters, Header } from './api'
+import type { ContentFilters, FilterCondition, Header } from './api'
 import { utf8Decode } from './encoding'
-import { type JsonPathFilter, matchesJsonPath, parseJsonPathFilter } from './jsonpath'
+import {
+  jsonPathLiteral,
+  type JsonPathFilter,
+  matchesJsonPath,
+  parseJsonPathFilter
+} from './jsonpath'
 
-export type FilterErrors = Partial<Record<'payloadRegex' | 'jsonPath' | 'headers', string>>
+/**
+ * Content filters are a list of conditions that all have to hold (PBI-126). A condition with
+ * `exclude` set rejects the messages it matches. This file is the one place that knows both the
+ * list and the older single fields (`headers`, `payloadContains`, `payloadRegex`, `jsonPath`).
+ */
 
-export function hasContentFilters(filters: ContentFilters | undefined): boolean {
-  if (!filters) return false
-  return Boolean(
-    (filters.headers && filters.headers.some((h) => h.key.trim() !== '')) ||
-    filters.payloadContains ||
-    filters.payloadRegex ||
-    filters.jsonPath
-  )
+/** The most conditions a filter can have (a limit for imported files and the panel). */
+export const MAX_CONDITIONS = 50
+
+/** The conditions of a filter, older single fields first (in the order the old scan checked them). */
+export function normalizeFilters(filters: ContentFilters | undefined): FilterCondition[] {
+  if (!filters) return []
+  const out: FilterCondition[] = []
+  for (const h of filters.headers ?? []) {
+    if (h.key.trim() !== '')
+      out.push(cleanCondition({ kind: 'header', key: h.key, value: h.value }))
+  }
+  if (filters.payloadContains) out.push({ kind: 'contains', expr: filters.payloadContains })
+  if (filters.payloadRegex) out.push({ kind: 'regex', expr: filters.payloadRegex })
+  if (filters.jsonPath?.trim()) out.push({ kind: 'jsonPath', expr: filters.jsonPath.trim() })
+  for (const c of filters.conditions ?? []) {
+    if (isBlank(c)) continue
+    out.push(cleanCondition(c))
+  }
+  return out
 }
 
-/** Checks filter expressions before a scan starts. An empty object means everything is valid. */
-export function validateFilters(filters: ContentFilters): FilterErrors {
-  const errors: FilterErrors = {}
-  if (filters.payloadRegex) {
-    try {
-      new RegExp(filters.payloadRegex)
-    } catch (err) {
-      errors.payloadRegex = (err as Error).message
+function isBlank(c: FilterCondition): boolean {
+  return c.kind === 'header'
+    ? c.key.trim() === ''
+    : c.kind === 'jsonPath'
+      ? !c.expr.trim()
+      : !c.expr
+}
+
+/** A copy with only the known fields, trimmed where trimming is harmless. */
+function cleanCondition(c: FilterCondition): FilterCondition {
+  const exclude = c.exclude ? { exclude: true } : {}
+  if (c.kind === 'header')
+    return {
+      kind: 'header',
+      key: c.key.trim(),
+      ...(c.value ? { value: c.value } : {}),
+      ...exclude
+    }
+  return { kind: c.kind, expr: c.kind === 'jsonPath' ? c.expr.trim() : c.expr, ...exclude }
+}
+
+/** The current shape of a filter: `{ conditions }` only, or `{}` when there is nothing to apply. */
+export function canonicalFilters(filters: ContentFilters | undefined): ContentFilters {
+  const conditions = normalizeFilters(filters)
+  return conditions.length ? { conditions } : {}
+}
+
+export function hasContentFilters(filters: ContentFilters | undefined): boolean {
+  return normalizeFilters(filters).length > 0
+}
+
+/** What a condition tests, without whether it includes or excludes: two with the same key clash. */
+export function conditionKey(c: FilterCondition): string {
+  return c.kind === 'header'
+    ? `header\u0000${c.key.trim().toLowerCase()}\u0000${c.value ?? ''}`
+    : `${c.kind}\u0000${c.kind === 'jsonPath' ? c.expr.trim() : c.expr}`
+}
+
+/**
+ * Adds a condition to a filter. The same test is never added twice: the same condition again
+ * changes nothing, and the opposite one (include where there is an exclude, or the reverse) flips
+ * the one that is there.
+ */
+export function addCondition(
+  filters: ContentFilters | undefined,
+  condition: FilterCondition
+): ContentFilters {
+  const list = normalizeFilters(filters)
+  const wanted = cleanCondition(condition)
+  const key = conditionKey(wanted)
+  const at = list.findIndex((c) => conditionKey(c) === key)
+  if (at < 0) return { conditions: [...list, wanted] }
+  list[at] = { ...list[at], exclude: wanted.exclude ? true : undefined }
+  return { conditions: list.map(cleanCondition) }
+}
+
+/** The condition at `index` of `normalizeFilters`, turned around. */
+export function toggleCondition(
+  filters: ContentFilters | undefined,
+  index: number
+): ContentFilters {
+  const list = normalizeFilters(filters)
+  if (!list[index]) return canonicalFilters(filters)
+  list[index] = cleanCondition({ ...list[index], exclude: !list[index].exclude })
+  return { conditions: list }
+}
+
+export function removeCondition(
+  filters: ContentFilters | undefined,
+  index: number
+): ContentFilters {
+  return canonicalFilters({ conditions: normalizeFilters(filters).filter((_, i) => i !== index) })
+}
+
+/** `$.items[0].sku` becomes `$.items[*].sku`: array steps match any item. Quoted names are kept. */
+export function anyItemPath(path: string): string {
+  let out = ''
+  for (let i = 0; i < path.length;) {
+    if (path[i] === '[' && path[i + 1] === '"') {
+      // A quoted name: copy it up to the closing quote (backslash escapes the next character).
+      let j = i + 2
+      while (j < path.length && path[j] !== '"') j += path[j] === '\\' ? 2 : 1
+      out += path.slice(i, j + 2)
+      i = j + 2
+    } else {
+      const m = /^\[-?\d+\]/.exec(path.slice(i))
+      if (m) {
+        out += '[*]'
+        i += m[0].length
+      } else out += path[i++]
     }
   }
-  if (filters.jsonPath) {
-    try {
-      parseJsonPathFilter(filters.jsonPath)
-    } catch (err) {
-      errors.jsonPath = (err as Error).message
-    }
+  return out
+}
+
+/**
+ * The condition for "this field has this value": `<path> == <literal>`, or for a value directly
+ * in an array `<array path> contains <literal>` (an index is not a stable way to find a value).
+ * Array steps further up the path are written `[*]`, so the condition means "any item".
+ */
+export function valueCondition(
+  target: { path: string; value: string | number | boolean | null; arrayPath?: string },
+  exclude: boolean
+): FilterCondition {
+  const expr = target.arrayPath
+    ? `${anyItemPath(target.arrayPath)} contains ${jsonPathLiteral(target.value)}`
+    : `${anyItemPath(target.path)} == ${jsonPathLiteral(target.value)}`
+  return exclude ? { kind: 'jsonPath', expr, exclude: true } : { kind: 'jsonPath', expr }
+}
+
+/** Checks one condition before a scan starts: an error message, or undefined when it is valid. */
+export function validateCondition(c: FilterCondition): string | undefined {
+  if (!['jsonPath', 'contains', 'regex', 'header'].includes(c.kind))
+    return `Unknown condition kind "${String(c.kind)}"`
+  try {
+    if (c.kind === 'regex' && c.expr) new RegExp(c.expr)
+    else if (c.kind === 'jsonPath' && c.expr.trim()) parseJsonPathFilter(c.expr)
+  } catch (err) {
+    return (err as Error).message
   }
+  return undefined
+}
+
+export interface ConditionError {
+  /** The position in `normalizeFilters(filters)`. */
+  index: number
+  message: string
+}
+
+/** Checks filter expressions before a scan starts, one error per invalid condition. */
+export function validateFilters(filters: ContentFilters): ConditionError[] {
+  const errors: ConditionError[] = []
+  const list = normalizeFilters(filters)
+  if (list.length > MAX_CONDITIONS)
+    errors.push({ index: MAX_CONDITIONS, message: `At most ${MAX_CONDITIONS} conditions` })
+  list.forEach((c, index) => {
+    const message = validateCondition(c)
+    if (message) errors.push({ index, message })
+  })
   return errors
+}
+
+const KIND_LABEL = { jsonPath: 'JSONPath', contains: 'Payload contains', regex: 'Payload matches' }
+
+/** Short text for a chip or a list: "JSONPath $.a == 1", "Header X = y". Without the "not". */
+export function describeCondition(c: FilterCondition): string {
+  if (c.kind === 'header') return c.value ? `Header ${c.key} = ${c.value}` : `Has header ${c.key}`
+  if (c.kind === 'contains') return `${KIND_LABEL.contains} "${c.expr}"`
+  if (c.kind === 'regex') return `${KIND_LABEL.regex} /${c.expr}/`
+  return `${KIND_LABEL.jsonPath} ${c.expr}`
 }
 
 export interface FilterVerdict {
   match: boolean
-  /** True when a JSONPath filter was skipped because the payload is not JSON. */
+  /** True when a (non-excluding) JSONPath condition rejected the message because it is not JSON. */
   nonJson: boolean
 }
 
 export type CompiledFilter = (headers: Header[], payload: Uint8Array) => FilterVerdict
 
-/** Compiles filters once so a scan does not re-parse them per message. Throws on invalid input. */
+type Outcome = 'yes' | 'no' | 'nonJson'
+
+interface Subject {
+  headers: Header[]
+  text: () => string
+  json: () => { ok: true; doc: unknown } | { ok: false }
+}
+
+/**
+ * Compiles filters once so a scan does not re-parse them per message. Throws on invalid input.
+ *
+ * Conditions are checked in order and the first one that fails ends the check. An include
+ * condition fails when it does not match; an exclude condition fails when it matches. A JSONPath
+ * condition on a payload that is not JSON does not match, so as an include it rejects the message
+ * (and counts it in `nonJson`) and as an exclude it lets the message through.
+ */
 export function compileFilters(filters: ContentFilters): CompiledFilter {
-  const headerFilters = (filters.headers ?? [])
-    .filter((h) => h.key.trim() !== '')
-    .map((h) => ({ key: h.key.trim().toLowerCase(), value: h.value }))
-  const contains = filters.payloadContains ? filters.payloadContains.toLowerCase() : null
-  const regex = filters.payloadRegex ? new RegExp(filters.payloadRegex) : null
-  const jsonPath: JsonPathFilter | null = filters.jsonPath
-    ? parseJsonPathFilter(filters.jsonPath)
-    : null
+  const conditions = normalizeFilters(filters)
+  if (conditions.length > MAX_CONDITIONS)
+    throw new Error(`A filter can have at most ${MAX_CONDITIONS} conditions`)
+  for (const c of conditions) {
+    const message = validateCondition(c)
+    if (message) throw new Error(message)
+  }
+  const tests = conditions.map((c): [boolean, (s: Subject) => Outcome] => {
+    const exclude = c.exclude === true
+    if (c.kind === 'header') {
+      const key = c.key.trim().toLowerCase()
+      const value = c.value
+      return [
+        exclude,
+        ({ headers }) => {
+          const found = headers.filter(([k]) => k.toLowerCase() === key)
+          if (found.length === 0) return 'no'
+          return !value || found.some(([, v]) => v === value) ? 'yes' : 'no'
+        }
+      ]
+    }
+    if (c.kind === 'contains') {
+      const needle = c.expr.toLowerCase()
+      return [exclude, (s) => (s.text().toLowerCase().includes(needle) ? 'yes' : 'no')]
+    }
+    if (c.kind === 'regex') {
+      const regex = new RegExp(c.expr)
+      return [exclude, (s) => (regex.test(s.text()) ? 'yes' : 'no')]
+    }
+    if (c.kind !== 'jsonPath') throw new Error(`Unknown condition kind "${String(c.kind)}"`)
+    const path: JsonPathFilter = parseJsonPathFilter(c.expr)
+    return [
+      exclude,
+      (s) => {
+        const parsed = s.json()
+        if (!parsed.ok) return 'nonJson'
+        return matchesJsonPath(path, parsed.doc) ? 'yes' : 'no'
+      }
+    ]
+  })
 
   return (headers, payload) => {
-    for (const filter of headerFilters) {
-      const found = headers.filter(([key]) => key.toLowerCase() === filter.key)
-      if (found.length === 0) return { match: false, nonJson: false }
-      if (
-        filter.value !== undefined &&
-        filter.value !== '' &&
-        !found.some(([, v]) => v === filter.value)
-      ) {
-        return { match: false, nonJson: false }
+    if (tests.length === 0) return { match: true, nonJson: false }
+    let text: string | undefined
+    let json: ReturnType<Subject['json']> | undefined
+    const subject: Subject = {
+      headers,
+      text: () => (text ??= utf8Decode(payload)),
+      json: () => {
+        if (json) return json
+        try {
+          json = { ok: true, doc: JSON.parse(subject.text()) }
+        } catch {
+          json = { ok: false }
+        }
+        return json
       }
     }
-    if (!contains && !regex && !jsonPath) return { match: true, nonJson: false }
-
-    const text = utf8Decode(payload)
-    if (contains && !text.toLowerCase().includes(contains)) return { match: false, nonJson: false }
-    if (regex && !regex.test(text)) return { match: false, nonJson: false }
-    if (jsonPath) {
-      let doc: unknown
-      try {
-        doc = JSON.parse(text)
-      } catch {
-        return { match: false, nonJson: true }
-      }
-      if (!matchesJsonPath(jsonPath, doc)) return { match: false, nonJson: false }
+    for (const [exclude, test] of tests) {
+      const outcome = test(subject)
+      if (exclude) {
+        if (outcome === 'yes') return { match: false, nonJson: false }
+      } else if (outcome === 'no') return { match: false, nonJson: false }
+      else if (outcome === 'nonJson') return { match: false, nonJson: true }
     }
     return { match: true, nonJson: false }
   }

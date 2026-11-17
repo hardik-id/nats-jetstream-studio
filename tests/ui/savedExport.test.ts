@@ -16,14 +16,34 @@ const FILTERS: SavedFilter[] = [
     name: 'Big gifts',
     subject: 'orders.>',
     filters: {
-      headers: [{ key: 'X-Gift', value: 'yes' }, { key: 'Nats-Msg-Id' }],
-      payloadContains: 'total',
-      payloadRegex: '"total":\\s*\\d{4,}',
-      jsonPath: '$.items[*].sku'
+      conditions: [
+        { kind: 'header', key: 'X-Gift', value: 'yes' },
+        { kind: 'header', key: 'Nats-Msg-Id' },
+        { kind: 'contains', expr: 'total' },
+        { kind: 'regex', expr: '"total":\\s*\\d{4,}' },
+        { kind: 'jsonPath', expr: '$.items[*].sku' },
+        { kind: 'jsonPath', expr: '$.status == "cancelled"', exclude: true },
+        { kind: 'header', key: 'X-Test', value: '1', exclude: true }
+      ]
     }
   },
-  { name: 'Header only', subject: '', filters: { headers: [{ key: 'X-Trace' }] } }
+  {
+    name: 'Header only',
+    subject: '',
+    filters: { conditions: [{ kind: 'header', key: 'X-Trace' }] }
+  }
 ]
+// The shape before PBI-126: single fields. Saved in settings and exported files look like this.
+const LEGACY_FILTER = {
+  name: 'Old style',
+  subject: 'orders.>',
+  filters: {
+    headers: [{ key: 'X-Gift', value: 'yes' }, { key: 'Nats-Msg-Id' }],
+    payloadContains: 'total',
+    payloadRegex: '"total":\\s*\\d{4,}',
+    jsonPath: '$.items[*].sku'
+  }
+}
 const FAVORITES: Favorite[] = [
   { kind: 'stream', stream: 'ORDERS' },
   { kind: 'consumer', stream: 'ORDERS', consumer: 'billing' },
@@ -58,7 +78,11 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
     // the characters are ordinary text, the studio can store such subjects, and so it has to
     // take them back from a file it wrote itself.
     const filters: SavedFilter[] = [
-      { name: 'Hot CPUs', subject: 'alerts.cpu>90', filters: { payloadContains: 'host' } },
+      {
+        name: 'Hot CPUs',
+        subject: 'alerts.cpu>90',
+        filters: { conditions: [{ kind: 'contains', expr: 'host' }] }
+      },
       { name: 'Starred', subject: 'notes.a*b.>', filters: {} },
       { name: 'Odd tokens', subject: '*a.>b.c*.**', filters: {} }
     ]
@@ -88,7 +112,7 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
       [starred as unknown as Favorite]
     )
     expect(exported.savedFilters).toEqual([
-      { name: 'A', subject: 'a.b', filters: { payloadContains: 'x' } }
+      { name: 'A', subject: 'a.b', filters: { conditions: [{ kind: 'contains', expr: 'x' }] } }
     ])
     expect(exported.favorites).toEqual([{ kind: 'stream', stream: 'S' }])
 
@@ -97,9 +121,64 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
     )
     expect(parsed).toEqual({
       version: 1,
-      savedFilters: [{ name: 'A', subject: 'a.b', filters: { payloadContains: 'x' } }],
+      savedFilters: [
+        { name: 'A', subject: 'a.b', filters: { conditions: [{ kind: 'contains', expr: 'x' }] } }
+      ],
       favorites: [{ kind: 'stream', stream: 'S' }]
     })
+  })
+
+  it('still imports a file with the filters of before PBI-126 and writes them as conditions', () => {
+    const parsed = parseSavedExport(file({ savedFilters: [LEGACY_FILTER] }))
+    expect(parsed.savedFilters).toEqual([
+      {
+        name: 'Old style',
+        subject: 'orders.>',
+        filters: { conditions: FILTERS[1].filters.conditions?.slice(0, 5) }
+      }
+    ])
+    // Exporting what was imported uses the new shape only.
+    const again = JSON.parse(serializeSavedExport(buildSavedExport(parsed.savedFilters, [])))
+    expect(again.savedFilters[0].filters).not.toHaveProperty('jsonPath')
+    expect(again.savedFilters[0].filters).toHaveProperty('conditions')
+    // Old and new fields in one filter are both kept, old ones first.
+    const mixed = parseSavedExport(
+      file({
+        savedFilters: [
+          {
+            name: 'M',
+            subject: '',
+            filters: {
+              payloadContains: 'a',
+              conditions: [{ kind: 'contains', expr: 'b', exclude: true }]
+            }
+          }
+        ]
+      })
+    )
+    expect(mixed.savedFilters[0].filters.conditions).toEqual([
+      { kind: 'contains', expr: 'a' },
+      { kind: 'contains', expr: 'b', exclude: true }
+    ])
+  })
+
+  it('refuses a condition that is not valid', () => {
+    const bad = (conditions: unknown): string =>
+      file({ savedFilters: [{ name: 'A', subject: '', filters: { conditions } }] })
+    expect(() => parseSavedExport(bad('x'))).toThrow('"conditions" value that is not a list')
+    expect(() => parseSavedExport(bad([{ kind: 'nope', expr: 'x' }]))).toThrow(
+      'unknown kind "nope"'
+    )
+    expect(() => parseSavedExport(bad([{ kind: 'regex', expr: '(' }]))).toThrow(
+      'invalid payload regular expression'
+    )
+    expect(() => parseSavedExport(bad([{ kind: 'jsonPath', expr: 'nope' }]))).toThrow(
+      'invalid JSONPath'
+    )
+    expect(() => parseSavedExport(bad([{ kind: 'contains', expr: 'x', exclude: 'yes' }]))).toThrow(
+      '"exclude"'
+    )
+    expect(() => parseSavedExport(bad([{ kind: 'header' }]))).toThrow('without a header name')
   })
 
   it('trims names and subjects, as the studio does when they are typed', () => {
@@ -116,7 +195,11 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
       })
     )
     expect(parsed.savedFilters).toEqual([
-      { name: 'EU paid', subject: 'orders.eu.paid', filters: { headers: [{ key: 'K' }] } }
+      {
+        name: 'EU paid',
+        subject: 'orders.eu.paid',
+        filters: { conditions: [{ kind: 'header', key: 'K' }] }
+      }
     ])
     expect(parsed.favorites).toEqual([{ kind: 'consumer', stream: 'ORDERS', consumer: 'billing' }])
   })

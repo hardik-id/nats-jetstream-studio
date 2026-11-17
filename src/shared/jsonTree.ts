@@ -1,3 +1,5 @@
+import { quoteJsonPath } from './jsonpath'
+
 /** Pure helpers for the JSON tree view: paths, search, and how deep a tree may open. */
 
 export type PathSegment = string | number
@@ -7,7 +9,7 @@ const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 /** The text to add to a path for one more step: `.key`, `["a b"]` or `[0]`. */
 export function appendSegment(segment: PathSegment): string {
   if (typeof segment === 'number') return `[${segment}]`
-  return IDENT.test(segment) ? `.${segment}` : `[${JSON.stringify(segment)}]`
+  return IDENT.test(segment) ? `.${segment}` : `[${quoteJsonPath(segment)}]`
 }
 
 /** `$.order.items[0]`; keys that are not identifiers use bracket notation: `$["a b"]`. */

@@ -83,7 +83,7 @@ export const featureContent = {
       },
       {
         title: 'Filter by subject, header and payload',
-        text: 'Use NATS wildcards for the subject, match headers by key or key and value, and search payload text. Add a regular expression or a JSONPath comparison such as $.order.total > 100. Filters combine and show as removable chips. A scan shows progress, can be cancelled and stops at a limit you set.'
+        text: 'Use NATS wildcards for the subject, match headers by key or key and value, and search payload text. Add a regular expression or a JSONPath comparison such as $.order.total > 100. Filters are a list of conditions that all must match, and any of them can be turned into an exclusion. Click Filter or Exclude on a value in the JSON tree, or Include or Exclude on a header, to add a condition from the message you are reading. They show as chips, which you can flip or remove. A scan shows progress, can be cancelled and stops at a limit you set.'
       },
       {
         title: 'Message detail',

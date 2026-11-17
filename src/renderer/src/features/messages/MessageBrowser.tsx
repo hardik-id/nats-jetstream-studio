@@ -285,6 +285,12 @@ export function MessageBrowser({
     onExpandedChange?.(value)
   }
   const setExpandedRef = useLatest(setExpanded)
+  // The page that owns the state must not keep it once this browser is gone (the stream page shows
+  // an error instead of it, for example): nothing would be covering its header and tabs then.
+  useEffect(() => {
+    const ref = setExpandedRef
+    return () => ref.current(false)
+  }, [setExpandedRef])
   const [fullBytes, setFullBytes] = useState<number | undefined>(undefined)
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [dialog, setDialog] = useState<

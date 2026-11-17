@@ -821,3 +821,50 @@ test('#58 an expanded panel leaves nothing inert when the tab changes, closes or
   expect(await visibleInert(page)).toBe(0)
   expect(await page.evaluate(() => document.querySelectorAll('[inert]').length)).toBe(0)
 })
+
+test('#58 when the stream info fails while expanded, nothing stays inert and Retry works', async ({
+  page
+}) => {
+  let fail = false
+  // Answers streamInfo with an error while `fail` is set; everything else goes to the server.
+  await page.routeWebSocket('**/rpc', (ws) => {
+    const server = ws.connectToServer()
+    ws.onMessage((raw) => {
+      const message = JSON.parse(String(raw))
+      if (fail && message.t === 'call' && message.method === 'streamInfo') {
+        ws.send(
+          JSON.stringify({
+            t: 'result',
+            id: message.id,
+            ok: false,
+            error: { kind: 'timeout', message: 'injected failure' }
+          })
+        )
+      } else server.send(raw)
+    })
+    server.onMessage((raw) => ws.send(raw))
+  })
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  fail = true
+  // The page refreshes the stream info on an interval; the failure replaces the browser.
+  const retry = page.getByRole('button', { name: 'Retry' })
+  await expect(retry).toBeVisible({ timeout: 20_000 })
+  expect(await visibleInert(page)).toBe(0)
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  await page.getByRole('tab', { name: 'Configuration' }).click()
+  await page.getByRole('tab', { name: 'Messages', exact: true }).click()
+
+  // Retry brings the browser back; the expanded state was reset with it.
+  fail = false
+  await retry.click()
+  await expect(table(page)).toBeVisible()
+  expect(await visibleInert(page)).toBe(0)
+  await rowOf(page, 120).click()
+  await expect(detail.getByRole('button', { name: 'Expand to read' })).toBeVisible()
+})

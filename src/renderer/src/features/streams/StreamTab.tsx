@@ -76,8 +76,9 @@ export function StreamTab({
   // "Expand to read" in the message browser covers this page's header and tabs; they are inert
   // while it is on, which is this page's own state and so ends with the page.
   const [readExpanded, setReadExpanded] = useState(false)
-  const covered = readExpanded && section === 'messages'
   const info = query.data
+  // Only while the overlay really exists: the browser is not shown while the stream info fails.
+  const covered = readExpanded && section === 'messages' && !query.error && !!info
   const readOnly = conn?.readOnly
 
   const go = (next: StreamSection, patch: { subject?: string; seq?: number } = {}): void => {

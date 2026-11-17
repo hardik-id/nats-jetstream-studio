@@ -12,7 +12,7 @@ import { PANE_DEFAULT_WIDTH, useSubjectsUi } from '../../state/subjectsUi'
 import { PaneFrame, PaneRail } from './SubjectsPane'
 import { SubjectDetail } from './SubjectDetail'
 import { rowMenuItems } from './subjectActions'
-import { SubjectTree } from './SubjectTree'
+import { SubjectTree } from './SubjectTreeGrid'
 import { SubjectsToolbar, type LevelChoice } from './SubjectsToolbar'
 import {
   buildTree,

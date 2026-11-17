@@ -29,6 +29,9 @@ test('entities in links are escaped once, and plain text has no Markdown', () =>
   assert.equal(plainText('## Title\n\n**bold** and [a link](https://x.com) &amp; more'), 'Title bold and a link & more')
 })
 
-test('headings move below h2', () => {
+test('headings start one level below the entry h2 and never jump', () => {
   assert.match(renderNotes('# One\n\n## Two'), /<h3>One<\/h3>[\s\S]*<h4>Two<\/h4>/)
+  assert.match(renderNotes('## New\n\n### Fixed'), /<h3>New<\/h3>[\s\S]*<h4>Fixed<\/h4>/)
+  assert.doesNotMatch(renderNotes('## New'), /<h4>/)
+  assert.match(renderNotes('# 1\n## 2\n### 3\n#### 4\n##### 5\n###### 6'), /<h6>6<\/h6>/)
 })

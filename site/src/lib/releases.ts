@@ -54,13 +54,16 @@ export function plainText(md: string): string {
 /**
  * Markdown from this repo's releases, treated as untrusted: raw HTML is escaped, images become
  * their alt text, only http(s) and mailto links are kept, attribute values are fully escaped and
- * headings are moved down two levels so they sit under the entry's h2.
+ * the shallowest heading of the notes becomes an h3 and deeper ones follow one level at a time
+ * (clamped at h6), so they never jump levels under the entry's h2.
  */
 export function renderNotes(md: string): string {
+  const depths = new Marked({ gfm: true }).lexer(md).flatMap((t) => (t.type === 'heading' ? [t.depth] : []))
+  const shallowest = depths.length ? Math.min(...depths) : 1
   const renderer: RendererObject = {
     html: ({ text }) => esc(text),
     heading({ tokens, depth }) {
-      const level = Math.min(depth + 2, 6)
+      const level = Math.min(depth - shallowest + 3, 6)
       return `<h${level}>${this.parser.parseInline(tokens)}</h${level}>\n`
     },
     link({ href, title, tokens }) {

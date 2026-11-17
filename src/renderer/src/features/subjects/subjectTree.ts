@@ -595,13 +595,92 @@ export function expandToLevel(
   return { expanded, level: chosen, capped: level === 'all' && chosen < deepest }
 }
 
-/** "Expand all" with the row cap. */
+export interface ExpandAllOptions extends SubjectFilters {
+  /**
+   * Only nodes shown by this search count and are opened: matches, their ancestors and everything
+   * below a match ("expand all" on a match opens its subtree too).
+   */
+  search?: SearchResult
+  /** Nodes that are open now; they stay open. */
+  current?: ReadonlySet<string>
+}
+
+export interface ExpandAllResult extends ExpandResult {
+  /** Every branch (node with children) that passes the filters and the search. */
+  branches: number
+  /** Branches that are open in `expanded` (the ones that exist). */
+  open: number
+}
+
+/**
+ * "Expand all": opens branches breadth first (shallow ones first) while fewer than `maxRows` rows
+ * are visible, so the last branch may go past the cap by its own children and the last level
+ * may be opened only in part. Nodes that are open already stay open and are never closed, whatever
+ * the cap says. `capped` says some branch stayed closed. `level` is the deepest level that is
+ * visible afterwards. Nothing recurses.
+ */
 export function expandAllPaths(
   tree: SubjectTree,
   maxRows: number = EXPAND_ALL_CAP,
-  options: Omit<ExpandOptions, 'maxRows'> = {}
-): ExpandResult {
-  return expandToLevel(tree, 'all', { ...options, maxRows })
+  options: ExpandAllOptions = {}
+): ExpandAllResult {
+  const { search, current } = options
+  const base = makePasses(options)
+  // Below a match: the node has a matching ancestor (memoised, walked upwards, no recursion).
+  const below = new Map<string, boolean>()
+  const underMatch = (n: SubjectTreeNode): boolean => {
+    const chain: string[] = []
+    let p: string | null = n.parentPath
+    let found = false
+    while (p !== null) {
+      const known = below.get(p)
+      if (known !== undefined) {
+        found = known
+        break
+      }
+      chain.push(p)
+      if (search!.matched.has(p)) {
+        found = true
+        break
+      }
+      p = tree.byPath.get(p)?.parentPath ?? null
+    }
+    for (const c of chain) below.set(c, found)
+    return found
+  }
+  const passes = search
+    ? (n: SubjectTreeNode): boolean =>
+        base(n) && (search.matched.has(n.path) || search.revealed.has(n.path) || underMatch(n))
+    : base
+  const expanded = new Set<string>(current ?? [])
+  const roots = tree.roots.filter(passes)
+  let rows = roots.length
+  let level = roots.length ? 1 : 0
+  let capped = false
+  const queue: SubjectTreeNode[] = roots
+  for (let i = 0; i < queue.length; i++) {
+    const node = queue[i]
+    const kids = node.children.filter(passes)
+    if (kids.length === 0) continue
+    if (!expanded.has(node.path)) {
+      if (capped || rows >= maxRows) {
+        capped = true
+        continue
+      }
+      expanded.add(node.path)
+    }
+    rows += kids.length
+    if (node.depth + 1 > level) level = node.depth + 1
+    for (const k of kids) queue.push(k)
+  }
+  // The total is counted over the whole tree: branches behind a closed one count too.
+  let branches = 0
+  for (const node of tree.byPath.values()) {
+    if (passes(node) && node.children.some(passes)) branches++
+  }
+  let open = 0
+  for (const p of expanded) if (tree.byPath.get(p)?.hasChildren) open++
+  return { expanded, level, capped, branches, open }
 }
 
 /** The expansion on a first visit: the top level is open (level 2). */

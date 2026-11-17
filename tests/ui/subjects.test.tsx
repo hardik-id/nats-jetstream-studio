@@ -248,18 +248,37 @@ describe('PBI-127 subjects screen', () => {
       expect(row('telemetry')).toHaveFocus()
     })
 
-    it('Enter selects and shows the subject in the pane, Space selects', async () => {
+    it('Space selects; Enter and double-click run the default action', async () => {
       renderWithGateway(<SubjectsTab connId="dev" />, setup())
       await waitFor(() => expect(hasRow('orders')).toBe(true))
       row('orders.us').focus()
       await userEvent.keyboard(' ')
       expect(row('orders.us')).toHaveAttribute('aria-selected', 'true')
+      const pane = screen.getByTestId('subject-detail')
+      expect(within(pane).getByRole('heading', { name: 'orders.us' })).toBeInTheDocument()
+      expect(useTabs.getState().tabs).toHaveLength(0)
+      // Enter selects and browses the subject in the stream that stores it.
       row('orders.eu').focus()
       await userEvent.keyboard('{Enter}')
       expect(row('orders.eu')).toHaveAttribute('aria-selected', 'true')
-      expect(row('orders.us')).toHaveAttribute('aria-selected', 'false')
-      const pane = screen.getByRole('complementary', { name: 'Subject details' })
-      expect(within(pane).getByRole('heading', { name: 'orders.eu' })).toBeInTheDocument()
+      expect(useTabs.getState().tabs.at(-1)!.spec).toMatchObject({
+        kind: 'stream',
+        stream: 'ORDERS',
+        subject: 'orders.eu.>'
+      })
+    })
+
+    it('Enter tails a subject that no stream stores', async () => {
+      useSeenSubjects.setState({ byConn: { dev: { 'core.ping': 2 } } })
+      renderWithGateway(<SubjectsTab connId="dev" />, setup())
+      await waitFor(() => expect(hasRow('core')).toBe(true))
+      row('core.ping').focus()
+      await userEvent.keyboard('{Enter}')
+      expect(useTabs.getState().tabs.at(-1)!.spec).toMatchObject({
+        kind: 'tail',
+        subject: 'core.ping'
+      })
+      useSeenSubjects.setState({ byConn: {} })
     })
 
     it('Shift+F10 opens the row menu, Esc closes it and returns to the row', async () => {
@@ -286,7 +305,9 @@ describe('PBI-127 subjects screen', () => {
       const open = useTabs.getState().tabs.at(-1)!.spec
       expect(open).toMatchObject({ kind: 'stream', stream: 'ORDERS', subject: 'orders.eu.>' })
       await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
-      await userEvent.click(screen.getByRole('menuitem', { name: /Live tail on orders.eu.>/ }))
+      await userEvent.click(
+        screen.getByRole('menuitem', { name: /Start live tail on orders.eu.>/ })
+      )
       expect(useTabs.getState().tabs.at(-1)!.spec).toMatchObject({
         kind: 'tail',
         subject: 'orders.eu.>'
@@ -298,7 +319,7 @@ describe('PBI-127 subjects screen', () => {
       renderWithGateway(<SubjectsTab connId="dev" />, gateway)
       await waitFor(() => expect(hasRow('orders')).toBe(true))
       await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
-      expect(screen.getByRole('menuitem', { name: /Publish to orders.eu/ })).toBeDisabled()
+      expect(screen.getByRole('menuitem', { name: /Publish message to orders.eu/ })).toBeDisabled()
       expect(gateway.calls.some((c) => c.method === 'publish')).toBe(false)
     })
   })
@@ -424,10 +445,10 @@ describe('PBI-127 subjects screen', () => {
     const gateway = setup()
     renderWithGateway(<SubjectsTab connId="dev" />, gateway)
     await waitFor(() => expect(hasRow('orders')).toBe(true))
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse panel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse details' }))
     expect(screen.getByRole('complementary', { name: 'Subject details (collapsed)' })).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'Show subject details' }))
-    expect(screen.getByRole('complementary', { name: 'Subject details' })).toBeVisible()
+    expect(screen.getByTestId('subject-detail')).toBeVisible()
     await waitFor(() =>
       expect(
         (gateway.settings.get('subjects.ui.dev') as { paneCollapsed: boolean }).paneCollapsed

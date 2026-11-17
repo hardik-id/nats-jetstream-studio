@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, type KeyboardEvent, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { Copy, Database, Radio, RefreshCw, Send } from 'lucide-react'
+import { Radio, RefreshCw, Send } from 'lucide-react'
 import { formatCount } from '@shared/format'
 import { Button, ErrorNote, errorMessage, Notice, Page, readOnlyProps } from '../../components/ui'
 import type { MenuItem } from '../../components/ui'
@@ -9,7 +9,9 @@ import { useConnection, useDebounced } from '../../lib/hooks'
 import { useSeenSubjects } from '../../state/seenSubjects'
 import { useTabs } from '../../state/tabs'
 import { PANE_DEFAULT_WIDTH, useSubjectsUi } from '../../state/subjectsUi'
-import { PaneFrame, PaneRail, SubjectDetailPlaceholder } from './SubjectsPane'
+import { PaneFrame, PaneRail } from './SubjectsPane'
+import { SubjectDetail } from './SubjectDetail'
+import { describeActions, resolveScope, rowMenuItems, runBrowse, runTail } from './subjectActions'
 import { SubjectTree } from './SubjectTree'
 import { SubjectsToolbar, type LevelChoice } from './SubjectsToolbar'
 import {
@@ -210,46 +212,19 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
       selected: row.path,
       ...(open && paneCollapsed ? { paneCollapsed: false } : {})
     })
+    if (open) runDefault(row.node)
   }
 
-  // ---- row menu (PLACEHOLDER: slice C replaces this with the shared action descriptors) ----
+  // ---- row menu and the default action ----
 
-  const menuItems = (node: SubjectTreeNode): MenuItem[] => {
-    const filter = node.hasChildren ? `${node.path}.>` : node.path
-    const stream = node.streams[0]
-    return [
-      {
-        label: `Browse stored messages on ${filter}`,
-        icon: <Database className="h-3.5 w-3.5" aria-hidden />,
-        disabled: !stream,
-        title: stream ? undefined : 'No stream stores this subject',
-        onSelect: () =>
-          tabs.open({
-            kind: 'stream',
-            connId,
-            stream,
-            section: 'messages',
-            subject: filter,
-            seq: undefined
-          })
-      },
-      {
-        label: `Live tail on ${filter}`,
-        icon: <Radio className="h-3.5 w-3.5" aria-hidden />,
-        onSelect: () => tabs.openNew('tail', connId, filter)
-      },
-      {
-        label: `Publish to ${node.path}`,
-        icon: <Send className="h-3.5 w-3.5" aria-hidden />,
-        ...(readOnly ? readOnlyProps(true) : { disabled: !node.valid }),
-        onSelect: () => tabs.openNew('publish', connId, node.path)
-      },
-      {
-        label: 'Copy subject',
-        icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-        onSelect: () => void navigator.clipboard.writeText(node.path)
-      }
-    ]
+  const menuItems = (node: SubjectTreeNode): MenuItem[] =>
+    rowMenuItems(node, { connId, tabs, streams: patterns, readOnly })
+
+  /** Enter and double-click: browse the subject when a stream stores it, else tail it. */
+  const runDefault = (node: SubjectTreeNode): void => {
+    const a = describeActions(node, resolveScope(node), patterns, readOnly)
+    if (a.browse.enabled) runBrowse(tabs, connId, a.browse)
+    else runTail(tabs, connId, a.tail)
   }
 
   const refresh = (): void => {
@@ -277,13 +252,15 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
     : `${formatCount(tree.total)} stored messages · ${formatCount(names.length)} streams · ${formatCount(tree.subjectCount)} subjects`
   const paneNode = selectedNode
   const detail = (
-    <SubjectDetailPlaceholder
-      connId={connId}
-      node={paneNode}
-      streams={patterns}
-      readOnly={readOnly}
-      onCollapse={() => update({ paneCollapsed: true })}
-    />
+    <div className="h-full border-l border-line">
+      <SubjectDetail
+        connId={connId}
+        node={paneNode}
+        streams={patterns}
+        readOnly={readOnly}
+        onCollapse={() => update({ paneCollapsed: true })}
+      />
+    </div>
   )
 
   return (

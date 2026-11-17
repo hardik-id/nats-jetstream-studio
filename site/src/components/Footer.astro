@@ -35,6 +35,9 @@ const version: string | undefined = undefined
   </div>
   <div class="container version">
     NATS JetStream Studio{version ? ` ${version}` : ''}
+    <span class="credit">
+      Made with ❤️ by <a href="https://github.com/hardik-id" rel="noopener">Hardik Patel</a>
+    </span>
   </div>
 </footer>
 
@@ -64,6 +67,10 @@ const version: string | undefined = undefined
   }
   li {
     padding-block: 0.2rem;
+  }
+  .credit {
+    display: block;
+    margin-top: 0.25rem;
   }
   .version {
     margin-top: 1.5rem;

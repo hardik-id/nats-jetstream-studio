@@ -90,6 +90,17 @@ export function AboutDialog({ onClose }: { onClose: () => void }): ReactNode {
             ]
           ]}
         />
+        <p className="text-muted">
+          Made with ❤️ by{' '}
+          <a
+            className="text-accent hover:underline"
+            href="https://github.com/hardik-id"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Hardik Patel
+          </a>
+        </p>
         {desktop && (
           <div className="flex items-center gap-2">
             <Button onClick={() => void desktop.checkForUpdates()}>Check for updates</Button>

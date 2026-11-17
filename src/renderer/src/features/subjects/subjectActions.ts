@@ -6,6 +6,7 @@
  */
 import { createElement, type ReactNode } from 'react'
 import { Copy, Database, Radio, Send } from 'lucide-react'
+import { toast } from '../../state/toasts'
 import { subjectsOverlap } from '@shared/subject'
 import { readOnlyProps, type MenuItem } from '../../components/ui'
 import {
@@ -212,8 +213,22 @@ export function runPublish(tabs: ActionTabs, connId: string, action: ActionDescr
   if (action.enabled && action.subject) tabs.openNew('publish', connId, action.subject)
 }
 
-export function copyText(text: string): void {
-  void navigator.clipboard?.writeText(text)
+/** Copies text; resolves to false when the clipboard is missing or refuses (never rejects). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Copies text and tells the user the result with a toast (for the row menu). */
+export async function copyWithToast(text: string, what: string): Promise<boolean> {
+  const ok = await copyText(text)
+  if (ok) toast.ok(`Copied ${what}`)
+  else toast.error(`Could not copy ${what}. The clipboard is not available.`)
+  return ok
 }
 
 const icon = (c: typeof Database): ReactNode =>
@@ -271,7 +286,7 @@ export function rowMenuItems(
     {
       label: a.copySubject.label,
       icon: icon(Copy),
-      onSelect: () => copyText(node.path)
+      onSelect: () => void copyWithToast(node.path, node.path)
     }
   )
   if (a.filter) {
@@ -279,7 +294,7 @@ export function rowMenuItems(
     items.push({
       label: `${a.copyFilter.label} (${filter})`,
       icon: icon(Copy),
-      onSelect: () => copyText(filter)
+      onSelect: () => void copyWithToast(filter, filter)
     })
   }
   return items

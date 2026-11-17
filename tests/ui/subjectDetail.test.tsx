@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SubjectDetail } from '@renderer/features/subjects/SubjectDetail'
 import {
   buildTree,
@@ -30,7 +30,7 @@ const tree = buildTree(
     { stream: 'AUDIT', subjects: [{ subject: 'orders.eu.created', count: 10 }] },
     { stream: 'LOGS', subjects: [{ subject: 'logs.app', count: 1 }] }
   ],
-  { 'live.only': 3, 'a..b': 1, 'orders.eu.created': 2 },
+  { 'live.only': 3, 'a..b': 1, 'orders.eu.created': 2, 'orders.fresh': 1 },
   [...PATTERNS, { name: 'LOGS', subjects: ['logs.>'] }]
 )
 const node = (p: string): SubjectInfo => tree.byPath.get(p)!
@@ -86,7 +86,7 @@ describe('PBI-127 subject detail', () => {
     show('orders')
     expect(screen.getByText('Stored on this subject')).toBeInTheDocument()
     expect(screen.getByText('Stored below')).toBeInTheDocument()
-    expect(screen.getByText('Live this session')).toBeInTheDocument()
+    expect(screen.getByText('Live on this subject')).toBeInTheDocument()
     const list = screen.getByRole('list', { name: 'Streams for this scope' })
     expect(within(list).getByText('ORDERS')).toBeInTheDocument()
     expect(within(list).getByText('AUDIT')).toBeInTheDocument()
@@ -166,9 +166,54 @@ describe('PBI-127 subject detail', () => {
   it('an invalid subject says why nothing is available', () => {
     show('a..b')
     expect(screen.getByRole('note')).toHaveTextContent(/Not a valid subject/)
-    expect(screen.queryByRole('radiogroup')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Scope' })).toBeNull()
+    expect(screen.getAllByText(/cannot be used as a filter|no scope/)).toHaveLength(1)
     expect(button('Browse stored messages')).toBeDisabled()
     expect(button('Start live tail')).toBeDisabled()
     expect(button('Publish message')).toBeDisabled()
+  })
+
+  it('keeps the section state, and resets scope and stream, when another subject is selected', async () => {
+    const streams = [...PATTERNS, { name: 'LOGS', subjects: ['logs.>'] }]
+    const gateway = createFakeGateway({
+      connections: [{ id: 'dev', name: 'Dev', envLabel: 'dev', color: '#059669' }]
+    })
+    const el = (path: string) => <SubjectDetail connId="dev" node={node(path)} streams={streams} />
+    const { rerender } = renderWithGateway(el('orders'), gateway)
+    await userEvent.click(screen.getByRole('radio', { name: 'One level below orders' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Messages/ }))
+    expect(screen.getByRole('button', { name: /^Messages/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    rerender(el('orders.eu.created'))
+    expect(filter()).toHaveTextContent('orders.eu.created')
+    expect(screen.getByRole('button', { name: /^Messages/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    await userEvent.click(button(/Stream to browse: ORDERS/))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'AUDIT' }))
+    rerender(el('orders.eu.paid'))
+    rerender(el('orders.eu.created'))
+    expect(button(/Stream to browse: ORDERS/)).toBeInTheDocument()
+  })
+
+  it('hints that a capture-only stream has no stored messages', () => {
+    show('orders.fresh')
+    // orders.fresh was only seen live at all: streams that capture it are offered, with nothing stored.
+    expect(screen.getByText(/No stored messages yet in/)).toBeInTheDocument()
+  })
+
+  it('announces copy success and failure', async () => {
+    show('orders.eu.paid')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    await userEvent.click(button('Copy subject'))
+    expect(writeText).toHaveBeenCalledWith('orders.eu.paid')
+    expect(await screen.findByText('Copied subject')).toBeInTheDocument()
+    writeText.mockRejectedValue(new Error('denied'))
+    await userEvent.click(button(/Copy filter/))
+    expect(await screen.findByText(/Could not copy/)).toBeInTheDocument()
   })
 })

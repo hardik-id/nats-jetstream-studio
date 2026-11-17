@@ -1,9 +1,11 @@
 import { useId, useState, type ReactNode } from 'react'
 import { ChevronDown, Database, PanelRightClose, Radio, Send } from 'lucide-react'
 import { formatCount } from '@shared/format'
-import { Badge, Button, CollapsibleSection, CopyButton, Facts, Menu } from '../../components/ui'
+import { Check, Copy } from 'lucide-react'
+import { Badge, Button, CollapsibleSection, Menu } from '../../components/ui'
 import { useTabs } from '../../state/tabs'
 import {
+  copyText,
   describeActions,
   resolveScope,
   runBrowse,
@@ -46,6 +48,9 @@ export function SubjectDetail({
   readOnly = false,
   onCollapse
 }: SubjectDetailProps): ReactNode {
+  // Section state lives above the keyed Body so it survives a change of selection.
+  const [countsOpen, setCountsOpen] = useState(true)
+  const [streamsOpen, setStreamsOpen] = useState(true)
   return (
     <aside
       aria-label="Subject details"
@@ -66,7 +71,17 @@ export function SubjectDetail({
       )}
       {node ? (
         // Keyed by path so the chosen scope and stream start over for another subject.
-        <Body key={node.path} connId={connId} node={node} streams={streams} readOnly={readOnly} />
+        <Body
+          key={node.path}
+          connId={connId}
+          node={node}
+          streams={streams}
+          readOnly={readOnly}
+          countsOpen={countsOpen}
+          setCountsOpen={setCountsOpen}
+          streamsOpen={streamsOpen}
+          setStreamsOpen={setStreamsOpen}
+        />
       ) : (
         <p className="p-4 text-muted">
           Select a subject to see its streams and to browse, tail or publish on it.
@@ -80,19 +95,25 @@ function Body({
   connId,
   node,
   streams,
-  readOnly
+  readOnly,
+  countsOpen,
+  setCountsOpen,
+  streamsOpen,
+  setStreamsOpen
 }: {
   connId: string
   node: SubjectInfo
   streams: readonly StreamPatterns[]
   readOnly: boolean
+  countsOpen: boolean
+  setCountsOpen: (f: (v: boolean) => boolean) => void
+  streamsOpen: boolean
+  setStreamsOpen: (f: (v: boolean) => boolean) => void
 }): ReactNode {
   const tabs = useTabs()
   const groupId = useId()
   const [chosen, setChosen] = useState<SubjectScope | null>(null)
   const [chosenStream, setChosenStream] = useState<{ key: string; stream: string } | null>(null)
-  const [countsOpen, setCountsOpen] = useState(true)
-  const [streamsOpen, setStreamsOpen] = useState(true)
 
   const scopes = availableScopes(node)
   const scope = resolveScope(node, chosen)
@@ -104,6 +125,18 @@ function Body({
       ? chosenStream.stream
       : browse.defaultStream
   const listed = scope ? scopeStreams(node, scope, streams) : []
+
+  const own = (id: string): string => (node.valid ? `${groupId}-${id}` : `${groupId}-invalid`)
+  const browseEmpty = !!stream && (listed.find((s) => s.name === stream)?.stored ?? 0) === 0
+  const browseDesc = !browse.enabled
+    ? browse.reason
+      ? own('browse')
+      : undefined
+    : browseEmpty
+      ? `${groupId}-browse-empty`
+      : undefined
+  const tailDesc = own('tail')
+  const publishDesc = own('publish')
 
   const below = Math.max(0, node.total - node.own)
   const liveBelow = Math.max(0, node.liveTotal - node.live)
@@ -118,7 +151,6 @@ function Body({
           >
             {node.path}
           </h3>
-          <CopyButton text={node.path} label="Copy subject path" />
         </div>
         <div className="mt-1 flex flex-wrap gap-1.5">
           {node.liveOnly && (
@@ -133,7 +165,11 @@ function Body({
           )}
         </div>
         {!node.valid && (
-          <p role="note" className="mt-2 rounded-md border border-line bg-raised p-2 text-xs">
+          <p
+            id={`${groupId}-invalid`}
+            role="note"
+            className="mt-2 rounded-md border border-line bg-raised p-2 text-xs"
+          >
             Not a valid subject: it has an empty token, whitespace or a wildcard token, so no scope,
             filter or action is offered for it.
           </p>
@@ -146,19 +182,19 @@ function Body({
         open={countsOpen}
         onToggle={() => setCountsOpen((v) => !v)}
       >
-        <Facts
-          columns={3}
-          items={[
+        <dl className="flex flex-col gap-1 text-[13px]">
+          {[
             ['Stored on this subject', formatCount(node.own)],
             ['Stored below', node.hasChildren ? formatCount(below) : 'no children'],
-            [
-              'Live this session',
-              node.hasChildren
-                ? `${formatCount(node.live)} here, ${formatCount(liveBelow)} below`
-                : formatCount(node.live)
-            ]
-          ]}
-        />
+            ['Live on this subject', formatCount(node.live)],
+            ...(node.hasChildren ? [['Live below', formatCount(liveBelow)]] : [])
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-baseline justify-between gap-3">
+              <dt className="text-xs text-muted">{label}</dt>
+              <dd className="tabular text-right">{value}</dd>
+            </div>
+          ))}
+        </dl>
         <p className="mt-1 text-xs text-faint">
           Live counts only cover messages seen in a live tail since the app started.
         </p>
@@ -193,9 +229,9 @@ function Body({
       </CollapsibleSection>
 
       {scopes.length > 0 && (
-        <fieldset className="flex flex-col gap-1.5">
+        <fieldset className="flex min-w-0 flex-col gap-1.5">
           <legend className="mb-1 text-xs font-semibold text-muted">Scope</legend>
-          <div role="radiogroup" aria-label="Scope" className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             {scopes.map((s) => (
               <label key={s} className="flex cursor-pointer items-start gap-2 text-[13px]">
                 <input
@@ -225,6 +261,7 @@ function Body({
             icon={<Database className="h-3.5 w-3.5" aria-hidden />}
             disabled={!browse.enabled}
             title={browse.reason}
+            aria-describedby={browseDesc}
             onClick={() => runBrowse(tabs, connId, browse, stream)}
           >
             {browse.label}
@@ -248,7 +285,12 @@ function Body({
             />
           )}
         </div>
-        <Reason action={browse} />
+        <Reason action={browse} id={`${groupId}-browse`} hide={!node.valid} />
+        {browse.enabled && stream && browseEmpty && (
+          <p id={`${groupId}-browse-empty`} className={REASON}>
+            No stored messages yet in {stream} for this filter; the Messages tab will be empty.
+          </p>
+        )}
         {browse.enabled && browse.streams.length > 1 && (
           <p className={REASON}>
             Stored in {browse.streams.length} streams; browsing {stream}.
@@ -260,11 +302,12 @@ function Body({
             icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
             disabled={!actions.tail.enabled}
             title={actions.tail.reason}
+            aria-describedby={actions.tail.reason ? tailDesc : undefined}
             onClick={() => runTail(tabs, connId, actions.tail)}
           >
             {actions.tail.label}
           </Button>
-          <Reason action={actions.tail} />
+          <Reason action={actions.tail} id={`${groupId}-tail`} hide={!node.valid} />
         </div>
 
         <div>
@@ -272,24 +315,22 @@ function Body({
             icon={<Send className="h-3.5 w-3.5" aria-hidden />}
             disabled={!actions.publish.enabled}
             title={actions.publish.reason}
-            aria-describedby={actions.publish.reason ? `${groupId}-publish` : undefined}
+            aria-describedby={actions.publish.reason ? publishDesc : undefined}
             onClick={() => runPublish(tabs, connId, actions.publish)}
           >
             {actions.publish.label}
           </Button>
-          <Reason action={actions.publish} id={`${groupId}-publish`} />
+          <Reason action={actions.publish} id={`${groupId}-publish`} hide={!node.valid} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <CopyButton text={node.path} label={actions.copySubject.label} size="md" />
-          <span className="text-xs text-muted">{actions.copySubject.label}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <CopyAction text={node.path} label={actions.copySubject.label} done="Copied subject" />
           {actions.filter && (
-            <>
-              <CopyButton text={actions.filter} label={`Copy filter ${actions.filter}`} size="md" />
-              <span className="text-xs text-muted">
-                {actions.copyFilter.label} ({actions.filter})
-              </span>
-            </>
+            <CopyAction
+              text={actions.filter}
+              label={`${actions.copyFilter.label} (${actions.filter})`}
+              done="Copied filter"
+            />
           )}
         </div>
       </div>
@@ -298,11 +339,52 @@ function Body({
 }
 
 /** The reason an action is unavailable, as text (a disabled button alone says nothing). */
-function Reason({ action, id }: { action: ActionDescriptor; id?: string }): ReactNode {
-  if (action.enabled || !action.reason) return null
+function Reason({
+  action,
+  id,
+  hide
+}: {
+  action: ActionDescriptor
+  id?: string
+  /** The reason is shown once elsewhere (an invalid subject). */
+  hide?: boolean
+}): ReactNode {
+  if (hide || action.enabled || !action.reason) return null
   return (
     <p id={id} className={`${REASON} mt-1`}>
       Unavailable: {action.reason}
     </p>
+  )
+}
+
+/** A labelled copy button; the result is announced in a status region next to it. */
+function CopyAction({
+  text,
+  label,
+  done
+}: {
+  text: string
+  label: string
+  done: string
+}): ReactNode {
+  const [result, setResult] = useState<'ok' | 'failed' | null>(null)
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Button
+        icon={<Copy className="h-3.5 w-3.5" aria-hidden />}
+        onClick={() => void copyText(text).then((ok) => setResult(ok ? 'ok' : 'failed'))}
+      >
+        {label}
+      </Button>
+      <span role="status" className="text-xs text-muted">
+        {result === 'ok' && (
+          <>
+            <Check className="mr-0.5 inline h-3 w-3 text-ok" aria-hidden />
+            {done}
+          </>
+        )}
+        {result === 'failed' && 'Could not copy: the clipboard is not available'}
+      </span>
+    </span>
   )
 }

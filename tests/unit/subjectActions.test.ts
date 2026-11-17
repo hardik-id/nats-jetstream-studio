@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   describeActions,
   resolveScope,
+  copyText,
   rowMenuItems,
   runBrowse,
   runPublish,
@@ -159,5 +160,31 @@ describe('subjectActions', () => {
       readOnly: false
     })
     expect(multi.filter((i) => i.label.startsWith('Browse stored messages'))).toHaveLength(2)
+  })
+
+  it('a read-only publish never opens a tab, from the descriptor or the row menu', () => {
+    const tabs = fakeTabs()
+    const ro = describeActions(node('orders'), 'subject', PATTERNS, true)
+    runPublish(tabs, 'c1', ro.publish)
+    const items = rowMenuItems(node('orders'), {
+      connId: 'c1',
+      tabs,
+      streams: PATTERNS,
+      readOnly: true,
+      scope: 'subject'
+    })
+    items.find((i) => i.label.startsWith('Publish message'))!.onSelect()
+    expect(tabs.openNew).not.toHaveBeenCalled()
+  })
+
+  it('copyText resolves to false when the clipboard fails or is missing', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    expect(await copyText('a')).toBe(true)
+    writeText.mockRejectedValue(new Error('no'))
+    expect(await copyText('a')).toBe(false)
+    vi.stubGlobal('navigator', {})
+    expect(await copyText('a')).toBe(false)
+    vi.unstubAllGlobals()
   })
 })

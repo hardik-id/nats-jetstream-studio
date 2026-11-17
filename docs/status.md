@@ -65,7 +65,7 @@ the React compiler). Type-check: clean.
 | 090 | Command palette | Tested | |
 | 091 | Saved filters and favourites | Tested | Saved filters and favourites export to and import from one JSON file, from the "Saved" menu of the message browser. An import is limited to 500 saved filters (names up to 120 characters) and 2,000 favourites. |
 | 092 | Audit log | Tested | |
-| 093 | Keyboard navigation, session restore | Tested | No formal screen-reader audit was done. |
+| 093 | Keyboard navigation, session restore | Tested | No formal screen-reader audit was done. Desktop menu (issue #44): `src/main/menu.ts` sets an explicit menu (edit roles, zoom, full screen; reload and dev tools only when not packaged; no close-window item, so Ctrl/Cmd+W only closes a studio tab). Checked by unit tests of the template and an Electron e2e that reads `Menu.getApplicationMenu()` from the unpackaged build under a display on Linux. Not run: a packaged build (so the `isPackaged` branch is covered only by the unit test), Windows, macOS (app menu, Cmd+W). |
 | 100 | Installers and auto-update | **Partly verified** | See below. |
 | 101 | Web and server mode | Tested | Token and OIDC sign-in, Docker image built and run. |
 | 110 | Visual redesign (Linear-style dashboard) | Done | Delivered through PBI-111 to PBI-123; see those rows. |

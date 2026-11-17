@@ -7,7 +7,7 @@ const SHORTCUTS: [keys: string[], what: string][] = [
   [['Ctrl/⌘', 'K'], 'Search streams, consumers and buckets, or run an action'],
   [['Ctrl/⌘', 'B'], 'Collapse or expand the sidebar'],
   [['?'], 'Show this list'],
-  [['Ctrl/⌘', 'W'], 'Close the current tab'],
+  [['Ctrl/⌘', 'W'], 'Close the current tab (never the window; desktop app)'],
   [['Ctrl', 'Tab'], 'Next tab (add Shift for the previous one)'],
   [['↑', '↓'], 'Move through the rows of a table'],
   [['PgUp', 'PgDn', 'Home', 'End'], 'Jump through a table'],
@@ -24,7 +24,12 @@ const SHORTCUTS: [keys: string[], what: string][] = [
     'On a line of a JSON payload: move between lines, open or close a node (Tab reaches Copy path and Copy value)'
   ],
   [['Ctrl/⌘', 'F'], 'Search inside a JSON payload'],
-  [['Ctrl/⌘', 'Enter'], 'Send, in the publish form']
+  [['Ctrl/⌘', 'Enter'], 'Send, in the publish form'],
+  [['Ctrl/⌘', '+ / − / 0'], 'Zoom in, zoom out, reset zoom (desktop app)'],
+  [
+    ['Ctrl/⌘', 'C / X / V / A / Z'],
+    'Copy, cut, paste, select all, undo in text fields (desktop app menu)'
+  ]
 ]
 
 /** Lists the keyboard shortcuts (PBI-093). */

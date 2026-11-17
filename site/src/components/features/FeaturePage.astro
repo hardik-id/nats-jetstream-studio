@@ -31,6 +31,7 @@ if (!page) throw new Error(`No site-map entry for ${path}`)
           <section>
             <h2>{c.title}</h2>
             <p>{c.text}</p>
+            {c.note && <p class="note">{c.note}</p>}
             {c.extra && (
               <div class="extra">
                 <Screenshot name={c.extra.name} />
@@ -75,6 +76,12 @@ if (!page) throw new Error(`No site-map entry for ${path}`)
   }
   section p {
     margin: 0;
+    color: var(--muted);
+  }
+  section p.note {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+    font-style: italic;
     color: var(--muted);
   }
   .extra {

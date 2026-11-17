@@ -9,6 +9,8 @@ export interface Capability {
   title: string
   text: string
   extra?: Shot
+  /** A short honest hedge, shown as a small note under the text. */
+  note?: string
 }
 export interface FeatureContent {
   /** One sentence for the /features/ card. */
@@ -54,7 +56,8 @@ export const featureContent = {
       },
       {
         title: 'Secrets stay safe',
-        text: 'In the desktop app, passwords, tokens and NKey seeds are encrypted with the operating system secure storage; in web mode, with a key file in the data directory. Credentials files are used by path and not copied. On the desktop, if no secure storage is available, the app warns you and can ask for the secret on each connect.'
+        text: 'In the desktop app, passwords, tokens and NKey seeds are encrypted with the operating system secure storage; in web mode, with a key file in the data directory. Credentials files are used by path and not copied. On the desktop, if no secure storage is available, the app warns you and can ask for the secret on each connect.',
+        note: 'Not yet tested with the Windows and macOS secure storage. Only the no-keychain case was run, on Linux.'
       }
     ],
     docs: [
@@ -149,7 +152,7 @@ export const featureContent = {
       },
       {
         title: 'Lag and position',
-        text: 'The detail page shows the delivered position and the ack floor with their times, and lag as the number of unprocessed messages next to the stream\'s last sequence. A link opens the message browser at the next message the consumer has not received.'
+        text: "The detail page shows the delivered position and the ack floor with their times, and lag as the number of unprocessed messages next to the stream's last sequence. A link opens the message browser at the next message the consumer has not received."
       },
       {
         title: 'Health flags',
@@ -157,7 +160,8 @@ export const featureContent = {
       },
       {
         title: 'Pause and resume',
-        text: 'Pause a consumer until a chosen time, or resume it early. The paused state and remaining time show in the list and the detail. This needs NATS Server 2.11 or newer; on older servers the action is disabled with an explanation.'
+        text: 'Pause a consumer until a chosen time, or resume it early. The paused state and remaining time show in the list and the detail. This needs NATS Server 2.11 or newer; on older servers the action is disabled with an explanation.',
+        note: 'The older-server message is implemented but was not tried on a server older than 2.11.'
       },
       {
         title: 'Create, edit and delete',
@@ -250,11 +254,12 @@ export const featureContent = {
       },
       {
         title: 'Alert rules',
-        text: 'Make rules per connection on consumer pending, redelivered, or stream bytes as a share of its limit, with a threshold and a duration. A triggered rule shows a badge and, if you turn it on, a desktop notification. Mute or snooze rules, and list the alerts that fired this session.'
+        text: 'Make rules per connection on consumer pending, redelivered, or stream bytes as a share of its limit, with a threshold and a duration. A triggered rule shows a badge and, if you turn it on, a desktop notification. Mute or snooze rules, and list the alerts that fired this session.',
+        note: 'The desktop notification itself was never seen on screen; the alert rules and badges are tested.'
       },
       {
         title: 'Cluster topology',
-        text: 'With system-account access, list every server with version, connections, CPU, memory and JetStream use. See routes, gateways and leaf nodes, the JetStream meta leader, and each stream\'s leader and replica state. Without that access, the view tells you which permission is missing. This was checked on a real three-node cluster.'
+        text: "With system-account access, list every server with version, connections, CPU, memory and JetStream use. See routes, gateways and leaf nodes, the JetStream meta leader, and each stream's leader and replica state. Without that access, the view tells you which permission is missing. This was checked on a real three-node cluster."
       },
       {
         title: 'Unhealthy consumers',

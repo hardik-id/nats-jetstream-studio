@@ -149,3 +149,24 @@ test('PBI-093 Ctrl+W closes the current tab and the session is restored on resta
   await expect(tabs.getByRole('tab')).toHaveText(remaining)
   await expect(page.getByTestId('active-connection')).toContainText('e2e-local')
 })
+
+test('#44 the application menu has editing and zoom, and no close-window item', async () => {
+  const menu = await app.evaluate(({ Menu }) => {
+    const out: { role: string; accelerator: string }[] = []
+    const walk = (m: Electron.Menu | null | undefined): void => {
+      for (const item of m?.items ?? []) {
+        out.push({ role: String(item.role ?? ''), accelerator: String(item.accelerator ?? '') })
+        walk(item.submenu)
+      }
+    }
+    walk(Menu.getApplicationMenu())
+    return out
+  })
+  const roles = menu.map((i) => i.role.toLowerCase())
+  for (const role of ['undo', 'redo', 'cut', 'copy', 'paste', 'selectall', 'zoomin', 'zoomout']) {
+    expect(roles).toContain(role)
+  }
+  expect(roles).not.toContain('close')
+  expect(roles).not.toContain('forcereload')
+  expect(menu.some((i) => /^(Ctrl|Cmd|CommandOrControl)\+W$/i.test(i.accelerator))).toBe(false)
+})

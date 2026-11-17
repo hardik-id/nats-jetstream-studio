@@ -1,7 +1,10 @@
 ---
 // A screenshot in two themes. Both files are in the page; CSS shows the one that matches the theme
-// set on <html data-theme> and hides the other with display:none. Both images are lazy, so with JS
-// only the visible one is fetched; without JS (no theme set) both variants may load.
+// set on <html data-theme> and hides the other with display:none. Layout always sets data-theme
+// (dark by default, before first paint), so the hidden variant is never needed on load. Both images
+// are lazy: a browser does not fetch a lazy image that is display:none, so only the visible one loads.
+// The hero stays lazy with fetchpriority=high on purpose: an eager image would also fetch the
+// display:none variant (and which one is hidden depends on a theme the user may change by script).
 // Size and alt text come from public/media/manifest.json. Each image is a plain link to the full
 // file, so "open larger" works without JS. With `href`, the image links there instead (cards).
 import { url } from '../../lib/url'

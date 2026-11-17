@@ -174,7 +174,7 @@ export function MessageDetail({
           <div
             className={cx(
               'flex flex-col gap-1 overflow-y-auto',
-              sections_.payload ? 'max-h-[45%] shrink-0' : 'min-h-0 flex-1'
+              sections_.payload ? 'max-h-[25%] shrink-0' : 'min-h-0 flex-1'
             )}
           >
             <CollapsibleSection

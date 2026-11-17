@@ -163,7 +163,7 @@ function ResizableDetail({
   return (
     <div
       ref={frame}
-      className="relative shrink-0"
+      className={cx('shrink-0', !expanded && 'relative')}
       data-testid="detail-frame"
       style={{
         width: expanded ? '70%' : current,
@@ -171,43 +171,52 @@ function ResizableDetail({
         minWidth: DETAIL_MIN_WIDTH
       }}
     >
+      {/* While expanded, the frame only keeps the split at 70% (the table stays on the left); the
+          panel itself covers the whole tab, from its top edge to its bottom edge, so the JSON gets
+          the height of the stream header, tabs, toolbar and filter rows too. The Page above is the
+          positioned ancestor. */}
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize message detail"
-        aria-valuenow={current}
-        aria-valuemin={DETAIL_MIN_WIDTH}
-        tabIndex={0}
-        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          const start = shown()
-          drag.current = { x: e.clientX, width: start, last: start }
-          if (expanded) onLeaveExpanded?.()
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current
-          if (!d) return
-          d.last = clamp(d.width + (d.x - e.clientX))
-          onWidth(d.last)
-        }}
-        onPointerUp={() => {
-          const d = drag.current
-          drag.current = null
-          if (d) onCommit(d.last)
-        }}
-        onKeyDown={(e) => {
-          const delta =
-            e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
-          if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
-          else if (e.key === 'End') onCommit(maxWidth())
-          else if (delta) onCommit(clamp(shown() + delta))
-          else return
-          if (expanded) onLeaveExpanded?.()
-          e.preventDefault()
-        }}
-      />
-      {children}
+        className={expanded ? 'absolute inset-y-0 right-0 z-20 w-[70%] bg-panel' : 'contents'}
+        data-testid="detail-surface"
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize message detail"
+          aria-valuenow={current}
+          aria-valuemin={DETAIL_MIN_WIDTH}
+          tabIndex={0}
+          className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            const start = shown()
+            drag.current = { x: e.clientX, width: start, last: start }
+            if (expanded) onLeaveExpanded?.()
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current
+            if (!d) return
+            d.last = clamp(d.width + (d.x - e.clientX))
+            onWidth(d.last)
+          }}
+          onPointerUp={() => {
+            const d = drag.current
+            drag.current = null
+            if (d) onCommit(d.last)
+          }}
+          onKeyDown={(e) => {
+            const delta =
+              e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
+            if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
+            else if (e.key === 'End') onCommit(maxWidth())
+            else if (delta) onCommit(clamp(shown() + delta))
+            else return
+            if (expanded) onLeaveExpanded?.()
+            e.preventDefault()
+          }}
+        />
+        {children}
+      </div>
     </div>
   )
 }
@@ -240,12 +249,10 @@ export function MessageBrowser({
     scanLimit: 10_000
   })
   const [subjectDraft, setSubjectDraft] = useState(view.subject)
-  const [storedOpen, setStoredOpen] = useSetting<boolean>(
-    `messages.filtersOpen:${connId}:${info.config.name}`,
-    false
-  )
-  const panelOpen = storedOpen === true
-  const setPanelOpen = (open: boolean): void => void setStoredOpen(open)
+  // Open or closed is kept for as long as this stream's page is open (one page per stream) and is
+  // not stored: a panel left open would take a third of the window on every later visit, and the
+  // chips already show what is active. It closes by itself after Apply and Clear (PBI-125 follow-up).
+  const [panelOpen, setPanelOpen] = useState(false)
   const filtersButton = useRef<HTMLButtonElement>(null)
   const [startMode, setStartMode] = useState<StartMode>('latest')
   const [seqInput, setSeqInput] = useState('')
@@ -922,7 +929,12 @@ export function MessageBrowser({
             setPanelOpen(false)
             filtersButton.current?.focus()
           }}
-          onApply={(filters, scanLimit) => apply({ filters, scanLimit })}
+          onApply={(filters, scanLimit) => {
+            apply({ filters, scanLimit })
+            // The panel goes away; keyboard focus stays on the button that reopens it.
+            setPanelOpen(false)
+            filtersButton.current?.focus()
+          }}
         />
       )}
 
@@ -1105,7 +1117,7 @@ export function MessageBrowser({
         </div>
       )}
 
-      <div className="flex min-h-40 flex-1">
+      <div className="flex min-h-32 flex-1">
         <div
           ref={tableBox}
           className="min-w-0 flex-1 bg-panel"
@@ -1193,6 +1205,7 @@ export function MessageBrowser({
                     connId={connId}
                     stream={stream}
                     retention={info.config.retention}
+                    knownCount={info.state.consumer_count}
                     message={{ seq: detail.seq, subject: detail.subject, time: detail.time }}
                   />
                 }

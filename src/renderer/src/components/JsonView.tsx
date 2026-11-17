@@ -149,6 +149,7 @@ function Row({
   children: ReactNode
 }): ReactNode {
   const [inside, setInside] = useState(false)
+  const down = useRef<{ x: number; y: number } | null>(null)
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     // Keys pressed on the copy buttons are theirs.
     if (e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return
@@ -211,8 +212,17 @@ function Row({
         active && 'json-active',
         className
       )}
+      onMouseDown={(e) => {
+        down.current = { x: e.clientX, y: e.clientY }
+      }}
       onClick={(e) => {
-        if (onToggle && !(e.target as HTMLElement).closest('button')) onToggle()
+        if (!onToggle || (e.target as HTMLElement).closest('button')) return
+        // Selecting text to copy it must not fold the node: skip when something is selected or
+        // the pointer moved between press and release.
+        const d = down.current
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 3) return
+        if (window.getSelection()?.toString()) return
+        onToggle()
       }}
       onKeyDown={onKeyDown}
       onFocus={(e) => {

@@ -129,7 +129,6 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // Invalid expressions show an inline error and cannot be applied.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('Payload matches regular expression').fill('(')
   await expect(panel.getByRole('alert').first()).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
@@ -148,7 +147,6 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // A scan limit that is hit is reported as such, with a way to continue.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('JSONPath').fill('$.order.id == "A-2"')
   await panel.getByLabel('Scan limit').fill('20')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
@@ -156,11 +154,14 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
   await expect(
     page.getByText('No matches yet. The scan limit was reached before the end of the stream.')
   ).toBeVisible()
+  // Apply hid the panel; open it again.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('Scan limit').fill('10000')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(range(page)).toHaveText('1 message, #2 to #2')
 
   // No matches at all is a different message.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('JSONPath').fill('$.order.id == "nope"')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(
@@ -400,14 +401,12 @@ test('PBI-049 the message panel shows which consumers have received the message'
   await client.jsm.streams.delete(queue)
 })
 
-test('PBI-125 the Filters button shows its state and a count, and the state is remembered', async ({
+test('PBI-125 the Filters button shows its state and a count, Apply hides the panel, and it is not restored on load', async ({
   page
 }) => {
   await openStudio(page)
   await openStream(page, stream, 'Messages')
   const button = page.getByRole('button', { name: /^Filters/ })
-  // An earlier test may have left the panel open; it is remembered per stream.
-  if ((await button.getAttribute('aria-expanded')) === 'true') await button.click()
   await expect(button).toHaveAttribute('aria-expanded', 'false')
   await button.click()
   const panel = page.getByRole('form', { name: 'Message filters' })
@@ -423,24 +422,30 @@ test('PBI-125 the Filters button shows its state and a count, and the state is r
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
 
-  // Closed with Escape: focus is back on the button and the chip is still there.
-  await panel.getByLabel('Payload contains').press('Escape')
+  // Apply hides the panel, keeps the chip and leaves focus on the Filters button.
   await expect(panel).toBeHidden()
   await expect(button).toBeFocused()
   await expect(page.getByLabel('Active filters')).toContainText('Payload contains "message 12"')
 
-  // Open or closed survives a reload (per stream).
+  // Escape closes it too, with focus back on the button.
+  await button.click()
+  await panel.getByLabel('Payload contains').press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(button).toBeFocused()
+
+  // Open is not restored on load: it is for this visit only.
   await button.click()
   await expect(panel).toBeVisible()
   await page.reload()
   await openStudio(page)
   await openStream(page, stream, 'Messages')
-  await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
+  await expect(page.getByRole('form', { name: 'Message filters' })).toBeHidden()
 
-  // Put things back for the other tests.
+  // Clear also hides the panel and focuses the button.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByRole('button', { name: 'Clear' }).click()
-  await panel.getByRole('button', { name: 'Hide' }).click()
   await expect(panel).toBeHidden()
+  await expect(page.getByRole('button', { name: /^Filters/ })).toBeFocused()
 })
 
 test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rail and widens to read', async ({
@@ -615,3 +620,113 @@ for (const size of [
     expect(after.scroll).toBeLessThanOrEqual(after.inner)
   })
 }
+
+const DEFAULT_SECTIONS = async (page: Page): Promise<void> => {
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  for (const name of [/^Headers/, /^Consumers/]) {
+    const toggle = detail.getByRole('button', { name })
+    if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click()
+  }
+}
+
+const payloadHeight = async (page: Page): Promise<number> =>
+  (await page
+    .getByRole('complementary', { name: 'Message detail' })
+    .getByTestId('payload-body')
+    .boundingBox())!.height
+
+for (const { width, height, closed, open } of [
+  { width: 1440, height: 900, closed: 300, open: 200 },
+  { width: 1280, height: 720, closed: 160, open: 0 }
+]) {
+  test(`#58 the JSON gets real height with a message selected (${width}x${height})`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height })
+    await openStudio(page)
+    await openStream(page, stream, 'Messages')
+    await rowOf(page, 120).click()
+    await expect(page.getByRole('complementary', { name: 'Message detail' })).toBeVisible()
+    await DEFAULT_SECTIONS(page)
+    const closedHeight = await payloadHeight(page)
+    console.log(`payload ${width}x${height} filters closed: ${Math.round(closedHeight)}px`)
+    expect(closedHeight).toBeGreaterThanOrEqual(closed)
+    if (open) {
+      await page.getByRole('button', { name: /^Filters/ }).click()
+      const openHeight = await payloadHeight(page)
+      console.log(`payload ${width}x${height} filters open: ${Math.round(openHeight)}px`)
+      expect(openHeight).toBeGreaterThanOrEqual(open)
+      const m = await page.evaluate(() => ({
+        s: document.scrollingElement!.scrollHeight,
+        i: window.innerHeight
+      }))
+      expect(m.s).toBeLessThanOrEqual(m.i)
+    }
+  })
+}
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 720 },
+  { width: 1000, height: 600 }
+]) {
+  test(`#58 Expand to read fills the tab, never scrolls the page, and Esc restores (${size.width}x${size.height})`, async ({
+    page
+  }) => {
+    await page.setViewportSize(size)
+    await openStudio(page)
+    await openStream(page, stream, 'Messages')
+    await rowOf(page, 120).click()
+    const detail = page.getByRole('complementary', { name: 'Message detail' })
+    await expect(detail).toBeVisible()
+    await DEFAULT_SECTIONS(page)
+    const normalPayload = await payloadHeight(page)
+    const normalWidth = (await detail.boundingBox())!.width
+    const tabTop = (await page.getByRole('heading', { level: 1 }).boundingBox())!.y
+
+    await detail.getByRole('button', { name: 'Expand to read' }).click()
+    const box = (await detail.boundingBox())!
+    // It starts at the top of the stream page (above the header, tabs and toolbar) and reaches
+    // the bottom of the window.
+    expect(box.y).toBeLessThanOrEqual(tabTop)
+    expect(box.y + box.height).toBeGreaterThanOrEqual(size.height - 2)
+    expect(box.width).toBeGreaterThan(normalWidth)
+    const expandedPayload = await payloadHeight(page)
+    console.log(
+      `payload ${size.width}x${size.height}: normal ${Math.round(normalPayload)}px, expanded ${Math.round(expandedPayload)}px`
+    )
+    expect(expandedPayload).toBeGreaterThan(normalPayload + 100)
+    const m = await page.evaluate(() => ({
+      s: document.scrollingElement!.scrollHeight,
+      i: window.innerHeight,
+      w: document.documentElement.scrollWidth,
+      iw: window.innerWidth
+    }))
+    expect(m.s).toBeLessThanOrEqual(m.i)
+    expect(m.w).toBeLessThanOrEqual(m.iw)
+    // The table stays visible on the left.
+    expect((await table(page).boundingBox())!.width).toBeGreaterThan(150)
+
+    await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+    await page.keyboard.press('Escape')
+    await expect(detail).toBeVisible()
+    const back = (await detail.boundingBox())!
+    expect(Math.round(back.width)).toBe(Math.round(normalWidth))
+    expect(back.y).toBeGreaterThan(tabTop + 20)
+  })
+}
+
+test('#58 1000x600 with the filters open and nothing selected does not scroll the page', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 })
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
+  const m = await page.evaluate(() => ({
+    s: document.scrollingElement!.scrollHeight,
+    i: window.innerHeight
+  }))
+  expect(m.s).toBeLessThanOrEqual(m.i)
+})

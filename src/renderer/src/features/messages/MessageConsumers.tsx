@@ -47,11 +47,14 @@ export function MessageConsumers({
   connId,
   stream,
   retention,
+  knownCount,
   message
 }: {
   connId: string
   stream: string
   retention: StreamConfigDto['retention']
+  /** The stream's consumer count from its info: shown while the list itself is not read. */
+  knownCount?: number
   message: MessageRef
 }): ReactNode {
   const gateway = useGateway()
@@ -77,6 +80,8 @@ export function MessageConsumers({
   }, [query.data, search, message])
 
   const total = query.data?.length ?? 0
+  // The list when it has been read, else the count the stream info already carries.
+  const shownCount = query.data ? total : knownCount
   const note = retentionNote(retention)
   const read = query.dataUpdatedAt ? formatTime(query.dataUpdatedAt) : undefined
 
@@ -84,7 +89,12 @@ export function MessageConsumers({
     <CollapsibleSection
       aria-label="Consumers"
       data-testid="message-consumers"
-      title={`Consumers${query.data ? ` (${total})` : ''}`}
+      title={shownCount === undefined ? 'Consumers' : `Consumers (${shownCount})`}
+      summary={
+        shownCount === undefined
+          ? undefined
+          : `${shownCount} ${shownCount === 1 ? 'consumer' : 'consumers'}`
+      }
       open={section.open}
       onToggle={section.toggle}
       actions={

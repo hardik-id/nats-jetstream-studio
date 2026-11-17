@@ -19,6 +19,11 @@ const SHORTCUTS: [keys: string[], what: string][] = [
   [['Space'], 'Tick the selected message in the message browser'],
   [['Esc'], 'Close a dialog, the search box or the message panel'],
   [['Alt', '↑ / ↓'], 'Previous or next message while the message panel is open'],
+  [
+    ['↑', '↓', '←', '→', 'Home', 'End'],
+    'On a line of a JSON payload: move between lines, open or close a node (Tab reaches Copy path and Copy value)'
+  ],
+  [['Ctrl/⌘', 'F'], 'Search inside a JSON payload'],
   [['Ctrl/⌘', 'Enter'], 'Send, in the publish form']
 ]
 

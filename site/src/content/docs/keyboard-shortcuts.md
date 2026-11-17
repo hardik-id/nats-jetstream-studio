@@ -43,7 +43,7 @@ Columns can also be resized by dragging the handle; double-click it to reset the
 | Keys | What it does |
 | --- | --- |
 | <kbd>Space</kbd> | Tick or untick the selected message, for copy and export. |
-| <kbd>Esc</kbd> | Close the message panel. When the panel is widened with **Expand to read**, the first press restores its size. In the filter panel it hides the panel; in the JSON search box it clears the search. |
+| <kbd>Esc</kbd> | Close the message panel. When the panel is widened with **Expand to read**, the first press restores it. In the filter panel it hides the panel; in the JSON search box it clears the search. |
 | <kbd>↑</kbd> / <kbd>↓</kbd> / <kbd>←</kbd> / <kbd>→</kbd> / <kbd>Home</kbd> / <kbd>End</kbd> | On a line of a JSON payload: move between lines, open or close a node. <kbd>Tab</kbd> then reaches **Copy path** and **Copy value** of that line. |
 | <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>F</kbd> | Inside the payload of a JSON message: search the JSON. |
 | <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> | Show the previous or next message while the message panel has focus. |

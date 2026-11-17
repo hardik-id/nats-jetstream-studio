@@ -73,6 +73,10 @@ export function StreamTab({
   const [dialog, setDialog] = useState<'edit' | 'purge' | 'delete' | 'export' | null>(null)
   // Sections are created on first visit and then kept, so the message browser keeps its place.
   const [visited, setVisited] = useState<Set<StreamSection>>(() => new Set([section]))
+  // "Expand to read" in the message browser covers this page's header and tabs; they are inert
+  // while it is on, which is this page's own state and so ends with the page.
+  const [readExpanded, setReadExpanded] = useState(false)
+  const covered = readExpanded && section === 'messages'
   const info = query.data
   const readOnly = conn?.readOnly
 
@@ -93,6 +97,7 @@ export function StreamTab({
   return (
     <Page
       scroll={false}
+      headerInert={covered}
       title={
         <span className="flex items-center gap-2">
           <StarButton connId={connId} favorite={{ kind: 'stream', stream }} />
@@ -118,7 +123,7 @@ export function StreamTab({
         </Button>
       }
     >
-      <div className="shrink-0 bg-panel">
+      <div inert={covered || undefined} className="shrink-0 bg-panel">
         <SubTabs tabs={SECTIONS} active={section} onChange={(next) => go(next)} />
       </div>
       {query.error ? (
@@ -140,6 +145,8 @@ export function StreamTab({
                 requestSubject={subject}
                 requestSeq={seq}
                 visible={section === 'messages'}
+                expanded={readExpanded}
+                onExpandedChange={setReadExpanded}
               />
             )}
           </div>

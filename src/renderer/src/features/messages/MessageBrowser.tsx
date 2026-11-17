@@ -148,32 +148,6 @@ function ResizableDetail({
   // What is on screen: the real width while expanded, which CSS decides (70% of the row).
   const shown = (): number => (expanded ? frame.current?.offsetWidth || current : current)
   const drag = useRef<{ x: number; width: number; last: number } | null>(null)
-  // While the panel covers the page, everything it hides is made inert (no tab stops, not read by
-  // assistive technology): the stream header and tabs, the toolbar and filter rows, the other
-  // sections, the sidebar and the tab strip. The table (the frame's previous sibling) stays
-  // interactive, so another row can still be picked.
-  useEffect(() => {
-    const el = frame.current
-    if (!expanded || collapsed || !el) return
-    const table = el.previousElementSibling
-    const keep = new Set<Element>()
-    for (const t of [el, table]) {
-      for (let n: Element | null = t; n; n = n.parentElement) keep.add(n)
-    }
-    // Only the ancestors have children to silence; the panel and the table are left whole.
-    keep.delete(el)
-    if (table) keep.delete(table)
-    const stay = new Set<Element>([...keep, el, ...(table ? [table] : [])])
-    const marked: Element[] = []
-    for (const a of keep) {
-      for (const c of Array.from(a.children)) {
-        if (stay.has(c) || c.hasAttribute('inert')) continue
-        c.setAttribute('inert', '')
-        marked.push(c)
-      }
-    }
-    return () => marked.forEach((c) => c.removeAttribute('inert'))
-  }, [expanded, collapsed])
   if (collapsed) {
     return (
       <div
@@ -252,7 +226,9 @@ export function MessageBrowser({
   info,
   requestSubject,
   requestSeq,
-  visible = true
+  visible = true,
+  expanded: expandedProp,
+  onExpandedChange
 }: {
   connId: string
   info: StreamInfoDto
@@ -260,6 +236,12 @@ export function MessageBrowser({
   requestSeq?: number
   /** False while another section of the stream is shown (this page stays mounted). */
   visible?: boolean
+  /**
+   * "Expand to read" is on. The stream page owns it (controlled) so it can silence its own header
+   * and tabs, which the panel covers; without it the page keeps the state itself.
+   */
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }): ReactNode {
   const tabActive = useTabActive()
   const gateway = useGateway()
@@ -294,6 +276,15 @@ export function MessageBrowser({
   const [loadedOnce, setLoadedOnce] = useState(false)
 
   const [selected, setSelected] = useState<number | null>(null)
+  // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
+  const [ownExpanded, setOwnExpanded] = useState(false)
+  const expanded = expandedProp ?? ownExpanded
+  const setExpanded = (next: boolean | ((v: boolean) => boolean)): void => {
+    const value = typeof next === 'function' ? next(expanded) : next
+    setOwnExpanded(value)
+    onExpandedChange?.(value)
+  }
+  const setExpandedRef = useLatest(setExpanded)
   const [fullBytes, setFullBytes] = useState<number | undefined>(undefined)
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [dialog, setDialog] = useState<
@@ -375,6 +366,7 @@ export function MessageBrowser({
         setMessages(walk === v.order ? all : [...all].reverse())
         setChecked(new Set())
         setSelected(null)
+        setExpandedRef.current(false)
         const seqs = all.map((m) => m.seq)
         const min = Math.min(...seqs)
         const max = Math.max(...seqs)
@@ -472,7 +464,7 @@ export function MessageBrowser({
         finish(found, false)
       }
     },
-    [gateway, connId, stream]
+    [gateway, connId, stream, setExpandedRef]
   )
 
   const latest = useCallback((v: View) => run('desc', { kind: 'last' }, v), [run])
@@ -685,7 +677,9 @@ export function MessageBrowser({
   const detailWidth = dragWidth ?? storedWidth
   const [collapsed, setCollapsed] = useSetting<boolean>('messages.detailCollapsed', false)
   // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
-  const [expanded, setExpanded] = useState(false)
+  // What the expanded panel covers on this page is inert: no tab stops, not read by assistive
+  // technology. A declarative prop of this page, so it cannot outlive the page or its tab.
+  const covered = expanded && Boolean(detail) && visible ? true : undefined
   // After the panel collapses or opens again the button that was pressed is gone; keyboard focus
   // goes to its counterpart instead of falling back to the page.
   const focusAfter = useRef<'rail' | 'panel' | null>(null)
@@ -828,7 +822,10 @@ export function MessageBrowser({
     <div className="flex h-full min-h-0 flex-col">
       {/* Filters and start position */}
       {/* On a short window the field labels stay for screen readers only: that is a row of height. */}
-      <div className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2 [@media(max-height:800px)]:py-1.5 [@media(max-height:800px)]:[&_label]:sr-only">
+      <div
+        inert={covered}
+        className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2 [@media(max-height:800px)]:py-1.5 [@media(max-height:800px)]:[&_label]:sr-only"
+      >
         <form
           className="flex items-end gap-1.5"
           onSubmit={(e) => {
@@ -951,6 +948,7 @@ export function MessageBrowser({
       {panelOpen && (
         <FilterPanel
           id={FILTER_PANEL_ID}
+          inert={covered}
           compact={Boolean(detail)}
           key={JSON.stringify(view.filters) + view.scanLimit}
           initial={draftFrom(view.filters, view.scanLimit)}
@@ -970,6 +968,7 @@ export function MessageBrowser({
 
       {chips.length > 0 && (
         <div
+          inert={covered}
           className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5"
           aria-label="Active filters"
         >
@@ -996,7 +995,10 @@ export function MessageBrowser({
       )}
 
       {/* Paging and actions */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5 [@media(max-height:800px)]:py-1">
+      <div
+        inert={covered}
+        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5 [@media(max-height:800px)]:py-1"
+      >
         <Button
           size="sm"
           icon={<ChevronsUp className="h-3.5 w-3.5" aria-hidden />}
@@ -1107,7 +1109,7 @@ export function MessageBrowser({
           (outcome.reason === 'limit' ||
             outcome.reason === 'cancelled' ||
             outcome.skippedNonJson > 0))) && (
-        <div className="flex shrink-0 flex-col gap-1.5 bg-panel px-4 py-2">
+        <div inert={covered} className="flex shrink-0 flex-col gap-1.5 bg-panel px-4 py-2">
           {notice && <Notice tone="accent">{notice}</Notice>}
           <ErrorNote error={error} onRetry={() => go(view, startMode)} />
           {outcome?.reason === 'limit' && (

@@ -890,7 +890,8 @@ export function Page({
   filter,
   actions,
   children,
-  scroll = true
+  scroll = true,
+  headerInert
 }: {
   title: ReactNode
   subtitle?: ReactNode
@@ -900,10 +901,15 @@ export function Page({
   children: ReactNode
   /** False when the content manages its own scrolling (tables). */
   scroll?: boolean
+  /** The header is covered by something and must not take focus. */
+  headerInert?: boolean
 }): ReactNode {
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2">
+      <header
+        inert={headerInert || undefined}
+        className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2"
+      >
         <div className="mr-auto min-w-0">
           <h1 className="truncate text-[20px] leading-7 font-semibold">{title}</h1>
           {subtitle && (

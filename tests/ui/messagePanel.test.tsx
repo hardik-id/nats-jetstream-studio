@@ -245,6 +245,12 @@ describe('PBI-125 follow-ups (#58)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Expand to read' }))
     expect(toolbar).toHaveAttribute('inert')
     expect(table.closest('[inert]')).toBeNull()
+    // Only elements of the page are inert, never an ancestor of the table or the panel.
+    const aside = screen.getByRole('complementary', { name: 'Message detail' })
+    for (const el of document.querySelectorAll('[inert]')) {
+      expect(el.contains(table)).toBe(false)
+      expect(el.contains(aside)).toBe(false)
+    }
     expect(
       screen.getByRole('complementary', { name: 'Message detail' }).closest('[inert]')
     ).toBeNull()

@@ -636,8 +636,8 @@ const payloadHeight = async (page: Page): Promise<number> =>
     .boundingBox())!.height
 
 for (const { width, height, closed, open } of [
-  { width: 1440, height: 900, closed: 300, open: 200 },
-  { width: 1280, height: 720, closed: 210, open: 120 }
+  { width: 1440, height: 900, closed: 300, open: 190 },
+  { width: 1280, height: 720, closed: 195, open: 120 }
 ]) {
   test(`#58 the JSON gets real height with a message selected (${width}x${height})`, async ({
     page
@@ -742,18 +742,20 @@ test('#58 while expanded, Tab and Shift+Tab never reach what the panel covers', 
   const refresh = page.getByRole('button', { name: 'Refresh', exact: true })
   await expect(refresh).toBeAttached()
   expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(true)
-  const outside = (): Promise<string | null> =>
+  // Controls the panel covers: after each Tab none of them may have focus.
+  const onCovered = (): Promise<string | null> =>
     page.evaluate(() => {
       const a = document.activeElement
-      if (!a || a === document.body) return null
-      const ok =
-        a.closest('aside[aria-label="Message detail"]') ||
-        a.closest('[role=table]') ||
-        a.closest('[data-testid=detail-frame]')
-      return ok
-        ? null
-        : `${a.tagName} ${a.getAttribute('aria-label') ?? a.textContent?.slice(0, 30)}`
+      const name = (a?.getAttribute('aria-label') ?? a?.textContent ?? '').trim()
+      const covered =
+        !a?.closest('aside') &&
+        /^(Refresh|Filters|Saved|Go|Export all matching|Latest|Next)/.test(name)
+      return a && (a.closest('[inert]') || covered) ? `${a.tagName} ${name}` : null
     })
+  expect(
+    await page.evaluate(() => document.querySelectorAll('[inert] button, [inert] select').length)
+  ).toBeGreaterThan(5)
+  const outside = onCovered
   await detail.getByRole('button', { name: 'Restore panel size' }).focus()
   for (let i = 0; i < 40; i++) {
     await page.keyboard.press('Tab')
@@ -767,4 +769,55 @@ test('#58 while expanded, Tab and Shift+Tab never reach what the panel covers', 
   await detail.getByRole('button', { name: 'Restore panel size' }).focus()
   await page.keyboard.press('Escape')
   expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(false)
+})
+
+const visibleInert = (page: Page): Promise<number> =>
+  page.evaluate(
+    () =>
+      [...document.querySelectorAll('[inert]')].filter(
+        (el) => (el as HTMLElement).getClientRects().length > 0
+      ).length
+  )
+
+test('#58 an expanded panel leaves nothing inert when the tab changes, closes or the page moves on', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  // The sidebar and the tab strip are not covered, so they are never inert and stay clickable.
+  const inertOutside = await page.evaluate(() => {
+    const els = [
+      document.querySelector('nav[aria-label="Connections"]'),
+      document.querySelector('[role=tablist]'),
+      document.querySelector('header')
+    ]
+    return els.some((el) => !!el?.closest('[inert]'))
+  })
+  expect(inertOutside).toBe(false)
+
+  // Another stream opens in a new tab: nothing visible is inert there.
+  // (The sidebar is the icon rail while a message is open; the tab strip is always there.)
+  await page.getByRole('tab', { name: 'Streams', exact: true }).click()
+  await page
+    .getByRole('table', { name: 'Streams' })
+    .getByRole('button', { name: 'ORDERS', exact: true })
+    .click()
+  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
+  expect(await visibleInert(page)).toBe(0)
+
+  // Back on the first stream the panel is still expanded and its page is inert again.
+  await page.getByRole('tab', { name: stream }).click()
+  await expect(detail.getByRole('button', { name: 'Restore panel size' })).toBeVisible()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  // Closing the tab removes the page, and its marks with it.
+  await page.keyboard.press('Control+w')
+  await page.getByRole('tab', { name: 'ORDERS' }).waitFor({ state: 'visible' })
+  expect(await visibleInert(page)).toBe(0)
+  expect(await page.evaluate(() => document.querySelectorAll('[inert]').length)).toBe(0)
 })

@@ -115,9 +115,11 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
   // Header and payload filters are combined with AND.
   await page.getByRole('button', { name: /^Filters/ }).click()
   const panel = page.getByRole('form', { name: 'Message filters' })
-  await panel.getByRole('button', { name: 'Add header filter' }).click()
-  await panel.getByLabel('Header filter 1 name').fill('Trace-Id')
-  await panel.getByLabel('Payload contains').fill('urgent')
+  await panel.getByLabel('Condition 1 type').selectOption('header')
+  await panel.getByLabel('Condition 1 header name').fill('Trace-Id')
+  await panel.getByRole('button', { name: 'Add condition' }).click()
+  await panel.getByLabel('Condition 2 type').selectOption('contains')
+  await panel.getByLabel('Condition 2 expression').fill('urgent')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(range(page)).toHaveText('2 messages, #50 to #100')
   await expect(chips).toContainText('Has header Trace-Id')
@@ -129,16 +131,18 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // Invalid expressions show an inline error and cannot be applied.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await panel.getByLabel('Payload matches regular expression').fill('(')
+  await panel.getByRole('button', { name: 'Add condition' }).click()
+  await panel.getByLabel('Condition 2 type').selectOption('regex')
+  await panel.getByLabel('Condition 2 expression').fill('(')
   await expect(panel.getByRole('alert').first()).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
-  await panel.getByLabel('Payload matches regular expression').fill('')
-  await panel.getByLabel('JSONPath').fill('order.total > 1')
+  await panel.getByLabel('Condition 2 type').selectOption('jsonPath')
+  await panel.getByLabel('Condition 2 expression').fill('order.total > 1')
   await expect(panel.getByText(/Expression must start with \$/)).toBeVisible()
 
   // JSONPath: non-JSON payloads are skipped and counted.
-  await panel.getByRole('button', { name: 'Remove header filter 1' }).click()
-  await panel.getByLabel('JSONPath').fill('$.order.total > 1200')
+  await panel.getByRole('button', { name: 'Remove condition 1' }).click()
+  await panel.getByLabel('Condition 1 expression').fill('$.order.total > 1200')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(range(page)).toHaveText('5 messages, #122 to #130')
   await expect(
@@ -147,7 +151,7 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // A scan limit that is hit is reported as such, with a way to continue.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await panel.getByLabel('JSONPath').fill('$.order.id == "A-2"')
+  await panel.getByLabel('Condition 1 expression').fill('$.order.id == "A-2"')
   await panel.getByLabel('Scan limit').fill('20')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(page.getByText(/Scan limit reached: 20 messages examined, 0 matches/)).toBeVisible()
@@ -162,7 +166,7 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // No matches at all is a different message.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await panel.getByLabel('JSONPath').fill('$.order.id == "nope"')
+  await panel.getByLabel('Condition 1 expression').fill('$.order.id == "nope"')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(
     page.getByText(/No messages match these filters\. 65 messages were examined\./)
@@ -418,7 +422,8 @@ test('PBI-125 the Filters button shows its state and a count, Apply hides the pa
   await expect(panel.getByRole('button', { name: 'Hide' })).toBeInViewport()
   expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(900 * 0.55 + 1)
 
-  await panel.getByLabel('Payload contains').fill('message 12')
+  await panel.getByLabel('Condition 1 type').selectOption('contains')
+  await panel.getByLabel('Condition 1 expression').fill('message 12')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
 
@@ -429,7 +434,7 @@ test('PBI-125 the Filters button shows its state and a count, Apply hides the pa
 
   // Escape closes it too, with focus back on the button.
   await button.click()
-  await panel.getByLabel('Payload contains').press('Escape')
+  await panel.getByLabel('Condition 1 expression').press('Escape')
   await expect(panel).toBeHidden()
   await expect(button).toBeFocused()
 
@@ -867,4 +872,109 @@ test('#58 when the stream info fails while expanded, nothing stays inert and Ret
   expect(await visibleInert(page)).toBe(0)
   await rowOf(page, 120).click()
   await expect(detail.getByRole('button', { name: 'Expand to read' })).toBeVisible()
+})
+
+test('PBI-126 filter from a message: include, exclude, flip and remove chips', async ({ page }) => {
+  const name = unique('FFM')
+  await client.jsm.streams.add({ name, subjects: [`${name}.>`] })
+  // 8 messages: event_type alternates, status is "ok" except on every 4th.
+  for (let i = 1; i <= 8; i++)
+    await client.js.publish(
+      `${name}.e`,
+      JSON.stringify({
+        event_type: i % 2 ? 'ingestion.load' : 'ingestion.done',
+        status: i % 4 ? 'ok' : 'failed',
+        n: i
+      })
+    )
+  await openStudio(page)
+  await openStream(page, name, 'Messages')
+  await expect(range(page)).toHaveText('8 messages, #1 to #8')
+  await rowOf(page, 8, name).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const chips = page.getByLabel('Active filters')
+
+  // Filter to this value: only the messages with that event type, and a chip.
+  await detail.getByRole('treeitem', { name: '$.event_type: ingestion.done' }).hover()
+  await detail.getByRole('button', { name: 'Filter to event_type equals ingestion.done' }).click()
+  await expect(range(page)).toHaveText('4 messages, #2 to #8')
+  await expect(chips).toContainText('JSONPath $.event_type == "ingestion.done"')
+  await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
+  // The message is still in the result, so it stays open and focus stays on the pressed button.
+  await expect(
+    detail.getByRole('button', { name: 'Filter to event_type equals ingestion.done' })
+  ).toBeFocused()
+
+  // Exclude another field: messages 4 and 8 have status "failed", so they leave the result.
+  await detail.getByRole('treeitem', { name: '$.status: failed' }).hover()
+  await detail.getByRole('button', { name: 'Exclude status equals failed' }).click()
+  await expect(range(page)).toHaveText('2 messages, #2 to #6')
+  const notChip = chips.getByRole('group', { name: /^Exclude filter: JSONPath \$\.status/ })
+  await expect(notChip).toContainText('not')
+  await expect(page.getByRole('button', { name: 'Filters, 2 active' })).toBeVisible()
+  // The opened message dropped out of the result: focus moved to the new chip.
+  await expect(detail).toBeHidden()
+  await expect(notChip.getByRole('button', { name: /^Include instead/ })).toBeFocused()
+
+  // Flip the exclude chip: now only the failed ones of that event type.
+  await notChip.getByRole('button', { name: /^Include instead/ }).click()
+  await expect(range(page)).toHaveText('2 messages, #4 to #8')
+  await expect(chips.getByText('not', { exact: true })).toHaveCount(0)
+
+  // Remove a chip.
+  await chips.getByRole('button', { name: /^Remove filter: JSONPath \$\.status/ }).click()
+  await expect(range(page)).toHaveText('4 messages, #2 to #8')
+  await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
+
+  // The filters panel lists the conditions.
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  const panel = page.getByRole('form', { name: 'Message filters' })
+  await expect(panel.getByLabel('Condition 1 expression')).toHaveValue(
+    '$.event_type == "ingestion.done"'
+  )
+  await client.jsm.streams.delete(name)
+})
+
+test('PBI-126 the Consumers list is readable when the section is open', async ({ page }) => {
+  const name = unique('FCONS')
+  await client.jsm.streams.add({ name, subjects: [`${name}.>`] })
+  await client.js.publish(`${name}.a`, JSON.stringify({ a: 1 }))
+  for (let i = 1; i <= 8; i++)
+    await client.jsm.consumers.add(name, { durable_name: `c${i}`, ack_policy: 'explicit' as never })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openStudio(page)
+  await openStream(page, name, 'Messages')
+  await rowOf(page, 1, name).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const toggle = detail.getByRole('button', { name: /^Consumers/ })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  const section = detail.getByRole('region', { name: 'Consumers' })
+  await expect(section.getByRole('listitem')).toHaveCount(8)
+  // At least four rows are really in view, not scrolled out of a thin strip.
+  for (let i = 0; i < 4; i++)
+    await expect(section.getByRole('listitem').nth(i)).toBeInViewport({ ratio: 1 })
+  // The payload keeps some height (the rest of the panel scrolls).
+  expect((await detail.getByTestId('payload-body').boundingBox())!.height).toBeGreaterThan(60)
+  await toggle.click()
+  await client.jsm.streams.delete(name)
+})
+
+test('PBI-126 Expand all and Collapse all are clear icon buttons as tall as the level buttons, on one row', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const expand = detail.getByRole('button', { name: 'Expand all' })
+  const level = detail.getByRole('button', { name: '2', exact: true })
+  const collapse = detail.getByRole('button', { name: 'Collapse all' })
+  await expect(expand).toHaveAttribute('title', 'Expand all levels')
+  await expect(collapse).toHaveAttribute('title', 'Collapse all levels')
+  expect((await expand.boundingBox())!.height).toBe((await level.boundingBox())!.height)
+  expect((await collapse.boundingBox())!.height).toBe((await level.boundingBox())!.height)
+  expect((await expand.boundingBox())!.width).toBeGreaterThanOrEqual(28)
+  // The toolbar stays on one row, so the JSON keeps its height.
+  const search = (await detail.getByRole('textbox', { name: 'Search in JSON' }).boundingBox())!
+  expect(Math.abs(search.y - (await expand.boundingBox())!.y)).toBeLessThan(6)
 })

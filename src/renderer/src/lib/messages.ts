@@ -1,4 +1,10 @@
 import type { ContentFilters, Header, MessageDto } from '@shared/api'
+import {
+  canonicalFilters,
+  describeCondition,
+  normalizeFilters,
+  removeCondition
+} from '@shared/filters'
 import { fromBase64, tryDecodeText } from '@shared/encoding'
 
 /** One line of text for the list: the start of a text payload, or a note for binary data. */
@@ -66,25 +72,28 @@ export const MAX_SAVED_FILTER_NAME = 120
 /** How many saved filters one connection can have. An import that would go beyond it is refused. */
 export const MAX_SAVED_FILTERS = 500
 
-/** Short labels for the active filters, shown as removable chips. */
-export function filterChips(
-  subject: string,
-  filters: ContentFilters
-): { id: string; label: string }[] {
-  const chips: { id: string; label: string }[] = []
+export interface FilterChip {
+  /** `subject`, or `c:<n>` for the condition at position n. */
+  id: string
+  label: string
+  /** An exclude condition: shown with "not", and it can be turned around. */
+  exclude?: boolean
+  /** The position of a condition in `normalizeFilters`; absent for the subject chip. */
+  index?: number
+}
+
+/** Short labels for the active filters, shown as removable chips: one per condition. */
+export function filterChips(subject: string, filters: ContentFilters): FilterChip[] {
+  const chips: FilterChip[] = []
   if (subject) chips.push({ id: 'subject', label: `Subject ${subject}` })
-  ;(filters.headers ?? []).forEach((h, i) => {
-    if (h.key.trim())
-      chips.push({
-        id: `header:${i}`,
-        label: h.value ? `Header ${h.key} = ${h.value}` : `Has header ${h.key}`
-      })
+  normalizeFilters(filters).forEach((c, index) => {
+    chips.push({
+      id: `c:${index}`,
+      label: describeCondition(c),
+      exclude: c.exclude === true,
+      index
+    })
   })
-  if (filters.payloadContains)
-    chips.push({ id: 'contains', label: `Payload contains "${filters.payloadContains}"` })
-  if (filters.payloadRegex)
-    chips.push({ id: 'regex', label: `Payload matches /${filters.payloadRegex}/` })
-  if (filters.jsonPath) chips.push({ id: 'jsonPath', label: `JSONPath ${filters.jsonPath}` })
   return chips
 }
 
@@ -93,17 +102,6 @@ export function removeChip(
   subject: string,
   filters: ContentFilters
 ): { subject: string; filters: ContentFilters } {
-  if (id === 'subject') return { subject: '', filters }
-  if (id.startsWith('header:')) {
-    const index = Number(id.slice(7))
-    return {
-      subject,
-      filters: { ...filters, headers: (filters.headers ?? []).filter((_, i) => i !== index) }
-    }
-  }
-  const next = { ...filters }
-  if (id === 'contains') delete next.payloadContains
-  if (id === 'regex') delete next.payloadRegex
-  if (id === 'jsonPath') delete next.jsonPath
-  return { subject, filters: next }
+  if (id === 'subject') return { subject: '', filters: canonicalFilters(filters) }
+  return { subject, filters: removeCondition(filters, Number(id.slice(2))) }
 }

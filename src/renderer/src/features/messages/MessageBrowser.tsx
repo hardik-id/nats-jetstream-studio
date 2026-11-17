@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  ArrowLeftRight,
   Bookmark,
   ChevronDown,
   ChevronLeft,
@@ -17,12 +18,20 @@ import {
 import {
   GatewayError,
   type ContentFilters,
+  type FilterCondition,
   type MessageDto,
   type MessageStart,
   type ScanEvent,
   type StreamInfoDto
 } from '@shared/api'
-import { hasContentFilters } from '@shared/filters'
+import {
+  addCondition,
+  canonicalFilters,
+  conditionKey,
+  hasContentFilters,
+  normalizeFilters,
+  toggleCondition
+} from '@shared/filters'
 import { formatBytes, formatCount, formatTime } from '@shared/format'
 import { validateSubject } from '@shared/subject'
 import { DataTable, type Column } from '../../components/DataTable'
@@ -276,6 +285,9 @@ export function MessageBrowser({
   const [loadedOnce, setLoadedOnce] = useState(false)
 
   const [selected, setSelected] = useState<number | null>(null)
+  useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
   // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
   const [ownExpanded, setOwnExpanded] = useState(false)
   const expanded = expandedProp ?? ownExpanded
@@ -326,6 +338,9 @@ export function MessageBrowser({
   const latestSaved = useLatest({ saved, favorites, blocked: listsBlocked })
 
   const runToken = useRef(0)
+  const keepSelection = useRef(false)
+  const chipFocus = useRef<number | null>(null)
+  const selectedRef = useRef<number | null>(null)
   const stopScan = useRef<(() => void) | null>(null)
   const walked = useRef<{ walk: Walk; messages: MessageDto[] }>({ walk: 'desc', messages: [] })
   const boundsRef = useRef({ firstSeq: info.state.first_seq, lastSeq: info.state.last_seq })
@@ -346,6 +361,10 @@ export function MessageBrowser({
       v: View,
       opts: { paging?: 'older' | 'newer'; base?: MessageDto[] } = {}
     ): void => {
+      // "Filter to this value" reruns the scan with the message still open when it is still in
+      // the result: the next filter can then be added from the same message.
+      const keepSelected = keepSelection.current ? selectedRef.current : null
+      keepSelection.current = false
       stopScan.current?.()
       stopScan.current = null
       const token = ++runToken.current
@@ -371,8 +390,10 @@ export function MessageBrowser({
         walked.current = { walk, messages: all }
         setMessages(walk === v.order ? all : [...all].reverse())
         setChecked(new Set())
-        setSelected(null)
-        setExpandedRef.current(false)
+        if (keepSelected === null || !all.some((m) => m.seq === keepSelected)) {
+          setSelected(null)
+          setExpandedRef.current(false)
+        }
         const seqs = all.map((m) => m.seq)
         const min = Math.min(...seqs)
         const max = Math.max(...seqs)
@@ -505,7 +526,12 @@ export function MessageBrowser({
 
   /** True when the new view was read; false when the start position needs fixing first. */
   const apply = (patch: Partial<View>): boolean => {
-    const next = { ...view, ...patch }
+    // Filters are kept as a list of conditions, whatever shape they came in (saved filters).
+    const next = {
+      ...view,
+      ...patch,
+      ...(patch.filters ? { filters: canonicalFilters(patch.filters) } : {})
+    }
     setView(next)
     // A change of filters starts again from the chosen start position.
     return go(next, startMode)
@@ -575,6 +601,37 @@ export function MessageBrowser({
     setFullBytes(undefined)
     if (seq === null) setExpanded(false)
   }
+
+  // Adds a condition from the open message (a JSON value, a header) to the applied filters and
+  // reads again from the current start position. Focus: it stays on the button that was pressed
+  // while the message is still in the result; when it is not (it was excluded), the panel closes
+  // and focus goes to the new chip, so the keyboard never falls back to the page.
+  const addFromMessage = (condition: FilterCondition): void => {
+    const next = addCondition(view.filters, condition)
+    const key = conditionKey(condition)
+    const index = normalizeFilters(next).findIndex((c) => conditionKey(c) === key)
+    chipFocus.current = index
+    keepSelection.current = true
+    if (!apply({ filters: next })) {
+      keepSelection.current = false
+      chipFocus.current = null
+    }
+  }
+  const flipChip = (index: number): void => {
+    chipFocus.current = index
+    apply({ filters: toggleCondition(view.filters, index) })
+  }
+  useEffect(() => {
+    if (busy !== null || chipFocus.current === null) return
+    const index = chipFocus.current
+    chipFocus.current = null
+    const active = document.activeElement
+    if (active && active !== document.body && active.isConnected) return
+    const chip = document.querySelector<HTMLElement>(
+      `[data-chip-index="${index}"] [data-chip-toggle]`
+    )
+    ;(chip ?? filtersButton.current)?.focus()
+  }, [busy])
 
   const chips = filterChips(view.subject, view.filters)
   const contentCount = hasContentFilters(view.filters) ? chips.length - (view.subject ? 1 : 0) : 0
@@ -981,14 +1038,45 @@ export function MessageBrowser({
           {chips.map((chip) => (
             <span
               key={chip.id}
-              className="inline-flex h-6 max-w-96 items-center gap-1 rounded-full border border-line bg-raised pr-1 pl-2.5 text-xs"
+              role="group"
+              aria-label={`${chip.exclude ? 'Exclude filter' : 'Filter'}: ${chip.label}`}
+              data-chip-index={chip.index}
+              data-exclude={chip.exclude ? '' : undefined}
+              className={cx(
+                'inline-flex h-6 max-w-96 items-center gap-1 rounded-full border bg-raised pr-1 pl-2.5 text-xs',
+                chip.exclude ? 'border-danger' : 'border-line'
+              )}
             >
-              <span className="truncate">{chip.label}</span>
+              {chip.exclude && (
+                <span className="shrink-0 rounded bg-danger/15 px-1 text-[11px] leading-4 font-semibold text-danger uppercase">
+                  not
+                </span>
+              )}
+              <span className="truncate" title={chip.label}>
+                {chip.label}
+              </span>
+              {chip.index !== undefined && (
+                <button
+                  data-chip-toggle=""
+                  aria-label={`${chip.exclude ? 'Include' : 'Exclude'} instead: ${chip.label}`}
+                  title={
+                    chip.exclude
+                      ? 'Include these messages instead'
+                      : 'Exclude these messages instead'
+                  }
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-faint hover:bg-hover hover:text-fg"
+                  onClick={() => flipChip(chip.index!)}
+                >
+                  <ArrowLeftRight className="h-3 w-3" aria-hidden />
+                </button>
+              )}
               <button
-                aria-label={`Remove filter: ${chip.label}`}
+                aria-label={`Remove filter: ${chip.exclude ? 'not ' : ''}${chip.label}`}
                 className="flex h-4 w-4 items-center justify-center rounded-full text-faint hover:bg-hover hover:text-fg"
                 onClick={() => {
                   const next = removeChip(chip.id, view.subject, view.filters)
+                  // The chip is gone: focus goes to the one that takes its place, if any.
+                  chipFocus.current = chip.index ?? 0
                   setSubjectDraft(next.subject)
                   apply(next)
                 }}
@@ -1238,6 +1326,7 @@ export function MessageBrowser({
                   detail.truncated ? () => setFullBytes(Math.max(detail.size, 1)) : undefined
                 }
                 loadingFull={full.isFetching}
+                onFilter={addFromMessage}
                 sections={
                   <MessageConsumers
                     connId={connId}

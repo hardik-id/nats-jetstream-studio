@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { Ban, Check, ChevronDown, ChevronRight, Copy, ListFilter } from 'lucide-react'
+import type { FilterCondition } from '@shared/api'
+import { valueCondition } from '@shared/filters'
 import { appendSegment, valueText, type JsonSearch } from '@shared/jsonTree'
 import { cx } from './ui'
 
@@ -21,6 +23,15 @@ interface Ctx {
   /** The row that is in the tab order (roving tabindex). */
   roving: string
   setRoving: (id: string) => void
+  onFilter?: (condition: FilterCondition) => void
+}
+
+/** What the filter buttons of a primitive row add: the value, and the array it is an item of. */
+interface FilterTarget {
+  value: string | number | boolean | null
+  /** Names the field in the buttons' labels. */
+  name: string
+  arrayPath?: string
 }
 
 /**
@@ -29,7 +40,9 @@ interface Ctx {
  *
  * Keyboard: one row is in the tab order; Up and Down move between visible rows, Right opens or
  * steps into a node, Left closes it or steps to its parent, Home and End go to the first and last
- * row. A focused row offers "Copy path" and "Copy value" (also shown on hover).
+ * row. A focused row offers "Copy path" and "Copy value" (also shown on hover). With `onFilter`
+ * a row that holds a string, number, boolean or null also offers "Filter" and "Exclude" (PBI-126),
+ * which hand a JSONPath condition for that value to the caller.
  */
 export function JsonView({
   value,
@@ -37,7 +50,8 @@ export function JsonView({
   wrap = true,
   fontSize = 13,
   search,
-  resetKey = 0
+  resetKey = 0,
+  onFilter
 }: {
   value: unknown
   expandDepth?: number
@@ -46,6 +60,8 @@ export function JsonView({
   fontSize?: number
   search?: JsonViewSearch
   resetKey?: number
+  /** Adds the filter buttons to primitive rows. Absent (Live tail): no buttons. */
+  onFilter?: (condition: FilterCondition) => void
 }): ReactNode {
   const root = useRef<HTMLDivElement>(null)
   const [roving, setRoving] = useState('$')
@@ -80,7 +96,7 @@ export function JsonView({
         id="$"
         value={value}
         depth={0}
-        ctx={{ expandDepth, search, matchIds, roving, setRoving }}
+        ctx={{ expandDepth, search, matchIds, roving, setRoving, onFilter }}
       />
     </div>
   )
@@ -133,6 +149,7 @@ function Row({
   open,
   onToggle,
   ctx,
+  filter,
   className,
   children
 }: {
@@ -145,6 +162,8 @@ function Row({
   open?: boolean
   onToggle?: () => void
   ctx: Ctx
+  /** Set on rows that hold a primitive, when the caller wants to filter. */
+  filter?: FilterTarget
   className?: string
   children: ReactNode
 }): ReactNode {
@@ -207,7 +226,7 @@ function Row({
       data-level={level}
       data-active-match={active ? '' : undefined}
       className={cx(
-        'group flex items-start hover:bg-hover focus-visible:outline-offset-[-2px]',
+        'group relative flex items-start hover:bg-hover focus-visible:outline-offset-[-2px]',
         onToggle && 'cursor-pointer',
         active && 'json-active',
         className
@@ -234,7 +253,8 @@ function Row({
       }}
     >
       {children}
-      <span className="ml-auto flex shrink-0 gap-1 pl-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+      {/* Over the end of the row, so the value keeps its width while the buttons are hidden. */}
+      <span className="absolute top-px right-0 flex gap-1 rounded bg-panel pl-1 opacity-0 group-focus-within:opacity-100 group-hover:bg-hover group-hover:opacity-100">
         <CopyChip
           label="path"
           title={`Copy path ${id}`}
@@ -247,8 +267,96 @@ function Row({
           tabIndex={inside ? 0 : -1}
           text={() => valueText(value)}
         />
+        {filter && ctx.onFilter && (
+          <>
+            <FilterChip
+              exclude={false}
+              id={id}
+              filter={filter}
+              tabIndex={inside ? 0 : -1}
+              onFilter={ctx.onFilter}
+            />
+            <FilterChip
+              exclude
+              id={id}
+              filter={filter}
+              tabIndex={inside ? 0 : -1}
+              onFilter={ctx.onFilter}
+            />
+          </>
+        )}
       </span>
     </div>
+  )
+}
+
+const shortValue = (v: FilterTarget['value']): string => {
+  const text = typeof v === 'string' ? v : String(v)
+  return text.length > 60 ? text.slice(0, 60) + '...' : text
+}
+
+function FilterChip({
+  exclude,
+  id,
+  filter,
+  tabIndex,
+  onFilter
+}: {
+  exclude: boolean
+  id: string
+  filter: FilterTarget
+  tabIndex: number
+  onFilter: (condition: FilterCondition) => void
+}): ReactNode {
+  const verb = filter.arrayPath ? 'contains' : 'equals'
+  return (
+    <FilterButton
+      exclude={exclude}
+      tabIndex={tabIndex}
+      label={`${exclude ? 'Exclude' : 'Filter to'} ${filter.name} ${verb} ${shortValue(filter.value)}`}
+      data-path={id}
+      onClick={() =>
+        onFilter(
+          valueCondition({ path: id, value: filter.value, arrayPath: filter.arrayPath }, exclude)
+        )
+      }
+    />
+  )
+}
+
+/** A small "Filter" or "Exclude" button, in the style of the copy chips. */
+export function FilterButton({
+  exclude,
+  label,
+  text,
+  tabIndex,
+  onClick,
+  ...rest
+}: {
+  exclude: boolean
+  /** The accessible name and the tooltip. */
+  label: string
+  /** The visible text; "Filter" or "Exclude" by default. */
+  text?: string
+  tabIndex?: number
+  onClick: () => void
+  'data-path'?: string
+}): ReactNode {
+  const Icon = exclude ? Ban : ListFilter
+  return (
+    <button
+      type="button"
+      tabIndex={tabIndex}
+      title={label}
+      aria-label={label}
+      data-filter-action={exclude ? 'exclude' : 'include'}
+      className="inline-flex h-5 items-center gap-1 rounded border border-line bg-raised px-1.5 font-sans text-[11px] text-muted hover:text-fg"
+      onClick={onClick}
+      {...rest}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {text ?? (exclude ? 'Exclude' : 'Filter')}
+    </button>
   )
 }
 
@@ -294,7 +402,8 @@ function Node({
   value,
   depth,
   ctx,
-  last = true
+  last = true,
+  array
 }: {
   id: string
   name?: string
@@ -302,6 +411,8 @@ function Node({
   depth: number
   ctx: Ctx
   last?: boolean
+  /** Set when the value is an item of an array: that array's path and name. */
+  array?: { path: string; name: string }
 }): ReactNode {
   const { search } = ctx
   const query = search?.query ?? ''
@@ -338,6 +449,11 @@ function Node({
         label={`${id}: ${text.length > 200 ? text.slice(0, 200) + '...' : text}`}
         active={active}
         ctx={ctx}
+        filter={{
+          value: value as FilterTarget['value'],
+          name: array ? array.name : (name ?? id),
+          arrayPath: array?.path
+        }}
         className="pl-4"
       >
         <span className="min-w-0">
@@ -441,6 +557,7 @@ function Node({
                     depth={depth + 1}
                     ctx={ctx}
                     last={i === entries.length - 1}
+                    array={isArray ? { path: id, name: name ?? id } : undefined}
                   />
                 </Fragment>
               )

@@ -691,6 +691,50 @@ describe('PBI-042 and PBI-048 filters', () => {
     expect(seqs(byId.matches)).toEqual([7])
   })
 
+  it('applies a list of conditions: two includes AND together, an exclude rejects what it matches (PBI-126)', async () => {
+    const both = await scan({
+      filters: {
+        conditions: [
+          { kind: 'header', key: 'Trace-Id' },
+          { kind: 'contains', expr: 'URGENT' }
+        ]
+      }
+    })
+    expect(seqs(both.matches)).toEqual([50, 100, 150, 200, 250, 300])
+
+    const notEu = await scan({
+      filters: { conditions: [{ kind: 'header', key: 'Region', value: 'eu', exclude: true }] }
+    })
+    expect(notEu.matches).toHaveLength(150)
+    expect(
+      notEu.matches.every((m) => !m.headers.some(([k, v]) => k === 'Region' && v === 'eu'))
+    ).toBe(true)
+
+    const mixed = await scan({
+      filters: {
+        conditions: [
+          { kind: 'jsonPath', expr: '$.order.total > 290' },
+          { kind: 'jsonPath', expr: '$.order.id == "A-295"', exclude: true }
+        ]
+      }
+    })
+    expect(seqs(mixed.matches)).toEqual([291, 292, 293, 294, 296, 297, 298, 299])
+
+    // An exclude JSONPath does not reject a payload that is not JSON, and does not count it as
+    // skipped; the same path as an include skips it (and counts it).
+    const excluded = await scan({
+      filters: { conditions: [{ kind: 'jsonPath', expr: '$.order.total > 0', exclude: true }] }
+    })
+    expect(excluded.matches).toHaveLength(12)
+    expect(excluded.done.skippedNonJson).toBe(0)
+
+    // The older single fields give the same answer as the equivalent conditions.
+    const old = await scan({
+      filters: { headers: [{ key: 'Trace-Id' }], payloadContains: 'URGENT' }
+    })
+    expect(seqs(old.matches)).toEqual(seqs(both.matches))
+  })
+
   it('rejects an invalid expression before scanning anything', async () => {
     const regex = await scan({ filters: { payloadRegex: '(' } })
     expect(regex.done).toMatchObject({ reason: 'error', scanned: 0 })

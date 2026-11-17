@@ -8,11 +8,12 @@ import {
   PanelRightOpen,
   X
 } from 'lucide-react'
-import type { Header } from '@shared/api'
+import type { FilterCondition, Header } from '@shared/api'
 import { formatBytes, formatTime } from '@shared/format'
 import type { PayloadDecoder } from '../lib/decoders'
 import { useSetting } from '../lib/hooks'
 import { DetailSectionsContext, normalizeSections, type DetailSectionId } from './detailSections'
+import { FilterButton } from './JsonView'
 import { PayloadViewer } from './PayloadViewer'
 import { Button, CollapsibleSection, CopyButton, cx } from './ui'
 
@@ -46,6 +47,11 @@ export interface MessageDetailProps {
   actions?: ReactNode
   /** Extra sections shown between the headers and the payload (stream messages only). */
   sections?: ReactNode
+  /**
+   * Adds a filter condition from this message (PBI-126): buttons on the headers and on the JSON
+   * tree's values. Absent (Live tail): no buttons.
+   */
+  onFilter?: (condition: FilterCondition) => void
 }
 
 /** The side panel for one message: subject, sequence, time, headers and payload (PBI-043). */
@@ -61,7 +67,8 @@ export function MessageDetail({
   onLoadFull,
   loadingFull,
   actions,
-  sections
+  sections,
+  onFilter
 }: MessageDetailProps): ReactNode {
   const utc = new Date(message.time).toISOString()
   const [stored, setStored, storedLoaded, storedError] = useSetting<unknown>(
@@ -179,7 +186,10 @@ export function MessageDetail({
             className={cx(
               'flex flex-col gap-1 overflow-y-auto',
               sections_.payload
-                ? 'max-h-[25%] shrink-0 [@media(max-height:800px)]:max-h-[max(25%,6.5rem)]'
+                ? sections_.consumers
+                  ? // An open Consumers list needs room for a few rows; the area scrolls as a whole.
+                    'max-h-[68%] min-h-[13rem] shrink-0'
+                  : 'max-h-[25%] shrink-0 [@media(max-height:800px)]:max-h-[max(25%,6.5rem)]'
                 : 'min-h-0 flex-1'
             )}
           >
@@ -249,7 +259,7 @@ export function MessageDetail({
                 <table className="w-full table-fixed border-collapse text-xs">
                   <tbody>
                     {message.headers.map(([key, value], i) => (
-                      <tr key={i} className="border-t border-line first:border-t-0">
+                      <tr key={i} className="group border-t border-line first:border-t-0">
                         <th
                           scope="row"
                           className="w-2/5 py-1 pr-2 text-left align-top font-mono font-normal break-all text-muted"
@@ -257,6 +267,26 @@ export function MessageDetail({
                           {key}
                         </th>
                         <td className="py-1 font-mono break-all">{value}</td>
+                        {onFilter && (
+                          <td className="w-14 py-1 pl-1 text-right align-top whitespace-nowrap">
+                            <span className="inline-flex gap-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+                              <FilterButton
+                                exclude={false}
+                                text=""
+                                label={`Include header ${key} = ${value}`}
+                                onClick={() => onFilter({ kind: 'header', key, value })}
+                              />
+                              <FilterButton
+                                exclude
+                                text=""
+                                label={`Exclude header ${key} = ${value}`}
+                                onClick={() =>
+                                  onFilter({ kind: 'header', key, value, exclude: true })
+                                }
+                              />
+                            </span>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -285,6 +315,7 @@ export function MessageDetail({
               decoders={decoders}
               onLoadFull={onLoadFull}
               loadingFull={loadingFull}
+              onFilter={onFilter}
             />
           </CollapsibleSection>
         </div>

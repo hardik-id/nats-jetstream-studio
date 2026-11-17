@@ -1,42 +1,76 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { ChevronUp, Plus, X } from 'lucide-react'
-import type { ContentFilters, HeaderFilter } from '@shared/api'
-import { validateFilters } from '@shared/filters'
-import { Button, cx, Field, Input } from '../../components/ui'
+import type { ContentFilters, FilterCondition } from '@shared/api'
+import {
+  canonicalFilters,
+  MAX_CONDITIONS,
+  normalizeFilters,
+  validateCondition
+} from '@shared/filters'
+import { Button, cx, Input, Select } from '../../components/ui'
+
+type Kind = FilterCondition['kind']
+
+/** One row of the panel. The fields of every kind are kept, so changing the type loses nothing. */
+export interface DraftCondition {
+  kind: Kind
+  expr: string
+  key: string
+  value: string
+  exclude: boolean
+}
 
 export interface FilterDraft {
-  headers: HeaderFilter[]
-  payloadContains: string
-  payloadRegex: string
-  jsonPath: string
+  conditions: DraftCondition[]
   scanLimit: string
 }
 
+const blankRow = (): DraftCondition => ({
+  kind: 'jsonPath',
+  expr: '',
+  key: '',
+  value: '',
+  exclude: false
+})
+
 export function draftFrom(filters: ContentFilters, scanLimit: number): FilterDraft {
-  return {
-    headers: filters.headers?.length ? filters.headers.map((h) => ({ ...h })) : [],
-    payloadContains: filters.payloadContains ?? '',
-    payloadRegex: filters.payloadRegex ?? '',
-    jsonPath: filters.jsonPath ?? '',
-    scanLimit: String(scanLimit)
-  }
+  const conditions = normalizeFilters(filters).map((c): DraftCondition =>
+    c.kind === 'header'
+      ? { kind: 'header', expr: '', key: c.key, value: c.value ?? '', exclude: !!c.exclude }
+      : { kind: c.kind, expr: c.expr, key: '', value: '', exclude: !!c.exclude }
+  )
+  // An empty panel starts with one row to type in.
+  return { conditions: conditions.length ? conditions : [blankRow()], scanLimit: String(scanLimit) }
+}
+
+function rowToCondition(row: DraftCondition): FilterCondition {
+  const exclude = row.exclude ? { exclude: true } : {}
+  if (row.kind === 'header')
+    return { kind: 'header', key: row.key, ...(row.value ? { value: row.value } : {}), ...exclude }
+  return { kind: row.kind, expr: row.expr, ...exclude }
 }
 
 export function draftToFilters(draft: FilterDraft): ContentFilters {
-  const filters: ContentFilters = {}
-  const headers = draft.headers
-    .filter((h) => h.key.trim())
-    .map((h) => ({ key: h.key.trim(), value: h.value?.trim() ? h.value : undefined }))
-  if (headers.length) filters.headers = headers
-  if (draft.payloadContains) filters.payloadContains = draft.payloadContains
-  if (draft.payloadRegex) filters.payloadRegex = draft.payloadRegex
-  if (draft.jsonPath.trim()) filters.jsonPath = draft.jsonPath.trim()
-  return filters
+  return canonicalFilters({ conditions: draft.conditions.map(rowToCondition) })
+}
+
+const KINDS: { kind: Kind; label: string }[] = [
+  { kind: 'jsonPath', label: 'JSONPath' },
+  { kind: 'contains', label: 'Contains' },
+  { kind: 'regex', label: 'Regex' },
+  { kind: 'header', label: 'Header' }
+]
+
+const PLACEHOLDER: Record<Exclude<Kind, 'header'>, string> = {
+  jsonPath: '$.order.total > 100   or   $.tags contains "urgent"   or   $..status == "failed"',
+  contains: 'Plain text, upper and lower case are treated the same',
+  regex: '"id":"A-\\d+"'
 }
 
 /**
- * Filters on headers and payload (PBI-042, PBI-048). Unlike the subject filter these are checked
- * by scanning messages, so expressions are validated here before any scan starts.
+ * Filters on headers and payload (PBI-042, PBI-048, PBI-126): a list of conditions that must all
+ * hold, each of which can be turned around to exclude what it matches. Unlike the subject filter
+ * these are checked by scanning messages, so expressions are validated here before any scan starts.
  */
 export function FilterPanel({
   id,
@@ -57,14 +91,19 @@ export function FilterPanel({
   onClose: () => void
 }): ReactNode {
   const [draft, setDraft] = useState<FilterDraft>(initial)
+  const errPrefix = useId()
+  const [focusRow, setFocusRow] = useState<number | null>(null)
   const filters = draftToFilters(draft)
-  const errors = validateFilters(filters)
+  const errors = draft.conditions.map((row) => validateCondition(rowToCondition(row)))
   const scanLimit = Number(draft.scanLimit)
   const scanError =
     !/^\d+$/.test(draft.scanLimit.trim()) || scanLimit < 1 ? 'Enter a number of messages' : null
-  const valid = Object.keys(errors).length === 0 && !scanError
-  const set = <K extends keyof FilterDraft>(key: K, value: FilterDraft[K]): void =>
-    setDraft((d) => ({ ...d, [key]: value }))
+  const valid = errors.every((e) => !e) && !scanError
+  const setRow = (i: number, patch: Partial<DraftCondition>): void =>
+    setDraft((d) => ({
+      ...d,
+      conditions: d.conditions.map((row, j) => (j === i ? { ...row, ...patch } : row))
+    }))
 
   return (
     <form
@@ -90,118 +129,100 @@ export function FilterPanel({
         }
       }}
     >
-      <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-x-6 gap-y-2 overflow-y-auto px-4 py-2.5 md:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted">Headers</span>
-          {draft.headers.map((h, i) => (
-            <div key={i} className="flex gap-1.5">
-              <Input
-                mono
-                className="w-2/5"
-                aria-label={`Header filter ${i + 1} name`}
-                placeholder="Header name"
-                value={h.key}
-                onChange={(e) =>
-                  set(
-                    'headers',
-                    draft.headers.map((x, j) => (j === i ? { ...x, key: e.target.value } : x))
-                  )
-                }
-              />
-              <Input
-                mono
-                aria-label={`Header filter ${i + 1} value`}
-                placeholder="Value (empty: header exists)"
-                value={h.value ?? ''}
-                onChange={(e) =>
-                  set(
-                    'headers',
-                    draft.headers.map((x, j) => (j === i ? { ...x, value: e.target.value } : x))
-                  )
-                }
-              />
-              <Button
-                variant="ghost"
-                aria-label={`Remove header filter ${i + 1}`}
-                icon={<X className="h-4 w-4" aria-hidden />}
-                onClick={() =>
-                  set(
-                    'headers',
-                    draft.headers.filter((_, j) => j !== i)
-                  )
-                }
-              />
-            </div>
-          ))}
-          <div>
-            <Button
-              size="sm"
-              icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => set('headers', [...draft.headers, { key: '', value: '' }])}
-            >
-              Add header filter
-            </Button>
-          </div>
-          <Field
-            label="Scan limit"
-            hint="Stop after examining this many messages. You can continue from there."
-            error={scanError}
-            className="w-56"
-          >
-            {(id) => (
-              <Input
-                id={id}
-                inputMode="numeric"
-                invalid={!!scanError}
-                value={draft.scanLimit}
-                onChange={(e) => set('scanLimit', e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Field
-            label="Payload contains"
-            hint="Plain text, upper and lower case are treated the same."
-          >
-            {(id) => (
-              <Input
-                id={id}
-                value={draft.payloadContains}
-                onChange={(e) => set('payloadContains', e.target.value)}
-              />
-            )}
-          </Field>
-          <Field label="Payload matches regular expression" error={errors.payloadRegex}>
-            {(id) => (
-              <Input
-                id={id}
-                mono
-                placeholder={'"id":"A-\\d+"'}
-                invalid={!!errors.payloadRegex}
-                value={draft.payloadRegex}
-                onChange={(e) => set('payloadRegex', e.target.value)}
-              />
-            )}
-          </Field>
-          <Field
-            label="JSONPath"
-            hint='For example $.order.total > 100, $.tags contains "urgent" or $..status == "failed"'
-            error={errors.jsonPath}
-          >
-            {(id) => (
-              <Input
-                id={id}
-                mono
-                placeholder="$.order.total > 100"
-                invalid={!!errors.jsonPath}
-                value={draft.jsonPath}
-                onChange={(e) => set('jsonPath', e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-2.5">
+        <ul className="flex flex-col gap-1.5" aria-label="Conditions (all must match)">
+          {draft.conditions.map((row, i) => {
+            const n = i + 1
+            const error = errors[i]
+            return (
+              <li key={i} className="flex flex-col gap-0.5">
+                <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
+                  <Select
+                    compact
+                    className="w-32 shrink-0"
+                    aria-label={`Condition ${n} type`}
+                    value={row.kind}
+                    onChange={(e) => setRow(i, { kind: e.target.value as Kind })}
+                  >
+                    {KINDS.map((k) => (
+                      <option key={k.kind} value={k.kind}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {row.kind === 'header' ? (
+                    <>
+                      <Input
+                        mono
+                        compact
+                        className="w-1/3 min-w-0"
+                        aria-label={`Condition ${n} header name`}
+                        placeholder="Header name"
+                        value={row.key}
+                        autoFocus={focusRow === i}
+                        onChange={(e) => setRow(i, { key: e.target.value })}
+                      />
+                      <Input
+                        mono
+                        compact
+                        className="min-w-0 flex-1"
+                        aria-label={`Condition ${n} header value`}
+                        placeholder="Value (empty: header exists)"
+                        value={row.value}
+                        onChange={(e) => setRow(i, { value: e.target.value })}
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      mono={row.kind !== 'contains'}
+                      compact
+                      className="min-w-0 flex-1"
+                      aria-label={`Condition ${n} expression`}
+                      aria-describedby={error ? `${errPrefix}-err-${i}` : undefined}
+                      placeholder={PLACEHOLDER[row.kind]}
+                      invalid={!!error}
+                      value={row.expr}
+                      autoFocus={focusRow === i}
+                      onChange={(e) => setRow(i, { expr: e.target.value })}
+                    />
+                  )}
+                  <Select
+                    compact
+                    className={cx('w-28 shrink-0', row.exclude && 'border-danger text-danger')}
+                    aria-label={`Condition ${n} mode`}
+                    value={row.exclude ? 'exclude' : 'include'}
+                    onChange={(e) => setRow(i, { exclude: e.target.value === 'exclude' })}
+                  >
+                    <option value="include">Include</option>
+                    <option value="exclude">Exclude</option>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Remove condition ${n}`}
+                    title={`Remove condition ${n}`}
+                    icon={<X className="h-4 w-4" aria-hidden />}
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        conditions: d.conditions.filter((_, j) => j !== i)
+                      }))
+                    }
+                  />
+                </div>
+                {error && (
+                  <p
+                    id={`${errPrefix}-err-${i}`}
+                    role="alert"
+                    className="pl-30 text-xs text-danger"
+                  >
+                    {error}
+                  </p>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line bg-raised px-4 py-2">
@@ -225,9 +246,41 @@ export function FilterPanel({
         >
           Hide
         </Button>
-        <span className="hidden min-w-0 text-xs text-muted lg:inline">
-          All filters must match. The subject filter is applied by the server; these are applied
-          while scanning.
+        <Button
+          size="sm"
+          icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
+          disabled={draft.conditions.length >= MAX_CONDITIONS}
+          title="All conditions must match. A condition set to Exclude rejects the messages it matches."
+          onClick={() => {
+            setFocusRow(draft.conditions.length)
+            setDraft((d) => ({ ...d, conditions: [...d.conditions, blankRow()] }))
+          }}
+        >
+          Add condition
+        </Button>
+        <span className="ml-auto flex min-w-0 items-center gap-1.5">
+          <label
+            htmlFor={`${errPrefix}-limit`}
+            className="text-xs font-medium text-muted"
+            title="Stop after examining this many messages. You can continue from there."
+          >
+            Scan limit
+          </label>
+          <Input
+            id={`${errPrefix}-limit`}
+            compact
+            className="w-24"
+            inputMode="numeric"
+            invalid={!!scanError}
+            aria-describedby={scanError ? `${errPrefix}-limit-err` : undefined}
+            value={draft.scanLimit}
+            onChange={(e) => setDraft((d) => ({ ...d, scanLimit: e.target.value }))}
+          />
+          {scanError && (
+            <span id={`${errPrefix}-limit-err`} role="alert" className="text-xs text-danger">
+              {scanError}
+            </span>
+          )}
         </span>
       </div>
     </form>

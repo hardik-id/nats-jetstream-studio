@@ -256,9 +256,9 @@ describe('content filters', () => {
   })
 
   it('validates before scanning', () => {
-    expect(validateFilters({ payloadRegex: '(' }).payloadRegex).toBeTruthy()
-    expect(validateFilters({ jsonPath: 'nope' }).jsonPath).toBeTruthy()
-    expect(validateFilters({ payloadRegex: 'a+', jsonPath: '$.a' })).toEqual({})
+    expect(validateFilters({ payloadRegex: '(' })[0].message).toBeTruthy()
+    expect(validateFilters({ jsonPath: 'nope' })[0].message).toBeTruthy()
+    expect(validateFilters({ payloadRegex: 'a+', jsonPath: '$.a' })).toEqual([])
     expect(hasContentFilters({})).toBe(false)
     expect(hasContentFilters({ headers: [{ key: ' ' }] })).toBe(false)
     expect(hasContentFilters({ payloadContains: 'x' })).toBe(true)

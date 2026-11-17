@@ -6,7 +6,7 @@ import { featureContent, type FeatureSlug } from '../../components/features/data
 
 const cards = featurePages.map((p) => {
   const slug = p.path.split('/').filter(Boolean)[1]
-  if (!(slug in featureContent)) throw new Error(`No feature content for ${p.path}`)
+  if (!Object.hasOwn(featureContent, slug)) throw new Error(`No feature content for ${p.path}`)
   const f = featureContent[slug as FeatureSlug]
   return { path: p.path, title: p.title, text: f.card, shot: f.shot }
 })

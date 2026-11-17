@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, dialog, ipcMain, type WebContents } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain, Menu, type WebContents } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import natsPkg from '@nats-io/transport-node/package.json'
@@ -9,6 +9,7 @@ import { StudioService } from '@core/service'
 import type { PickFileOptions } from '@shared/desktop'
 import type { ClientMessage } from '@shared/rpc'
 import { SafeStorageSecretStore } from './secretStore'
+import { buildMenuTemplate } from './menu'
 import { setupUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
@@ -96,6 +97,11 @@ if (!gotLock) {
 
   void app.whenReady().then(() => {
     electronApp.setAppUserModelId('io.github.nats-jetstream-studio')
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(
+        buildMenuTemplate({ isMac: process.platform === 'darwin', isPackaged: app.isPackaged })
+      )
+    )
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
     service = new StudioService({

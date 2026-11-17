@@ -70,7 +70,9 @@ export function FilterPanel({
       className={cx(
         'flex min-h-20 shrink flex-col border-b border-line bg-raised',
         // Never more than about a third of the window, so the table and the JSON keep room.
-        compact ? 'max-h-[min(24vh,10rem)]' : 'max-h-[35vh]'
+        compact
+          ? 'max-h-[min(24vh,10rem)] [@media(max-height:800px)]:max-h-[max(5rem,11vh)]'
+          : 'max-h-[35vh]'
       )}
       onSubmit={(e) => {
         e.preventDefault()

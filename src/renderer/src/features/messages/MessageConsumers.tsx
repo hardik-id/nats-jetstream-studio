@@ -90,11 +90,6 @@ export function MessageConsumers({
       aria-label="Consumers"
       data-testid="message-consumers"
       title={shownCount === undefined ? 'Consumers' : `Consumers (${shownCount})`}
-      summary={
-        shownCount === undefined
-          ? undefined
-          : `${shownCount} ${shownCount === 1 ? 'consumer' : 'consumers'}`
-      }
       open={section.open}
       onToggle={section.toggle}
       actions={

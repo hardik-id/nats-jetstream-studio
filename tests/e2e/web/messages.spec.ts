@@ -637,7 +637,7 @@ const payloadHeight = async (page: Page): Promise<number> =>
 
 for (const { width, height, closed, open } of [
   { width: 1440, height: 900, closed: 300, open: 200 },
-  { width: 1280, height: 720, closed: 160, open: 0 }
+  { width: 1280, height: 720, closed: 210, open: 120 }
 ]) {
   test(`#58 the JSON gets real height with a message selected (${width}x${height})`, async ({
     page
@@ -729,4 +729,42 @@ test('#58 1000x600 with the filters open and nothing selected does not scroll th
     i: window.innerHeight
   }))
   expect(m.s).toBeLessThanOrEqual(m.i)
+})
+
+test('#58 while expanded, Tab and Shift+Tab never reach what the panel covers', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true })
+  await expect(refresh).toBeAttached()
+  expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(true)
+  const outside = (): Promise<string | null> =>
+    page.evaluate(() => {
+      const a = document.activeElement
+      if (!a || a === document.body) return null
+      const ok =
+        a.closest('aside[aria-label="Message detail"]') ||
+        a.closest('[role=table]') ||
+        a.closest('[data-testid=detail-frame]')
+      return ok
+        ? null
+        : `${a.tagName} ${a.getAttribute('aria-label') ?? a.textContent?.slice(0, 30)}`
+    })
+  await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab')
+    expect(await outside()).toBeNull()
+  }
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Shift+Tab')
+    expect(await outside()).toBeNull()
+  }
+  // Escape puts everything back in the tab order.
+  await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+  await page.keyboard.press('Escape')
+  expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(false)
 })

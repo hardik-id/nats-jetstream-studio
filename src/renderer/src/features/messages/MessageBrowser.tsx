@@ -148,6 +148,32 @@ function ResizableDetail({
   // What is on screen: the real width while expanded, which CSS decides (70% of the row).
   const shown = (): number => (expanded ? frame.current?.offsetWidth || current : current)
   const drag = useRef<{ x: number; width: number; last: number } | null>(null)
+  // While the panel covers the page, everything it hides is made inert (no tab stops, not read by
+  // assistive technology): the stream header and tabs, the toolbar and filter rows, the other
+  // sections, the sidebar and the tab strip. The table (the frame's previous sibling) stays
+  // interactive, so another row can still be picked.
+  useEffect(() => {
+    const el = frame.current
+    if (!expanded || collapsed || !el) return
+    const table = el.previousElementSibling
+    const keep = new Set<Element>()
+    for (const t of [el, table]) {
+      for (let n: Element | null = t; n; n = n.parentElement) keep.add(n)
+    }
+    // Only the ancestors have children to silence; the panel and the table are left whole.
+    keep.delete(el)
+    if (table) keep.delete(table)
+    const stay = new Set<Element>([...keep, el, ...(table ? [table] : [])])
+    const marked: Element[] = []
+    for (const a of keep) {
+      for (const c of Array.from(a.children)) {
+        if (stay.has(c) || c.hasAttribute('inert')) continue
+        c.setAttribute('inert', '')
+        marked.push(c)
+      }
+    }
+    return () => marked.forEach((c) => c.removeAttribute('inert'))
+  }, [expanded, collapsed])
   if (collapsed) {
     return (
       <div
@@ -479,14 +505,15 @@ export function MessageBrowser({
   }, [requestSubject, requestSeq])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const apply = (patch: Partial<View>): void => {
+  /** True when the new view was read; false when the start position needs fixing first. */
+  const apply = (patch: Partial<View>): boolean => {
     const next = { ...view, ...patch }
     setView(next)
     // A change of filters starts again from the chosen start position.
-    go(next, startMode)
+    return go(next, startMode)
   }
 
-  const go = (v: View, mode: StartMode): void => {
+  const go = (v: View, mode: StartMode): boolean => {
     // Keep the "Start from" control in step with what is shown, so a later change of filters or
     // page size starts again from the same place.
     setStartMode(mode)
@@ -494,7 +521,7 @@ export function MessageBrowser({
       const next = { ...v, order: 'desc' as Walk }
       setView(next)
       latest(next)
-      return
+      return true
     }
     // "From here on" reads best oldest first, with the starting message at the top.
     const next = { ...v, order: 'asc' as Walk }
@@ -503,17 +530,18 @@ export function MessageBrowser({
     else if (mode === 'seq') {
       if (!/^\d+$/.test(seqInput.trim())) {
         setNotice('Enter a sequence number to start from.')
-        return
+        return false
       }
       run('asc', { kind: 'seq', seq: Number(seqInput) }, next)
     } else {
       const time = new Date(timeInput)
       if (Number.isNaN(time.getTime())) {
         setNotice('Enter a date and time to start from.')
-        return
+        return false
       }
       run('asc', { kind: 'time', time: time.toISOString() }, next)
     }
+    return true
   }
 
   const page = (which: 'older' | 'newer'): void => {
@@ -799,7 +827,8 @@ export function MessageBrowser({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Filters and start position */}
-      <div className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2">
+      {/* On a short window the field labels stay for screen readers only: that is a row of height. */}
+      <div className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2 [@media(max-height:800px)]:py-1.5 [@media(max-height:800px)]:[&_label]:sr-only">
         <form
           className="flex items-end gap-1.5"
           onSubmit={(e) => {
@@ -930,7 +959,8 @@ export function MessageBrowser({
             filtersButton.current?.focus()
           }}
           onApply={(filters, scanLimit) => {
-            apply({ filters, scanLimit })
+            // The panel stays open when the start position needs fixing first (the notice says so).
+            if (!apply({ filters, scanLimit })) return
             // The panel goes away; keyboard focus stays on the button that reopens it.
             setPanelOpen(false)
             filtersButton.current?.focus()
@@ -966,7 +996,7 @@ export function MessageBrowser({
       )}
 
       {/* Paging and actions */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5 [@media(max-height:800px)]:py-1">
         <Button
           size="sm"
           icon={<ChevronsUp className="h-3.5 w-3.5" aria-hidden />}

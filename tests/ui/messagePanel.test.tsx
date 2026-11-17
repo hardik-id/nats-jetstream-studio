@@ -224,8 +224,35 @@ describe('PBI-125 follow-ups (#58)', () => {
     const button = screen.getByRole('button', { name: /^Consumers/ })
     expect(button).toHaveAttribute('aria-expanded', 'false')
     expect(button).toHaveTextContent('Consumers (3)')
-    expect(button).toHaveTextContent('3 consumers')
+    expect(button).toHaveAccessibleName('Consumers (3)')
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('keeps the panel open when Apply cannot read (start from a sequence without a number)', async () => {
+    await openMessage()
+    await userEvent.selectOptions(screen.getByLabelText('Start from'), 'seq')
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const panel = await screen.findByRole('form', { name: 'Message filters' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Apply filters' }))
+    expect(await screen.findByText('Enter a sequence number to start from.')).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: 'Message filters' })).toBeInTheDocument()
+  })
+
+  it('makes what the expanded panel covers inert, keeps the table usable, and restores it', async () => {
+    await openMessage()
+    const toolbar = screen.getByLabelText('Subject filter').closest('div[class*="border-b"]')!
+    const table = screen.getByRole('table', { name: 'Messages in ORDERS' })
+    await userEvent.click(screen.getByRole('button', { name: 'Expand to read' }))
+    expect(toolbar).toHaveAttribute('inert')
+    expect(table.closest('[inert]')).toBeNull()
+    expect(
+      screen.getByRole('complementary', { name: 'Message detail' }).closest('[inert]')
+    ).toBeNull()
+    // Escape from a control in the panel restores and keeps focus on the size button.
+    screen.getByRole('button', { name: 'Previous message' }).focus()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(toolbar).not.toHaveAttribute('inert'))
+    expect(screen.getByRole('button', { name: 'Expand to read' })).toHaveFocus()
   })
 
   it('does not fold a JSON node when text is selected or the pointer moved', async () => {

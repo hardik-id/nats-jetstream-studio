@@ -41,6 +41,7 @@ export function draftToFilters(draft: FilterDraft): ContentFilters {
 export function FilterPanel({
   id,
   compact,
+  inert,
   initial,
   onApply,
   onClose
@@ -49,6 +50,8 @@ export function FilterPanel({
   id?: string
   /** A message is open beside the table: leave more height for it. */
   compact?: boolean
+  /** Covered by the expanded detail panel: no tab stops. */
+  inert?: boolean
   initial: FilterDraft
   onApply: (filters: ContentFilters, scanLimit: number) => void
   onClose: () => void
@@ -66,10 +69,14 @@ export function FilterPanel({
   return (
     <form
       id={id}
+      inert={inert}
       aria-label="Message filters"
       className={cx(
-        'flex min-h-28 shrink flex-col border-b border-line bg-raised',
-        compact ? 'max-h-[min(30%,13rem)]' : 'max-h-[min(40%,18rem)]'
+        'flex min-h-20 shrink flex-col border-b border-line bg-raised',
+        // Never more than about a third of the window, so the table and the JSON keep room.
+        compact
+          ? 'max-h-[min(24vh,10rem)] [@media(max-height:800px)]:max-h-[max(5rem,11vh)]'
+          : 'max-h-[35vh]'
       )}
       onSubmit={(e) => {
         e.preventDefault()
@@ -218,7 +225,7 @@ export function FilterPanel({
         >
           Hide
         </Button>
-        <span className="min-w-0 text-xs text-muted">
+        <span className="hidden min-w-0 text-xs text-muted lg:inline">
           All filters must match. The subject filter is applied by the server; these are applied
           while scanning.
         </span>

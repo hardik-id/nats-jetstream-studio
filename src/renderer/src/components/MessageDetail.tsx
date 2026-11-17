@@ -106,12 +106,15 @@ export function MessageDetail({
           } else if (e.key === 'Escape') {
             e.preventDefault()
             // A widened panel goes back to its size first; a second Escape closes it.
-            if (expanded && onToggleExpanded) onToggleExpanded()
-            else onClose()
+            if (expanded && onToggleExpanded) {
+              onToggleExpanded()
+              // Focus was somewhere in the panel; keep it on the button that toggles the size.
+              e.currentTarget.querySelector<HTMLElement>('[data-expand-toggle]')?.focus()
+            } else onClose()
           }
         }}
       >
-        <header className="flex shrink-0 items-center gap-1 border-b border-line px-3 py-1.5">
+        <header className="flex shrink-0 items-center gap-1 border-b border-line px-3 py-1.5 [@media(max-height:800px)]:py-0.5">
           <h3 className="mr-auto text-xs font-semibold tracking-wide text-muted uppercase">
             Message{message.seq !== undefined ? ` #${message.seq}` : ''}
           </h3>
@@ -139,6 +142,7 @@ export function MessageDetail({
               size="sm"
               variant="ghost"
               onClick={onToggleExpanded}
+              data-expand-toggle=""
               title={expanded ? 'Restore panel size (Esc)' : 'Expand to read'}
               aria-label={expanded ? 'Restore panel size' : 'Expand to read'}
               icon={
@@ -174,7 +178,9 @@ export function MessageDetail({
           <div
             className={cx(
               'flex flex-col gap-1 overflow-y-auto',
-              sections_.payload ? 'max-h-[45%] shrink-0' : 'min-h-0 flex-1'
+              sections_.payload
+                ? 'max-h-[25%] shrink-0 [@media(max-height:800px)]:max-h-[max(25%,6.5rem)]'
+                : 'min-h-0 flex-1'
             )}
           >
             <CollapsibleSection
@@ -183,7 +189,7 @@ export function MessageDetail({
               open={details.open}
               onToggle={details.toggle}
             >
-              <dl className="flex flex-col gap-0.5">
+              <dl className="flex flex-col gap-0.5 [@media(max-height:800px)]:flex-row [@media(max-height:800px)]:flex-wrap [@media(max-height:800px)]:items-baseline [@media(max-height:800px)]:gap-x-3">
                 <Fact label="Subject">
                   <span className="flex min-w-0 items-center gap-1">
                     <span className="truncate font-mono text-xs" title={message.subject}>
@@ -192,18 +198,26 @@ export function MessageDetail({
                     <CopyButton text={message.subject} label="Copy subject" />
                   </span>
                 </Fact>
-                <div className="flex flex-wrap items-baseline gap-x-4">
+                <div className="flex flex-wrap items-baseline gap-x-4 [@media(max-height:800px)]:contents">
                   {message.seq !== undefined && (
-                    <Fact label="Sequence" inline>
-                      <span className="tabular font-mono text-xs">{message.seq}</span>
-                    </Fact>
+                    // The title says it; the one-line layout of a short window drops it (size: Payload says it).
+                    <div className="contents [@media(max-height:800px)]:hidden">
+                      <Fact label="Sequence" inline>
+                        <span className="tabular font-mono text-xs">{message.seq}</span>
+                      </Fact>
+                    </div>
                   )}
-                  <Fact label="Size" inline>
-                    {formatBytes(message.size)}
-                  </Fact>
+                  <div className="contents [@media(max-height:800px)]:hidden">
+                    <Fact label="Size" inline>
+                      {formatBytes(message.size)}
+                    </Fact>
+                  </div>
                   <Fact label={message.seq !== undefined ? 'Stored' : 'Received'} inline>
                     <span title={utc}>
-                      {formatTime(message.time)} <span className="text-faint">({utc} UTC)</span>
+                      {formatTime(message.time)}{' '}
+                      <span className="text-faint [@media(max-height:800px)]:hidden">
+                        ({utc} UTC)
+                      </span>
                     </span>
                   </Fact>
                 </div>

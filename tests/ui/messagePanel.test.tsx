@@ -12,7 +12,7 @@ const doc = {
   tags: ['a', 'b']
 }
 
-async function openMessage() {
+async function openMessage(consumerCount?: number) {
   const gateway = createFakeGateway({ connections: [{ id: 'dev', name: 'Dev' }] })
   gateway.streams.set('ORDERS', {
     config: {
@@ -36,7 +36,11 @@ async function openMessage() {
     ],
     consumers: []
   })
-  const info = await gateway.streamInfo('dev', 'ORDERS')
+  const real = await gateway.streamInfo('dev', 'ORDERS')
+  const info =
+    consumerCount === undefined
+      ? real
+      : { ...real, state: { ...real.state, consumer_count: consumerCount } }
   renderWithGateway(<MessageBrowser connId="dev" info={info} />, gateway)
   await userEvent.click(await screen.findByText('orders.eu'))
   await screen.findByRole('complementary', { name: 'Message detail' })
@@ -87,10 +91,14 @@ describe('PBI-125 filters toggle', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Filters, 1 active' })).toBeInTheDocument()
     )
-    // The chip stays when the panel is closed.
-    const field = within(screen.getByRole('form', { name: 'Message filters' })).getByLabelText(
-      'Payload contains'
-    )
+    // Apply hides the panel, keeps the chip and leaves focus on the Filters button.
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Message filters' })).toBeNull())
+    expect(screen.getByRole('button', { name: /^Filters/ })).toHaveFocus()
+    expect(screen.getByLabelText('Active filters')).toHaveTextContent('Payload contains')
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const field = within(
+      await screen.findByRole('form', { name: 'Message filters' })
+    ).getByLabelText('Payload contains')
     await userEvent.type(field, '{Escape}')
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Message filters' })).toBeNull())
     expect(screen.getByRole('button', { name: /^Filters/ })).toHaveFocus()
@@ -99,6 +107,15 @@ describe('PBI-125 filters toggle', () => {
       'false'
     )
     expect(screen.getByLabelText('Active filters')).toHaveTextContent('Payload contains')
+  })
+
+  it('hides after Clear too and focuses the Filters button', async () => {
+    await openMessage()
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const panel = await screen.findByRole('form', { name: 'Message filters' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Message filters' })).toBeNull())
+    expect(screen.getByRole('button', { name: /^Filters/ })).toHaveFocus()
   })
 
   it('hides with the Hide button in the footer', async () => {
@@ -197,6 +214,73 @@ describe('PBI-125 detail panel', () => {
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
     )
+  })
+})
+
+describe('PBI-125 follow-ups (#58)', () => {
+  it('shows the consumer count while the section is closed, without reading the list', async () => {
+    const gateway = await openMessage(3)
+    const spy = vi.spyOn(gateway, 'listConsumers')
+    const button = screen.getByRole('button', { name: /^Consumers/ })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).toHaveTextContent('Consumers (3)')
+    expect(button).toHaveAccessibleName('Consumers (3)')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('keeps the panel open when Apply cannot read (start from a sequence without a number)', async () => {
+    await openMessage()
+    await userEvent.selectOptions(screen.getByLabelText('Start from'), 'seq')
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const panel = await screen.findByRole('form', { name: 'Message filters' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Apply filters' }))
+    expect(await screen.findByText('Enter a sequence number to start from.')).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: 'Message filters' })).toBeInTheDocument()
+  })
+
+  it('makes what the expanded panel covers inert, keeps the table usable, and restores it', async () => {
+    await openMessage()
+    const toolbar = screen.getByLabelText('Subject filter').closest('div[class*="border-b"]')!
+    const table = screen.getByRole('table', { name: 'Messages in ORDERS' })
+    await userEvent.click(screen.getByRole('button', { name: 'Expand to read' }))
+    expect(toolbar).toHaveAttribute('inert')
+    expect(table.closest('[inert]')).toBeNull()
+    // Only elements of the page are inert, never an ancestor of the table or the panel.
+    const aside = screen.getByRole('complementary', { name: 'Message detail' })
+    for (const el of document.querySelectorAll('[inert]')) {
+      expect(el.contains(table)).toBe(false)
+      expect(el.contains(aside)).toBe(false)
+    }
+    expect(
+      screen.getByRole('complementary', { name: 'Message detail' }).closest('[inert]')
+    ).toBeNull()
+    // Escape from a control in the panel restores and keeps focus on the size button.
+    screen.getByRole('button', { name: 'Previous message' }).focus()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(toolbar).not.toHaveAttribute('inert'))
+    expect(screen.getByRole('button', { name: 'Expand to read' })).toHaveFocus()
+  })
+
+  it('does not fold a JSON node when text is selected or the pointer moved', async () => {
+    await openMessage()
+    const items = screen.getByRole('treeitem', { name: /^\$\.order\.items array/ })
+    expect(items).toHaveAttribute('aria-expanded', 'true')
+    // Pointer moved between press and release (a drag).
+    fireEvent.mouseDown(items, { clientX: 10, clientY: 10 })
+    fireEvent.click(items, { clientX: 80, clientY: 10 })
+    expect(items).toHaveAttribute('aria-expanded', 'true')
+    // Something is selected.
+    const sel = vi.spyOn(window, 'getSelection').mockReturnValue({
+      toString: () => 'items'
+    } as unknown as Selection)
+    fireEvent.mouseDown(items, { clientX: 10, clientY: 10 })
+    fireEvent.click(items, { clientX: 10, clientY: 10 })
+    expect(items).toHaveAttribute('aria-expanded', 'true')
+    sel.mockRestore()
+    // A plain click still toggles.
+    fireEvent.mouseDown(items, { clientX: 10, clientY: 10 })
+    fireEvent.click(items, { clientX: 10, clientY: 10 })
+    expect(items).toHaveAttribute('aria-expanded', 'false')
   })
 })
 

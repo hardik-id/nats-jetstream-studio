@@ -163,7 +163,7 @@ function ResizableDetail({
   return (
     <div
       ref={frame}
-      className="relative shrink-0"
+      className={cx('shrink-0', !expanded && 'relative')}
       data-testid="detail-frame"
       style={{
         width: expanded ? '70%' : current,
@@ -171,43 +171,52 @@ function ResizableDetail({
         minWidth: DETAIL_MIN_WIDTH
       }}
     >
+      {/* While expanded, the frame only keeps the split at 70% (the table stays on the left); the
+          panel itself covers the whole tab, from its top edge to its bottom edge, so the JSON gets
+          the height of the stream header, tabs, toolbar and filter rows too. The Page above is the
+          positioned ancestor. */}
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize message detail"
-        aria-valuenow={current}
-        aria-valuemin={DETAIL_MIN_WIDTH}
-        tabIndex={0}
-        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          const start = shown()
-          drag.current = { x: e.clientX, width: start, last: start }
-          if (expanded) onLeaveExpanded?.()
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current
-          if (!d) return
-          d.last = clamp(d.width + (d.x - e.clientX))
-          onWidth(d.last)
-        }}
-        onPointerUp={() => {
-          const d = drag.current
-          drag.current = null
-          if (d) onCommit(d.last)
-        }}
-        onKeyDown={(e) => {
-          const delta =
-            e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
-          if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
-          else if (e.key === 'End') onCommit(maxWidth())
-          else if (delta) onCommit(clamp(shown() + delta))
-          else return
-          if (expanded) onLeaveExpanded?.()
-          e.preventDefault()
-        }}
-      />
-      {children}
+        className={expanded ? 'absolute inset-y-0 right-0 z-20 w-[70%] bg-panel' : 'contents'}
+        data-testid="detail-surface"
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize message detail"
+          aria-valuenow={current}
+          aria-valuemin={DETAIL_MIN_WIDTH}
+          tabIndex={0}
+          className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            const start = shown()
+            drag.current = { x: e.clientX, width: start, last: start }
+            if (expanded) onLeaveExpanded?.()
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current
+            if (!d) return
+            d.last = clamp(d.width + (d.x - e.clientX))
+            onWidth(d.last)
+          }}
+          onPointerUp={() => {
+            const d = drag.current
+            drag.current = null
+            if (d) onCommit(d.last)
+          }}
+          onKeyDown={(e) => {
+            const delta =
+              e.key === 'ArrowLeft' ? DETAIL_STEP : e.key === 'ArrowRight' ? -DETAIL_STEP : 0
+            if (e.key === 'Home') onCommit(DETAIL_MIN_WIDTH)
+            else if (e.key === 'End') onCommit(maxWidth())
+            else if (delta) onCommit(clamp(shown() + delta))
+            else return
+            if (expanded) onLeaveExpanded?.()
+            e.preventDefault()
+          }}
+        />
+        {children}
+      </div>
     </div>
   )
 }
@@ -217,7 +226,9 @@ export function MessageBrowser({
   info,
   requestSubject,
   requestSeq,
-  visible = true
+  visible = true,
+  expanded: expandedProp,
+  onExpandedChange
 }: {
   connId: string
   info: StreamInfoDto
@@ -225,6 +236,12 @@ export function MessageBrowser({
   requestSeq?: number
   /** False while another section of the stream is shown (this page stays mounted). */
   visible?: boolean
+  /**
+   * "Expand to read" is on. The stream page owns it (controlled) so it can silence its own header
+   * and tabs, which the panel covers; without it the page keeps the state itself.
+   */
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }): ReactNode {
   const tabActive = useTabActive()
   const gateway = useGateway()
@@ -240,12 +257,10 @@ export function MessageBrowser({
     scanLimit: 10_000
   })
   const [subjectDraft, setSubjectDraft] = useState(view.subject)
-  const [storedOpen, setStoredOpen] = useSetting<boolean>(
-    `messages.filtersOpen:${connId}:${info.config.name}`,
-    false
-  )
-  const panelOpen = storedOpen === true
-  const setPanelOpen = (open: boolean): void => void setStoredOpen(open)
+  // Open or closed is kept for as long as this stream's page is open (one page per stream) and is
+  // not stored: a panel left open would take a third of the window on every later visit, and the
+  // chips already show what is active. It closes by itself after Apply and Clear (PBI-125 follow-up).
+  const [panelOpen, setPanelOpen] = useState(false)
   const filtersButton = useRef<HTMLButtonElement>(null)
   const [startMode, setStartMode] = useState<StartMode>('latest')
   const [seqInput, setSeqInput] = useState('')
@@ -261,6 +276,21 @@ export function MessageBrowser({
   const [loadedOnce, setLoadedOnce] = useState(false)
 
   const [selected, setSelected] = useState<number | null>(null)
+  // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
+  const [ownExpanded, setOwnExpanded] = useState(false)
+  const expanded = expandedProp ?? ownExpanded
+  const setExpanded = (next: boolean | ((v: boolean) => boolean)): void => {
+    const value = typeof next === 'function' ? next(expanded) : next
+    setOwnExpanded(value)
+    onExpandedChange?.(value)
+  }
+  const setExpandedRef = useLatest(setExpanded)
+  // The page that owns the state must not keep it once this browser is gone (the stream page shows
+  // an error instead of it, for example): nothing would be covering its header and tabs then.
+  useEffect(() => {
+    const ref = setExpandedRef
+    return () => ref.current(false)
+  }, [setExpandedRef])
   const [fullBytes, setFullBytes] = useState<number | undefined>(undefined)
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [dialog, setDialog] = useState<
@@ -342,6 +372,7 @@ export function MessageBrowser({
         setMessages(walk === v.order ? all : [...all].reverse())
         setChecked(new Set())
         setSelected(null)
+        setExpandedRef.current(false)
         const seqs = all.map((m) => m.seq)
         const min = Math.min(...seqs)
         const max = Math.max(...seqs)
@@ -439,7 +470,7 @@ export function MessageBrowser({
         finish(found, false)
       }
     },
-    [gateway, connId, stream]
+    [gateway, connId, stream, setExpandedRef]
   )
 
   const latest = useCallback((v: View) => run('desc', { kind: 'last' }, v), [run])
@@ -472,14 +503,15 @@ export function MessageBrowser({
   }, [requestSubject, requestSeq])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const apply = (patch: Partial<View>): void => {
+  /** True when the new view was read; false when the start position needs fixing first. */
+  const apply = (patch: Partial<View>): boolean => {
     const next = { ...view, ...patch }
     setView(next)
     // A change of filters starts again from the chosen start position.
-    go(next, startMode)
+    return go(next, startMode)
   }
 
-  const go = (v: View, mode: StartMode): void => {
+  const go = (v: View, mode: StartMode): boolean => {
     // Keep the "Start from" control in step with what is shown, so a later change of filters or
     // page size starts again from the same place.
     setStartMode(mode)
@@ -487,7 +519,7 @@ export function MessageBrowser({
       const next = { ...v, order: 'desc' as Walk }
       setView(next)
       latest(next)
-      return
+      return true
     }
     // "From here on" reads best oldest first, with the starting message at the top.
     const next = { ...v, order: 'asc' as Walk }
@@ -496,17 +528,18 @@ export function MessageBrowser({
     else if (mode === 'seq') {
       if (!/^\d+$/.test(seqInput.trim())) {
         setNotice('Enter a sequence number to start from.')
-        return
+        return false
       }
       run('asc', { kind: 'seq', seq: Number(seqInput) }, next)
     } else {
       const time = new Date(timeInput)
       if (Number.isNaN(time.getTime())) {
         setNotice('Enter a date and time to start from.')
-        return
+        return false
       }
       run('asc', { kind: 'time', time: time.toISOString() }, next)
     }
+    return true
   }
 
   const page = (which: 'older' | 'newer'): void => {
@@ -650,7 +683,9 @@ export function MessageBrowser({
   const detailWidth = dragWidth ?? storedWidth
   const [collapsed, setCollapsed] = useSetting<boolean>('messages.detailCollapsed', false)
   // Widening to read is for the moment, so it is not stored: the saved width stays as dragged.
-  const [expanded, setExpanded] = useState(false)
+  // What the expanded panel covers on this page is inert: no tab stops, not read by assistive
+  // technology. A declarative prop of this page, so it cannot outlive the page or its tab.
+  const covered = expanded && Boolean(detail) && visible ? true : undefined
   // After the panel collapses or opens again the button that was pressed is gone; keyboard focus
   // goes to its counterpart instead of falling back to the page.
   const focusAfter = useRef<'rail' | 'panel' | null>(null)
@@ -792,7 +827,11 @@ export function MessageBrowser({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Filters and start position */}
-      <div className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2">
+      {/* On a short window the field labels stay for screen readers only: that is a row of height. */}
+      <div
+        inert={covered}
+        className="flex shrink-0 flex-wrap items-end gap-2 border-b border-line bg-panel px-4 py-2 [@media(max-height:800px)]:py-1.5 [@media(max-height:800px)]:[&_label]:sr-only"
+      >
         <form
           className="flex items-end gap-1.5"
           onSubmit={(e) => {
@@ -915,6 +954,7 @@ export function MessageBrowser({
       {panelOpen && (
         <FilterPanel
           id={FILTER_PANEL_ID}
+          inert={covered}
           compact={Boolean(detail)}
           key={JSON.stringify(view.filters) + view.scanLimit}
           initial={draftFrom(view.filters, view.scanLimit)}
@@ -922,12 +962,19 @@ export function MessageBrowser({
             setPanelOpen(false)
             filtersButton.current?.focus()
           }}
-          onApply={(filters, scanLimit) => apply({ filters, scanLimit })}
+          onApply={(filters, scanLimit) => {
+            // The panel stays open when the start position needs fixing first (the notice says so).
+            if (!apply({ filters, scanLimit })) return
+            // The panel goes away; keyboard focus stays on the button that reopens it.
+            setPanelOpen(false)
+            filtersButton.current?.focus()
+          }}
         />
       )}
 
       {chips.length > 0 && (
         <div
+          inert={covered}
           className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5"
           aria-label="Active filters"
         >
@@ -954,7 +1001,10 @@ export function MessageBrowser({
       )}
 
       {/* Paging and actions */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5">
+      <div
+        inert={covered}
+        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-1.5 [@media(max-height:800px)]:py-1"
+      >
         <Button
           size="sm"
           icon={<ChevronsUp className="h-3.5 w-3.5" aria-hidden />}
@@ -1065,7 +1115,7 @@ export function MessageBrowser({
           (outcome.reason === 'limit' ||
             outcome.reason === 'cancelled' ||
             outcome.skippedNonJson > 0))) && (
-        <div className="flex shrink-0 flex-col gap-1.5 bg-panel px-4 py-2">
+        <div inert={covered} className="flex shrink-0 flex-col gap-1.5 bg-panel px-4 py-2">
           {notice && <Notice tone="accent">{notice}</Notice>}
           <ErrorNote error={error} onRetry={() => go(view, startMode)} />
           {outcome?.reason === 'limit' && (
@@ -1105,7 +1155,7 @@ export function MessageBrowser({
         </div>
       )}
 
-      <div className="flex min-h-40 flex-1">
+      <div className="flex min-h-32 flex-1">
         <div
           ref={tableBox}
           className="min-w-0 flex-1 bg-panel"
@@ -1193,6 +1243,7 @@ export function MessageBrowser({
                     connId={connId}
                     stream={stream}
                     retention={info.config.retention}
+                    knownCount={info.state.consumer_count}
                     message={{ seq: detail.seq, subject: detail.subject, time: detail.time }}
                   />
                 }

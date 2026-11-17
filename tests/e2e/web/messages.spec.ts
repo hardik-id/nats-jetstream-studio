@@ -129,7 +129,6 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // Invalid expressions show an inline error and cannot be applied.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('Payload matches regular expression').fill('(')
   await expect(panel.getByRole('alert').first()).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
@@ -148,7 +147,6 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 
   // A scan limit that is hit is reported as such, with a way to continue.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('JSONPath').fill('$.order.id == "A-2"')
   await panel.getByLabel('Scan limit').fill('20')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
@@ -156,11 +154,14 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
   await expect(
     page.getByText('No matches yet. The scan limit was reached before the end of the stream.')
   ).toBeVisible()
+  // Apply hid the panel; open it again.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('Scan limit').fill('10000')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(range(page)).toHaveText('1 message, #2 to #2')
 
   // No matches at all is a different message.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByLabel('JSONPath').fill('$.order.id == "nope"')
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(
@@ -400,14 +401,12 @@ test('PBI-049 the message panel shows which consumers have received the message'
   await client.jsm.streams.delete(queue)
 })
 
-test('PBI-125 the Filters button shows its state and a count, and the state is remembered', async ({
+test('PBI-125 the Filters button shows its state and a count, Apply hides the panel, and it is not restored on load', async ({
   page
 }) => {
   await openStudio(page)
   await openStream(page, stream, 'Messages')
   const button = page.getByRole('button', { name: /^Filters/ })
-  // An earlier test may have left the panel open; it is remembered per stream.
-  if ((await button.getAttribute('aria-expanded')) === 'true') await button.click()
   await expect(button).toHaveAttribute('aria-expanded', 'false')
   await button.click()
   const panel = page.getByRole('form', { name: 'Message filters' })
@@ -423,24 +422,30 @@ test('PBI-125 the Filters button shows its state and a count, and the state is r
   await panel.getByRole('button', { name: 'Apply filters' }).click()
   await expect(page.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible()
 
-  // Closed with Escape: focus is back on the button and the chip is still there.
-  await panel.getByLabel('Payload contains').press('Escape')
+  // Apply hides the panel, keeps the chip and leaves focus on the Filters button.
   await expect(panel).toBeHidden()
   await expect(button).toBeFocused()
   await expect(page.getByLabel('Active filters')).toContainText('Payload contains "message 12"')
 
-  // Open or closed survives a reload (per stream).
+  // Escape closes it too, with focus back on the button.
+  await button.click()
+  await panel.getByLabel('Payload contains').press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(button).toBeFocused()
+
+  // Open is not restored on load: it is for this visit only.
   await button.click()
   await expect(panel).toBeVisible()
   await page.reload()
   await openStudio(page)
   await openStream(page, stream, 'Messages')
-  await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
+  await expect(page.getByRole('form', { name: 'Message filters' })).toBeHidden()
 
-  // Put things back for the other tests.
+  // Clear also hides the panel and focuses the button.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await panel.getByRole('button', { name: 'Clear' }).click()
-  await panel.getByRole('button', { name: 'Hide' }).click()
   await expect(panel).toBeHidden()
+  await expect(page.getByRole('button', { name: /^Filters/ })).toBeFocused()
 })
 
 test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rail and widens to read', async ({
@@ -615,3 +620,251 @@ for (const size of [
     expect(after.scroll).toBeLessThanOrEqual(after.inner)
   })
 }
+
+const DEFAULT_SECTIONS = async (page: Page): Promise<void> => {
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  for (const name of [/^Headers/, /^Consumers/]) {
+    const toggle = detail.getByRole('button', { name })
+    if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click()
+  }
+}
+
+const payloadHeight = async (page: Page): Promise<number> =>
+  (await page
+    .getByRole('complementary', { name: 'Message detail' })
+    .getByTestId('payload-body')
+    .boundingBox())!.height
+
+for (const { width, height, closed, open } of [
+  { width: 1440, height: 900, closed: 300, open: 190 },
+  { width: 1280, height: 720, closed: 195, open: 120 }
+]) {
+  test(`#58 the JSON gets real height with a message selected (${width}x${height})`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height })
+    await openStudio(page)
+    await openStream(page, stream, 'Messages')
+    await rowOf(page, 120).click()
+    await expect(page.getByRole('complementary', { name: 'Message detail' })).toBeVisible()
+    await DEFAULT_SECTIONS(page)
+    const closedHeight = await payloadHeight(page)
+    console.log(`payload ${width}x${height} filters closed: ${Math.round(closedHeight)}px`)
+    expect(closedHeight).toBeGreaterThanOrEqual(closed)
+    if (open) {
+      await page.getByRole('button', { name: /^Filters/ }).click()
+      const openHeight = await payloadHeight(page)
+      console.log(`payload ${width}x${height} filters open: ${Math.round(openHeight)}px`)
+      expect(openHeight).toBeGreaterThanOrEqual(open)
+      const m = await page.evaluate(() => ({
+        s: document.scrollingElement!.scrollHeight,
+        i: window.innerHeight
+      }))
+      expect(m.s).toBeLessThanOrEqual(m.i)
+    }
+  })
+}
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 720 },
+  { width: 1000, height: 600 }
+]) {
+  test(`#58 Expand to read fills the tab, never scrolls the page, and Esc restores (${size.width}x${size.height})`, async ({
+    page
+  }) => {
+    await page.setViewportSize(size)
+    await openStudio(page)
+    await openStream(page, stream, 'Messages')
+    await rowOf(page, 120).click()
+    const detail = page.getByRole('complementary', { name: 'Message detail' })
+    await expect(detail).toBeVisible()
+    await DEFAULT_SECTIONS(page)
+    const normalPayload = await payloadHeight(page)
+    const normalWidth = (await detail.boundingBox())!.width
+    const tabTop = (await page.getByRole('heading', { level: 1 }).boundingBox())!.y
+
+    await detail.getByRole('button', { name: 'Expand to read' }).click()
+    const box = (await detail.boundingBox())!
+    // It starts at the top of the stream page (above the header, tabs and toolbar) and reaches
+    // the bottom of the window.
+    expect(box.y).toBeLessThanOrEqual(tabTop)
+    expect(box.y + box.height).toBeGreaterThanOrEqual(size.height - 2)
+    expect(box.width).toBeGreaterThan(normalWidth)
+    const expandedPayload = await payloadHeight(page)
+    console.log(
+      `payload ${size.width}x${size.height}: normal ${Math.round(normalPayload)}px, expanded ${Math.round(expandedPayload)}px`
+    )
+    expect(expandedPayload).toBeGreaterThan(normalPayload + 100)
+    const m = await page.evaluate(() => ({
+      s: document.scrollingElement!.scrollHeight,
+      i: window.innerHeight,
+      w: document.documentElement.scrollWidth,
+      iw: window.innerWidth
+    }))
+    expect(m.s).toBeLessThanOrEqual(m.i)
+    expect(m.w).toBeLessThanOrEqual(m.iw)
+    // The table stays visible on the left.
+    expect((await table(page).boundingBox())!.width).toBeGreaterThan(150)
+
+    await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+    await page.keyboard.press('Escape')
+    await expect(detail).toBeVisible()
+    const back = (await detail.boundingBox())!
+    expect(Math.round(back.width)).toBe(Math.round(normalWidth))
+    expect(back.y).toBeGreaterThan(tabTop + 20)
+  })
+}
+
+test('#58 1000x600 with the filters open and nothing selected does not scroll the page', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 })
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
+  const m = await page.evaluate(() => ({
+    s: document.scrollingElement!.scrollHeight,
+    i: window.innerHeight
+  }))
+  expect(m.s).toBeLessThanOrEqual(m.i)
+})
+
+test('#58 while expanded, Tab and Shift+Tab never reach what the panel covers', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true })
+  await expect(refresh).toBeAttached()
+  expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(true)
+  // Controls the panel covers: after each Tab none of them may have focus.
+  const onCovered = (): Promise<string | null> =>
+    page.evaluate(() => {
+      const a = document.activeElement
+      const name = (a?.getAttribute('aria-label') ?? a?.textContent ?? '').trim()
+      const covered =
+        !a?.closest('aside') &&
+        /^(Refresh|Filters|Saved|Go|Export all matching|Latest|Next)/.test(name)
+      return a && (a.closest('[inert]') || covered) ? `${a.tagName} ${name}` : null
+    })
+  expect(
+    await page.evaluate(() => document.querySelectorAll('[inert] button, [inert] select').length)
+  ).toBeGreaterThan(5)
+  const outside = onCovered
+  await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab')
+    expect(await outside()).toBeNull()
+  }
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Shift+Tab')
+    expect(await outside()).toBeNull()
+  }
+  // Escape puts everything back in the tab order.
+  await detail.getByRole('button', { name: 'Restore panel size' }).focus()
+  await page.keyboard.press('Escape')
+  expect(await refresh.evaluate((el) => !!el.closest('[inert]'))).toBe(false)
+})
+
+const visibleInert = (page: Page): Promise<number> =>
+  page.evaluate(
+    () =>
+      [...document.querySelectorAll('[inert]')].filter(
+        (el) => (el as HTMLElement).getClientRects().length > 0
+      ).length
+  )
+
+test('#58 an expanded panel leaves nothing inert when the tab changes, closes or the page moves on', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  // The sidebar and the tab strip are not covered, so they are never inert and stay clickable.
+  const inertOutside = await page.evaluate(() => {
+    const els = [
+      document.querySelector('nav[aria-label="Connections"]'),
+      document.querySelector('[role=tablist]'),
+      document.querySelector('header')
+    ]
+    return els.some((el) => !!el?.closest('[inert]'))
+  })
+  expect(inertOutside).toBe(false)
+
+  // Another stream opens in a new tab: nothing visible is inert there.
+  // (The sidebar is the icon rail while a message is open; the tab strip is always there.)
+  await page.getByRole('tab', { name: 'Streams', exact: true }).click()
+  await page
+    .getByRole('table', { name: 'Streams' })
+    .getByRole('button', { name: 'ORDERS', exact: true })
+    .click()
+  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
+  expect(await visibleInert(page)).toBe(0)
+
+  // Back on the first stream the panel is still expanded and its page is inert again.
+  await page.getByRole('tab', { name: stream }).click()
+  await expect(detail.getByRole('button', { name: 'Restore panel size' })).toBeVisible()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  // Closing the tab removes the page, and its marks with it.
+  await page.keyboard.press('Control+w')
+  await page.getByRole('tab', { name: 'ORDERS' }).waitFor({ state: 'visible' })
+  expect(await visibleInert(page)).toBe(0)
+  expect(await page.evaluate(() => document.querySelectorAll('[inert]').length)).toBe(0)
+})
+
+test('#58 when the stream info fails while expanded, nothing stays inert and Retry works', async ({
+  page
+}) => {
+  let fail = false
+  // Answers streamInfo with an error while `fail` is set; everything else goes to the server.
+  await page.routeWebSocket('**/rpc', (ws) => {
+    const server = ws.connectToServer()
+    ws.onMessage((raw) => {
+      const message = JSON.parse(String(raw))
+      if (fail && message.t === 'call' && message.method === 'streamInfo') {
+        ws.send(
+          JSON.stringify({
+            t: 'result',
+            id: message.id,
+            ok: false,
+            error: { kind: 'timeout', message: 'injected failure' }
+          })
+        )
+      } else server.send(raw)
+    })
+    server.onMessage((raw) => ws.send(raw))
+  })
+  await openStudio(page)
+  await openStream(page, stream, 'Messages')
+  await rowOf(page, 120).click()
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  await detail.getByRole('button', { name: 'Expand to read' }).click()
+  expect(await visibleInert(page)).toBeGreaterThan(0)
+
+  fail = true
+  // The page refreshes the stream info on an interval; the failure replaces the browser.
+  const retry = page.getByRole('button', { name: 'Retry' })
+  await expect(retry).toBeVisible({ timeout: 20_000 })
+  expect(await visibleInert(page)).toBe(0)
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  await page.getByRole('tab', { name: 'Configuration' }).click()
+  await page.getByRole('tab', { name: 'Messages', exact: true }).click()
+
+  // Retry brings the browser back; the expanded state was reset with it.
+  fail = false
+  await retry.click()
+  await expect(table(page)).toBeVisible()
+  expect(await visibleInert(page)).toBe(0)
+  await rowOf(page, 120).click()
+  await expect(detail.getByRole('button', { name: 'Expand to read' })).toBeVisible()
+})

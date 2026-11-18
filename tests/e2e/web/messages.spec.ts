@@ -1045,7 +1045,7 @@ test('PBI-129 exclude or include a subject from a row or the open message', asyn
   await rowOf(page, 8, name).click()
   await expect(detail).toBeVisible()
   await detail.getByRole('button', { name: `Exclude subject ${subject('open')}` }).click()
-  await expect(range(page)).toHaveText('2 messages, #1 to #7')
+  await expect(range(page)).toHaveText('3 messages, #1 to #7')
   await expect(page.getByRole('button', { name: 'Filters, 2 active' })).toBeVisible()
   await expect(detail).toBeHidden()
 

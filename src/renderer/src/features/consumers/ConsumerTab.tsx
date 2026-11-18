@@ -29,6 +29,7 @@ import { useGateway } from '../../gateway'
 import { useConnection, useNow, useRefetchInterval } from '../../lib/hooks'
 import { useTabs } from '../../state/tabs'
 import { toast } from '../../state/toasts'
+import { openMessages } from '../shell/nav'
 import { ConsumerForm } from './ConsumerForm'
 import { consumerFilters, lastActive } from './ConsumersPanel'
 
@@ -193,14 +194,7 @@ export function ConsumerTab({
               streamLastSeq={streamQuery.data?.state.last_seq}
               now={now}
               onShowNext={() =>
-                tabs.open({
-                  kind: 'stream',
-                  connId,
-                  stream,
-                  section: 'messages',
-                  seq: info.delivered.stream_seq + 1,
-                  subject: undefined
-                })
+                openMessages(connId, { stream, seq: info.delivered.stream_seq + 1 })
               }
             />
           </Card>

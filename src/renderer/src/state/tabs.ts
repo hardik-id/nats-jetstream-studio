@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type StreamSection = 'overview' | 'messages' | 'consumers' | 'subjects' | 'config'
+export type StreamSection = 'overview' | 'consumers' | 'subjects' | 'config'
 
 /** What a tab shows. Everything needed to rebuild the tab after a restart lives here. */
 export type TabSpec =
@@ -12,9 +12,9 @@ export type TabSpec =
       connId: string
       stream: string
       section?: StreamSection
-      subject?: string
-      seq?: number
     }
+  /** The message browser of a connection (PBI-128): one per connection, reused for any stream. */
+  | { kind: 'messages'; connId: string; stream?: string; subject?: string; seq?: number }
   | { kind: 'consumers'; connId: string }
   | { kind: 'consumer'; connId: string; stream: string; consumer: string }
   | { kind: 'subjects'; connId: string }
@@ -60,6 +60,8 @@ export function tabTitle(spec: TabSpec): string {
       return 'Streams'
     case 'stream':
       return spec.stream
+    case 'messages':
+      return spec.stream ? `${spec.stream} messages` : 'Messages'
     case 'consumers':
       return 'Consumers'
     case 'consumer':
@@ -84,6 +86,55 @@ export function tabTitle(spec: TabSpec): string {
       return 'Decoders'
     case 'audit':
       return 'Audit log'
+  }
+}
+
+/** What to show in the Messages tab: a stream, and a subject filter or a sequence to start at. */
+export interface MessagesTarget {
+  stream?: string
+  subject?: string
+  seq?: number
+}
+
+/**
+ * The spec that opens the Messages tab of a connection. With a stream, the subject and sequence
+ * are always set (undefined included) so a stale filter of the previous visit is replaced; without
+ * one, the open tab keeps what it shows.
+ */
+export function messagesSpec(connId: string, target: MessagesTarget = {}): TabSpec {
+  if (!target.stream) return { kind: 'messages', connId }
+  return {
+    kind: 'messages',
+    connId,
+    stream: target.stream,
+    subject: target.subject,
+    seq: target.seq
+  }
+}
+
+/** The version of the stored tabs. 1: the Messages sub-tab of a stream became its own tab. */
+export const TABS_VERSION = 1
+
+/**
+ * Brings tabs stored by an older version up to date. A stream tab left on its Messages section
+ * (version 0) opens on Overview, without the subject and sequence that only served that section.
+ */
+export function migrateTabs(persisted: unknown, version: number): unknown {
+  if (version >= 1 || !persisted || typeof persisted !== 'object') return persisted
+  const state = persisted as { tabs?: unknown }
+  if (!Array.isArray(state.tabs)) return persisted
+  return {
+    ...state,
+    tabs: state.tabs.map((tab: unknown) => {
+      const t = tab as { spec?: Record<string, unknown> } | null
+      const spec = t?.spec
+      if (!spec || spec.kind !== 'stream') return tab
+      const { subject: _subject, seq: _seq, ...rest } = spec
+      return {
+        ...t,
+        spec: { ...rest, section: spec.section === 'messages' ? 'overview' : spec.section }
+      }
+    })
   }
 }
 
@@ -178,6 +229,6 @@ export const useTabs = create<TabsState>()(
         set({ activeId: tabs[(index + delta + tabs.length) % tabs.length].id })
       }
     }),
-    { name: 'studio.tabs.v1' }
+    { name: 'studio.tabs.v1', version: TABS_VERSION, migrate: migrateTabs as never }
   )
 )

@@ -30,7 +30,7 @@ import { useConnection, useNow, useRefetchInterval } from '../../lib/hooks'
 import { useTabs, type StreamSection } from '../../state/tabs'
 import { toast } from '../../state/toasts'
 import { ConsumersPanel } from '../consumers/ConsumersPanel'
-import { MessageBrowser } from '../messages/MessageBrowser'
+import { openMessages, TabIcon } from '../shell/nav'
 import { PurgeDialog } from './PurgeDialog'
 import { StreamForm } from './StreamForm'
 import { ExportDialog } from './StreamsTab'
@@ -38,28 +38,28 @@ import { StreamSubjects } from './StreamSubjects'
 
 const SECTIONS: { id: StreamSection; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'messages', label: 'Messages' },
   { id: 'consumers', label: 'Consumers' },
   { id: 'subjects', label: 'Subjects' },
   { id: 'config', label: 'Configuration' }
 ]
 
-/** One stream: state, messages, consumers, subjects and configuration (PBI-031). */
+/**
+ * One stream: state, consumers, subjects and configuration (PBI-031). Its messages are read in the
+ * Messages tab of the connection (PBI-128), which "Browse messages" opens on this stream.
+ */
 export function StreamTab({
   tabId,
   connId,
   stream,
-  section = 'overview',
-  subject,
-  seq
+  section: storedSection = 'overview'
 }: {
   tabId: string
   connId: string
   stream: string
   section?: StreamSection
-  subject?: string
-  seq?: number
 }): ReactNode {
+  // A section stored by an older version, or one that no longer exists, opens on Overview.
+  const section = SECTIONS.some((s) => s.id === storedSection) ? storedSection : 'overview'
   const gateway = useGateway()
   const client = useQueryClient()
   const conn = useConnection(connId)
@@ -71,19 +71,14 @@ export function StreamTab({
     refetchInterval
   })
   const [dialog, setDialog] = useState<'edit' | 'purge' | 'delete' | 'export' | null>(null)
-  // Sections are created on first visit and then kept, so the message browser keeps its place.
+  // Sections are created on first visit and then kept, so a section keeps its place.
   const [visited, setVisited] = useState<Set<StreamSection>>(() => new Set([section]))
-  // "Expand to read" in the message browser covers this page's header and tabs; they are inert
-  // while it is on, which is this page's own state and so ends with the page.
-  const [readExpanded, setReadExpanded] = useState(false)
   const info = query.data
-  // Only while the overlay really exists: the browser is not shown while the stream info fails.
-  const covered = readExpanded && section === 'messages' && !query.error && !!info
   const readOnly = conn?.readOnly
 
-  const go = (next: StreamSection, patch: { subject?: string; seq?: number } = {}): void => {
+  const go = (next: StreamSection): void => {
     setVisited((v) => new Set(v).add(next))
-    tabs.patch(tabId, { section: next, ...patch })
+    tabs.patch(tabId, { section: next })
   }
   if (!visited.has(section)) setVisited((v) => new Set(v).add(section))
 
@@ -98,7 +93,6 @@ export function StreamTab({
   return (
     <Page
       scroll={false}
-      headerInert={covered}
       title={
         <span className="flex items-center gap-2">
           <StarButton connId={connId} favorite={{ kind: 'stream', stream }} />
@@ -115,16 +109,24 @@ export function StreamTab({
       }
       subtitle={info?.config.description}
       actions={
-        <Button
-          icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-          busy={query.isFetching && !query.isLoading}
-          onClick={() => void query.refetch()}
-        >
-          Refresh
-        </Button>
+        <>
+          <Button
+            icon={<TabIcon kind="messages" />}
+            onClick={() => openMessages(connId, { stream })}
+          >
+            Browse messages
+          </Button>
+          <Button
+            icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+            busy={query.isFetching && !query.isLoading}
+            onClick={() => void query.refetch()}
+          >
+            Refresh
+          </Button>
+        </>
       }
     >
-      <div inert={covered || undefined} className="shrink-0 bg-panel">
+      <div className="shrink-0 bg-panel">
         <SubTabs tabs={SECTIONS} active={section} onChange={(next) => go(next)} />
       </div>
       {query.error ? (
@@ -138,19 +140,6 @@ export function StreamTab({
           <div hidden={section !== 'overview'} className="h-full overflow-y-auto p-4">
             {visited.has('overview') && <Overview connId={connId} info={info} />}
           </div>
-          <div hidden={section !== 'messages'} className="h-full">
-            {visited.has('messages') && (
-              <MessageBrowser
-                connId={connId}
-                info={info}
-                requestSubject={subject}
-                requestSeq={seq}
-                visible={section === 'messages'}
-                expanded={readExpanded}
-                onExpandedChange={setReadExpanded}
-              />
-            )}
-          </div>
           <div hidden={section !== 'consumers'} className="h-full">
             {visited.has('consumers') && <ConsumersPanel connId={connId} stream={stream} />}
           </div>
@@ -159,7 +148,7 @@ export function StreamTab({
               <StreamSubjects
                 connId={connId}
                 stream={stream}
-                onBrowse={(s) => go('messages', { subject: s, seq: undefined })}
+                onBrowse={(s) => openMessages(connId, { stream, subject: s })}
               />
             )}
           </div>

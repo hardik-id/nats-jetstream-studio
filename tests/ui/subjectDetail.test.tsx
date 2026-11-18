@@ -110,9 +110,8 @@ describe('PBI-127 subject detail', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'This subject (orders)' }))
     await userEvent.click(button('Browse stored messages'))
     expect(useTabs.getState().tabs.at(-1)?.spec).toMatchObject({
-      kind: 'stream',
+      kind: 'messages',
       stream: 'ORDERS',
-      section: 'messages',
       subject: 'orders'
     })
   })
@@ -123,7 +122,7 @@ describe('PBI-127 subject detail', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'AUDIT' }))
     await userEvent.click(button('Browse stored messages'))
     expect(useTabs.getState().tabs.at(-1)?.spec).toMatchObject({
-      kind: 'stream',
+      kind: 'messages',
       stream: 'AUDIT',
       subject: 'orders.eu.created'
     })

@@ -75,7 +75,7 @@ export const featureContent = {
     capabilities: [
       {
         title: 'Read without a consumer',
-        text: 'Messages are fetched by sequence, using direct get when the stream allows it. No consumer is created and nothing is acknowledged. Work-queue and interest streams are left untouched. Pages are 50 messages, newest or oldest first.'
+        text: 'Messages are fetched by sequence, using direct get when the stream allows it. No consumer is created and nothing is acknowledged. Work-queue and interest streams are left untouched. Pages are 50 messages, newest or oldest first. Messages has its own item in the left panel: choose a stream there, or open it from a stream, a subject, a favourite or a consumer.'
       },
       {
         title: 'Start where you want',
@@ -91,7 +91,7 @@ export const featureContent = {
       },
       {
         title: 'A panel you can shape',
-        text: 'The detail sections (Details, Headers, Payload, Consumers) collapse and the panel folds to a narrow rail. Expand to read widens it over most of the stream page. JSON can be shown at three text sizes, opened to a chosen level, searched, and navigated with the arrow keys; Copy path and Copy value work on every line. The filter panel closes after Apply to give the messages room, and the chips stay.'
+        text: 'The detail sections (Details, Headers, Payload, Consumers) collapse and the panel folds to a narrow rail. Expand to read widens it over most of the Messages screen. JSON can be shown at three text sizes, opened to a chosen level, searched, and navigated with the arrow keys; Copy path and Copy value work on every line. The filter panel closes after Apply to give the messages room, and the chips stay.'
       },
       {
         title: 'Which consumers have received it',

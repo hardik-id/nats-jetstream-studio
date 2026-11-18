@@ -9,6 +9,7 @@ import { Copy, Database, Radio, Send } from 'lucide-react'
 import { toast } from '../../state/toasts'
 import { subjectsOverlap } from '@shared/subject'
 import { readOnlyProps, type MenuItem } from '../../components/ui'
+import { messagesSpec, type TabSpec } from '../../state/tabs'
 import {
   availableScopes,
   canPublish,
@@ -22,14 +23,7 @@ import {
 
 /** The part of the tabs store the actions need (`useTabs()` fits). */
 export interface ActionTabs {
-  open(spec: {
-    kind: 'stream'
-    connId: string
-    stream: string
-    section: 'messages'
-    subject: string
-    seq: undefined
-  }): void
+  open(spec: TabSpec): void
   openNew(kind: 'tail' | 'publish', connId: string, subject?: string): void
 }
 
@@ -190,7 +184,7 @@ export function describeActions(
   }
 }
 
-/** Opens Browse in the Messages section of a stream, filtered on the scope's filter. */
+/** Opens the Messages tab on a stream, filtered on the scope's filter. */
 export function runBrowse(
   tabs: ActionTabs,
   connId: string,
@@ -198,14 +192,7 @@ export function runBrowse(
   stream: string | null = action.defaultStream
 ): void {
   if (!action.enabled || !action.subject || !stream) return
-  tabs.open({
-    kind: 'stream',
-    connId,
-    stream,
-    section: 'messages',
-    subject: action.subject,
-    seq: undefined
-  })
+  tabs.open(messagesSpec(connId, { stream, subject: action.subject }))
 }
 
 /** Opens a Live tail tab on the scope's filter. */

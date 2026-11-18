@@ -1,7 +1,17 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import * as protobuf from 'protobufjs'
 import { expect, test } from '@playwright/test'
-import { connection, go, nats, openStream, openStudio, sidebar, toast, unique } from './helpers'
+import {
+  connection,
+  go,
+  nats,
+  openMessages,
+  openStream,
+  openStudio,
+  sidebar,
+  toast,
+  unique
+} from './helpers'
 
 test('PBI-090 command palette: search across resources, grouped, Enter opens', async ({ page }) => {
   await openStudio(page)
@@ -75,12 +85,15 @@ test('PBI-093 keyboard navigation, help overlay and session restore', async ({ p
   await expect(table.getByRole('row', { selected: true })).toContainText('TELEMETRY')
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('Enter')
-  await expect(
-    page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'ORDERS' })
-  ).toHaveAttribute('aria-selected', 'true')
+  const tabs = page.getByRole('tablist', { name: 'Open tabs' })
+  await expect(tabs.getByRole('tab', { name: 'ORDERS', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await page.getByRole('tab', { name: 'Configuration', exact: true }).click()
 
   // "?" lists the shortcuts, but not while typing in a field.
-  await page.getByRole('tab', { name: 'Messages' }).click()
+  await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
   await page.getByLabel('Subject filter').fill('?')
   await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveCount(0)
   await page.getByLabel('Subject filter').fill('orders.eu.>')
@@ -95,21 +108,30 @@ test('PBI-093 keyboard navigation, help overlay and session restore', async ({ p
 
   // Ctrl+Tab cycles through tabs.
   await page.keyboard.press('Control+Tab')
-  await expect(
-    page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'Streams' })
-  ).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.getByRole('tab', { name: 'Streams', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
   await page.keyboard.press('Control+Shift+Tab')
-  await expect(
-    page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'ORDERS' })
-  ).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.getByRole('tab', { name: 'ORDERS messages', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
 
-  // After a restart the tabs, the active tab and its section come back.
+  // After a restart the tabs, the active tab, its stream and the stream page's section come back.
   await page.reload()
-  const tabs = page.getByRole('tablist', { name: 'Open tabs' })
-  await expect(tabs.getByRole('tab')).toHaveText(['Streams', 'ORDERS'])
-  await expect(tabs.getByRole('tab', { name: 'ORDERS' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tab', { name: 'Messages' })).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.getByRole('tab')).toHaveText(['Streams', 'ORDERS', 'ORDERS messages'])
+  await expect(tabs.getByRole('tab', { name: 'ORDERS messages', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(page.getByRole('combobox', { name: 'Stream', exact: true })).toHaveValue('ORDERS')
   await expect(page.getByTestId('message-range')).toContainText('50 messages')
+  await tabs.getByRole('tab', { name: 'ORDERS', exact: true }).click()
+  await expect(page.getByRole('tab', { name: 'Configuration', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
   await expect(page.getByTestId('active-connection')).toContainText('Local dev')
 })
 
@@ -137,7 +159,7 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
 
   // Saved filter.
-  await page.getByRole('tab', { name: 'Messages' }).click()
+  await openMessages(page, 'ORDERS')
   await page.getByLabel('Subject filter').fill('orders.eu.paid')
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Saved' }).click()
@@ -161,7 +183,7 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await expect(page.getByTestId('consumer-pending')).toBeVisible()
   await page
     .getByRole('tablist', { name: 'Open tabs' })
-    .getByRole('tab', { name: 'ORDERS' })
+    .getByRole('tab', { name: 'ORDERS messages', exact: true })
     .click()
   await page.getByRole('button', { name: 'Saved' }).click()
   await page.getByRole('menuitem', { name: 'EU paid' }).click()
@@ -190,18 +212,18 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
     ]
   })
 
-  // Starts on the Messages tab of ORDERS and leaves no saved filter and no favourite behind.
+  // Starts on the Messages screen of ORDERS and leaves no saved filter and no favourite behind.
   const removeEverything = async (): Promise<void> => {
     await page.getByRole('button', { name: 'Saved' }).click()
     await page.getByRole('menuitem', { name: 'Remove all saved filters' }).click()
-    await page.getByRole('tab', { name: 'Consumers', exact: true }).click()
+    await openStream(page, 'ORDERS', 'Consumers')
     await billing.getByRole('button', { name: 'Remove from favourites' }).click()
     await go(page, 'Streams')
     await row.getByRole('button', { name: 'Remove from favourites' }).click()
     await expect(group.getByText('Favourites')).toHaveCount(0)
   }
   await removeEverything()
-  await openStream(page, 'ORDERS', 'Messages')
+  await openMessages(page, 'ORDERS')
   await page
     .getByLabel('Active filters')
     .getByRole('button', { name: /Remove filter: Subject/ })
@@ -252,7 +274,7 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
   await page
     .getByRole('tablist', { name: 'Open tabs' })
-    .getByRole('tab', { name: 'ORDERS' })
+    .getByRole('tab', { name: 'ORDERS messages', exact: true })
     .click()
   await page.getByRole('button', { name: 'Saved' }).click()
   await page.getByRole('menuitem', { name: 'EU paid' }).click()
@@ -411,7 +433,7 @@ test('PBI-044 Protobuf payloads are decoded with registered .proto files', async
   await expect(page.getByLabel('Mapping 1 message type')).toHaveValue('shop.Order')
 
   // A matching subject is shown decoded by default.
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   const table = page.getByRole('table', { name: `Messages in ${stream}` })
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   await table

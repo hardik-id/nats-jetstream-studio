@@ -512,7 +512,6 @@ export function MessageBrowser({
     refetchInterval: liveOn ? LIVE_MS : false
   })
   const liveLast = liveOn ? liveInfo.data?.state.last_seq : undefined
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     // A tick that arrives while a read or scan runs is skipped; this runs again when it ends.
     if (liveLast === undefined || busy !== null || liveLast === liveSeen.current) return
@@ -520,7 +519,6 @@ export function MessageBrowser({
     keepSelection.current = true
     latest(view)
   }, [liveLast, busy]) // eslint-disable-line react-hooks/exhaustive-deps
-  /* eslint-enable react-hooks/set-state-in-effect */
   const toggleLive = (): void => {
     if (live) {
       setLive(false)

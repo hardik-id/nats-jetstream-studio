@@ -97,7 +97,15 @@ function gatewayWithRequest(): FakeGateway {
 function Host(): ReactNode {
   const tab = useTabs((s) => s.tabs.find((t) => t.spec.kind === 'trace'))
   if (!tab || tab.spec.kind !== 'trace') return null
-  return <TraceTab tabId={tab.id} connId={tab.spec.connId} query={tab.spec.query} />
+  return (
+    <TraceTab
+      tabId={tab.id}
+      connId={tab.spec.connId}
+      query={tab.spec.query}
+      view={tab.spec.view}
+      viewSettings={tab.spec.viewSettings}
+    />
+  )
 }
 
 function setup(gateway: FakeGateway): void {
@@ -123,12 +131,19 @@ const rowsText = (): string[] =>
     .map((r) => r.textContent ?? '')
 
 describe('PBI-138 Trace screen', () => {
-  it('explains what a trace is before anything is run, and offers no View dropdown for one view', async () => {
+  it('explains what a trace is before anything is run, and offers the views in a View dropdown', async () => {
     setup(gatewayWithRequest())
     expect(await screen.findByText('Follow a request across streams')).toBeInTheDocument()
     expect(screen.getByText(/trace id in a header/)).toBeInTheDocument()
-    expect(TRACE_VIEWS).toHaveLength(1)
-    expect(screen.queryByLabelText('View')).toBeNull()
+    const views = screen.getByRole('combobox', { name: 'View' })
+    expect(
+      within(views)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(TRACE_VIEWS.map((v) => v.label))
+    expect(views).toHaveValue('timeline')
+    // The Timeline has no controls of its own.
+    expect(screen.queryByRole('combobox', { name: 'Lane by' })).toBeNull()
     // Without an anchor the window offers the recent ranges and a custom one.
     const window = screen.getByRole('combobox', { name: 'Window' })
     expect(
@@ -495,8 +510,10 @@ describe('PBI-138 toolbar details', () => {
         onChange={onChange}
         streams={[{ name: 'ORDERS', messages: 1 }]}
         running={false}
-        viewId="timeline"
+        view={TRACE_VIEWS[0]}
+        viewSettings={{}}
         onViewChange={() => {}}
+        onViewSettingChange={() => {}}
         onRun={() => {}}
         onCancel={() => {}}
       />
@@ -518,5 +535,254 @@ describe('PBI-138 toolbar details', () => {
     await userEvent.click(screen.getByRole('button', { name: 'More' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /Include system streams/ }))
     expect(seen[0]).toMatchObject({ includeSystem: false, streams: ['ORDERS'] })
+  })
+})
+
+describe('PBI-138 phase 2: Lanes view', () => {
+  /** Four messages of one request: orders.101.new, pay.charge, ship.pack, orders.102.new (7 s later). */
+  function gatewayForLanes(extra?: (g: FakeGateway) => void): FakeGateway {
+    const gateway = createFakeGateway({ connections: [{ id: 'dev', name: 'Dev' }] })
+    const h: [string, string][] = [['trace-id', 'abc']]
+    const put = (name: string, subject: string, seconds: number, seq: number): void => {
+      const s = gateway.streams.get(name)!
+      s.messages.push({ seq, subject, payload: '{}', time: ago(seconds), headers: h })
+    }
+    for (const name of ['ORDERS', 'PAY', 'SHIP'])
+      gateway.streams.set(name, { config: stream(name), messages: [], consumers: [] })
+    put('ORDERS', 'orders.101.new', 100, 1)
+    put('PAY', 'pay.charge', 98, 1)
+    put('SHIP', 'ship.pack', 97, 1)
+    put('ORDERS', 'orders.102.new', 90, 2)
+    extra?.(gateway)
+    return gateway
+  }
+
+  async function openLanes(
+    user: ReturnType<typeof userEvent.setup>,
+    gateway = gatewayForLanes()
+  ): Promise<HTMLElement> {
+    setup(gateway)
+    await runHeader(user)
+    await screen.findByRole('table', { name: 'Trace timeline' })
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'lanes')
+    return screen.findByRole('listbox', { name: 'Trace lanes' })
+  }
+  const labels = (): string[] =>
+    screen.getAllByTestId('lane-label').map((e) => e.textContent!.replace(/\u00d7\d+$/, ''))
+  const dots = (): HTMLElement[] =>
+    within(screen.getByRole('listbox', { name: 'Trace lanes' })).getAllByRole('option')
+  const selectedDots = (): number[] =>
+    dots().flatMap((d, i) => (d.getAttribute('aria-selected') === 'true' ? [i] : []))
+  const tab = () =>
+    useTabs.getState().tabs[0].spec as Extract<
+      ReturnType<typeof useTabs.getState>['tabs'][number]['spec'],
+      { kind: 'trace' }
+    >
+
+  it('switches to Lanes from the View dropdown: lanes grouped by subject, one dot per message, own controls', async () => {
+    const user = userEvent.setup()
+    const box = await openLanes(user)
+    expect(box).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Trace timeline' })).toBeNull()
+    // Lanes in order of first appearance; the two orders subjects share a lane by default.
+    expect(labels()).toEqual(['orders.*.new', 'pay.charge', 'ship.pack'])
+    expect(screen.getAllByTestId('lane-label')[0].textContent).toContain('\u00d72')
+    expect(dots()).toHaveLength(4)
+    expect(screen.getAllByTestId(/^lane-link/)).toHaveLength(3)
+    // The controls of the view are next to the dropdown, with their defaults.
+    expect(screen.getByRole('combobox', { name: 'Lane by' })).toHaveValue('subject')
+    expect(screen.getByRole('combobox', { name: 'Scale' })).toHaveValue('steps')
+    expect(tab().view).toBe('lanes')
+    // Back to the Timeline: the controls go away.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'timeline')
+    expect(screen.queryByRole('combobox', { name: 'Lane by' })).toBeNull()
+    expect(await screen.findByRole('table', { name: 'Trace timeline' })).toBeInTheDocument()
+  })
+
+  it('every dot has an accessible name, and the slowest hop is named in text', async () => {
+    const user = userEvent.setup()
+    const box = await openLanes(user)
+    const names = dots().map((d) => d.getAttribute('aria-label')!)
+    expect(names[0]).toMatch(/^orders\.101\.new, ORDERS, \d\d:\d\d:\d\d\.\d{3}, first message$/)
+    expect(names[1]).toMatch(
+      /^pay\.charge, PAY, \d\d:\d\d:\d\d\.\d{3}, \+2\.0 s after the previous message$/
+    )
+    expect(names[3]).toMatch(/\+7\.0 s after the previous message, slowest hop$/)
+    // The summary is the text alternative, and the slowest link has a visible tag.
+    const summary = document.getElementById(box.getAttribute('aria-describedby')!)!
+    expect(summary).toHaveTextContent(/4 messages in 3 lanes by subject, one column per message/)
+    expect(summary).toHaveTextContent('Slowest hop: +7.0 s before orders.102.new')
+    const slow = screen.getByTestId('lane-link-slowest')
+    expect(within(slow as unknown as HTMLElement).getByText('SLOWEST')).toBeInTheDocument()
+    expect(within(slow as unknown as HTMLElement).getByText('+7.0 s')).toBeInTheDocument()
+  })
+
+  it('Lane by stream and the scale are view settings kept in the tab spec', async () => {
+    const user = userEvent.setup()
+    await openLanes(user)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Lane by' }), 'stream')
+    expect(labels()).toEqual(['ORDERS', 'PAY', 'SHIP'])
+    const firstX = (): string[] => dots().map((d) => d.querySelector('circle')!.getAttribute('cx')!)
+    const steps = firstX()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Scale' }), 'time')
+    expect(firstX()).not.toEqual(steps)
+    expect(screen.getByText(/spaced by time/)).toBeInTheDocument()
+    expect(tab().viewSettings).toEqual({ laneBy: 'stream', scale: 'time' })
+    // Group similar subjects is in More; off, each subject has its own lane.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Lane by' }), 'subject')
+    expect(labels()).toHaveLength(3)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('checkbox', { name: /Group similar subjects/ }))
+    expect(labels()).toEqual(['orders.101.new', 'pay.charge', 'ship.pack', 'orders.102.new'])
+    expect(tab().viewSettings).toMatchObject({ groupSubjects: false })
+    // The real subject is kept in the name of the dot.
+    expect(dots()[3].getAttribute('aria-label')).toContain('orders.102.new')
+  })
+
+  it('moves through the messages with the keyboard: arrows select, Enter opens, the pane follows', async () => {
+    const user = userEvent.setup()
+    const box = await openLanes(user)
+    box.focus()
+    expect(selectedDots()).toEqual([])
+    await user.keyboard('{ArrowRight}')
+    expect(selectedDots()).toEqual([0])
+    expect(box).toHaveAttribute('aria-activedescendant', dots()[0].id)
+    expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    await user.keyboard('{ArrowRight}')
+    expect(selectedDots()).toEqual([1])
+    await user.keyboard('{ArrowLeft}{ArrowLeft}')
+    expect(selectedDots()).toEqual([0]) // stops at the first
+    // Down: the nearest message of the next lane, twice, then Up.
+    await user.keyboard('{ArrowDown}')
+    expect(selectedDots()).toEqual([1])
+    await user.keyboard('{ArrowDown}')
+    expect(selectedDots()).toEqual([2])
+    await user.keyboard('{ArrowDown}')
+    expect(selectedDots()).toEqual([2]) // last lane: stays
+    await user.keyboard('{ArrowUp}')
+    expect(selectedDots()).toEqual([1])
+    await user.keyboard('{End}')
+    expect(selectedDots()).toEqual([3])
+    await user.keyboard('{ArrowRight}')
+    expect(selectedDots()).toEqual([3])
+    await user.keyboard('{Home}')
+    expect(selectedDots()).toEqual([0])
+    // Enter opens the detail; then the arrows move it.
+    await user.keyboard('{Enter}')
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    expect(within(panel).getAllByText('orders.101.new').length).toBeGreaterThan(0)
+    await user.keyboard('{ArrowRight}')
+    expect(within(panel).getAllByText('pay.charge').length).toBeGreaterThan(0)
+    // The view is one tab stop: the dots are not focusable.
+    expect(dots().every((d) => !d.hasAttribute('tabindex'))).toBe(true)
+    // Closing the pane gives the focus back to the lanes.
+    await user.click(within(panel).getByRole('button', { name: 'Close message detail' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    )
+    expect(screen.getByRole('listbox', { name: 'Trace lanes' })).toHaveFocus()
+  })
+
+  it('a click on a dot selects it and opens the detail; the tooltip names the message', async () => {
+    const user = userEvent.setup()
+    await openLanes(user)
+    await user.hover(dots()[1])
+    const tip = await screen.findByTestId('lane-tooltip')
+    expect(tip).toHaveTextContent('pay.charge')
+    expect(tip).toHaveTextContent('PAY #1')
+    expect(tip).toHaveTextContent('+2.0 s after the previous message')
+    expect(tip).toHaveTextContent('No consumers')
+    await user.click(dots()[1])
+    expect(selectedDots()).toEqual([1])
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    expect(within(panel).getAllByText('pay.charge').length).toBeGreaterThan(0)
+  })
+
+  it('keeps the selection and the open detail when the view changes', async () => {
+    const user = userEvent.setup()
+    await openLanes(user)
+    await user.click(dots()[2])
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    expect(within(panel).getAllByText('ship.pack').length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'timeline')
+    const rows = (await screen.findAllByRole('row')).slice(1)
+    expect(rows[2]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('complementary', { name: 'Message detail' })).toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'lanes')
+    expect(selectedDots()).toEqual([2])
+    expect(screen.getByRole('complementary', { name: 'Message detail' })).toBeInTheDocument()
+  })
+
+  it('restores the view and its settings from the tab spec, and keeps them when the trace runs again', async () => {
+    const user = userEvent.setup()
+    const gateway = gatewayForLanes()
+    renderWithGateway(<Host />, gateway)
+    act(() =>
+      useTabs.getState().openNew({
+        kind: 'trace',
+        connId: 'dev',
+        query: {
+          rules: [{ kind: 'header', key: 'trace-id', value: 'abc' }],
+          window: { kind: 'last', ms: 3_600_000 }
+        },
+        view: 'lanes',
+        viewSettings: { laneBy: 'stream', scale: 'time', groupSubjects: false }
+      })
+    )
+    await screen.findByRole('listbox', { name: 'Trace lanes' })
+    expect(screen.getByRole('combobox', { name: 'View' })).toHaveValue('lanes')
+    expect(screen.getByRole('combobox', { name: 'Lane by' })).toHaveValue('stream')
+    expect(screen.getByRole('combobox', { name: 'Scale' })).toHaveValue('time')
+    expect(labels()).toEqual(['ORDERS', 'PAY', 'SHIP'])
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(dots()).toHaveLength(4))
+    expect(screen.getByRole('combobox', { name: 'Lane by' })).toHaveValue('stream')
+    await user.click(screen.getByRole('button', { name: 'Run trace' }))
+    await waitFor(() => expect(dots()).toHaveLength(4))
+    expect(tab().view).toBe('lanes')
+    // A stored value that is not valid falls back to the default instead of breaking the view.
+    act(() =>
+      useTabs.getState().patch('trace:dev:1', { viewSettings: { laneBy: 'x', scale: 1 as never } })
+    )
+    await waitFor(() => expect(labels()).toEqual(['orders.*.new', 'pay.charge', 'ship.pack']))
+    // An unknown view id shows the first view.
+    act(() => useTabs.getState().patch('trace:dev:1', { view: 'graph' }))
+    expect(await screen.findByRole('table', { name: 'Trace timeline' })).toBeInTheDocument()
+  })
+
+  it('works with one message and with two', async () => {
+    const user = userEvent.setup()
+    const g = gatewayForLanes((gw) => {
+      gw.streams.get('PAY')!.messages = []
+      gw.streams.get('SHIP')!.messages = []
+      gw.streams.get('ORDERS')!.messages.pop()
+    })
+    await openLanes(user, g)
+    expect(dots()).toHaveLength(1)
+    expect(screen.queryByTestId('lane-link')).toBeNull()
+    expect(screen.getByText(/1 message in 1 lane by subject/)).toBeInTheDocument()
+    expect(screen.queryByText(/Slowest hop/)).toBeNull()
+  })
+
+  it('draws at most 1,000 messages and says so', async () => {
+    const user = userEvent.setup()
+    const g = gatewayForLanes((gw) => {
+      for (const [name, base] of [
+        ['ORDERS', 10],
+        ['PAY', 500],
+        ['SHIP', 900]
+      ] as const)
+        for (let i = 0; i < 400; i++)
+          gw.streams.get(name)!.messages.push({
+            seq: base + i,
+            subject: `${name.toLowerCase()}.${i % 7}.ev`,
+            payload: '{}',
+            time: ago(80 - i / 10),
+            headers: [['trace-id', 'abc']]
+          })
+    })
+    await openLanes(user, g)
+    await waitFor(() => expect(dots().length).toBe(1000))
+    expect(screen.getByText(/Showing the first 1,000 of 1,204 messages/)).toBeInTheDocument()
   })
 })

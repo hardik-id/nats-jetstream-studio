@@ -921,7 +921,7 @@ Each item below is small enough for one agent in one session. Rules for every it
 **Story:** As a user who reads messages more than anything else, I want Messages in the left panel with a stream picker, so that I do not have to open a stream first and every "browse messages" link lands in the same place.
 
 **Acceptance criteria**
-- "Messages" is a left panel item right after Streams and a "Go to" entry in the command palette, which also offers "Browse messages in <stream>". There is one Messages tab per connection (`messages:<connId>`), reused by every link; its title is "Messages · <stream>" once a stream is chosen.
+- "Messages" is a left panel item right after Streams and a "Go to" entry in the command palette, which also offers "Browse messages in <stream>". There is one Messages tab per connection (`messages:<connId>`), reused by every link; its title is "<stream> messages" once a stream is chosen.
 - The stream, subject and sequence live in the tab, so they survive a restart. Opening it for a stream replaces a subject or sequence of the previous visit; opening it from the left panel keeps what it shows.
 - A searchable "Stream" picker (type to filter, arrows, Enter, Escape) in the header; it works with hundreds of streams (shows 100 at a time). "Open stream" and "Refresh" next to it. Choosing a stream resets the browser's filters and paging.
 - States: no stream chosen (picker focused, "Choose a stream to browse its messages"), no streams on the connection, the chosen stream deleted (said, the stored stream cleared, picker usable), stream info error with Retry. With exactly one stream it is chosen by itself.

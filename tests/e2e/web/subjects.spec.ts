@@ -80,7 +80,7 @@ test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish
   await expect(
     page
       .getByRole('tablist', { name: 'Open tabs' })
-      .getByRole('tab', { name: `Messages · ${stream}` })
+      .getByRole('tab', { name: `${stream} messages` })
   ).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.eu.>`)
   await expect(page.getByTestId('message-range')).toContainText('4 messages')

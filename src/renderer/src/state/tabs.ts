@@ -61,7 +61,7 @@ export function tabTitle(spec: TabSpec): string {
     case 'stream':
       return spec.stream
     case 'messages':
-      return spec.stream ? `Messages · ${spec.stream}` : 'Messages'
+      return spec.stream ? `${spec.stream} messages` : 'Messages'
     case 'consumers':
       return 'Consumers'
     case 'consumer':

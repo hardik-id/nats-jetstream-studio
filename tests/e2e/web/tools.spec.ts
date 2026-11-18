@@ -113,15 +113,15 @@ test('PBI-093 keyboard navigation, help overlay and session restore', async ({ p
     'true'
   )
   await page.keyboard.press('Control+Shift+Tab')
-  await expect(tabs.getByRole('tab', { name: 'Messages · ORDERS', exact: true })).toHaveAttribute(
+  await expect(tabs.getByRole('tab', { name: 'ORDERS messages', exact: true })).toHaveAttribute(
     'aria-selected',
     'true'
   )
 
   // After a restart the tabs, the active tab, its stream and the stream page's section come back.
   await page.reload()
-  await expect(tabs.getByRole('tab')).toHaveText(['Streams', 'ORDERS', 'Messages · ORDERS'])
-  await expect(tabs.getByRole('tab', { name: 'Messages · ORDERS', exact: true })).toHaveAttribute(
+  await expect(tabs.getByRole('tab')).toHaveText(['Streams', 'ORDERS', 'ORDERS messages'])
+  await expect(tabs.getByRole('tab', { name: 'ORDERS messages', exact: true })).toHaveAttribute(
     'aria-selected',
     'true'
   )
@@ -183,7 +183,7 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await expect(page.getByTestId('consumer-pending')).toBeVisible()
   await page
     .getByRole('tablist', { name: 'Open tabs' })
-    .getByRole('tab', { name: 'Messages · ORDERS', exact: true })
+    .getByRole('tab', { name: 'ORDERS messages', exact: true })
     .click()
   await page.getByRole('button', { name: 'Saved' }).click()
   await page.getByRole('menuitem', { name: 'EU paid' }).click()
@@ -274,7 +274,7 @@ test('PBI-091 favourites and saved filters persist, export and import', async ({
   await expect(group.getByRole('button', { name: 'ORDERS / billing' })).toBeVisible()
   await page
     .getByRole('tablist', { name: 'Open tabs' })
-    .getByRole('tab', { name: 'Messages · ORDERS', exact: true })
+    .getByRole('tab', { name: 'ORDERS messages', exact: true })
     .click()
   await page.getByRole('button', { name: 'Saved' }).click()
   await page.getByRole('menuitem', { name: 'EU paid' }).click()

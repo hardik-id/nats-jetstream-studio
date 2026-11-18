@@ -823,7 +823,7 @@ test('#58 an expanded panel leaves nothing inert when the tab changes, closes or
   expect(await visibleInert(page)).toBe(0)
 
   // Back on the Messages screen the panel is still expanded and its page is inert again.
-  await openTabs.getByRole('tab', { name: `Messages · ${stream}`, exact: true }).click()
+  await openTabs.getByRole('tab', { name: `${stream} messages`, exact: true }).click()
   await expect(detail.getByRole('button', { name: 'Restore panel size' })).toBeVisible()
   expect(await visibleInert(page)).toBeGreaterThan(0)
 

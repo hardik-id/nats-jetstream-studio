@@ -12,9 +12,7 @@ describe('PBI-128 Messages tab model', () => {
     expect(tabId({ kind: 'messages', connId: 'dev' })).toBe('messages:dev')
     expect(tabId({ kind: 'messages', connId: 'dev', stream: 'ORDERS' })).toBe('messages:dev')
     expect(tabTitle({ kind: 'messages', connId: 'dev' })).toBe('Messages')
-    expect(tabTitle({ kind: 'messages', connId: 'dev', stream: 'ORDERS' })).toBe(
-      'Messages · ORDERS'
-    )
+    expect(tabTitle({ kind: 'messages', connId: 'dev', stream: 'ORDERS' })).toBe('ORDERS messages')
   })
 
   it('reuses the tab and clears a stale subject or sequence when opened for a stream', () => {

@@ -250,7 +250,7 @@ test('PBI-128 the stream page has no Messages section and browses in the Message
   ])
   await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
   const tabs = page.getByRole('tablist', { name: 'Open tabs' })
-  await expect(tabs.getByRole('tab', { name: 'Messages · ORDERS', exact: true })).toHaveAttribute(
+  await expect(tabs.getByRole('tab', { name: 'ORDERS messages', exact: true })).toHaveAttribute(
     'aria-selected',
     'true'
   )
@@ -264,7 +264,7 @@ test('PBI-128 the stream page has no Messages section and browses in the Message
   await openStream(page, 'EVENTS')
   await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
   await expect(streamPicker(page)).toHaveValue('EVENTS')
-  await expect(tabs.getByRole('tab', { name: /^Messages/ })).toHaveCount(1)
+  await expect(tabs.getByRole('tab', { name: / messages$/ })).toHaveCount(1)
   await page.getByRole('button', { name: 'Open stream', exact: true }).click()
   await expect(tabs.getByRole('tab', { name: 'EVENTS', exact: true })).toHaveAttribute(
     'aria-selected',

@@ -3,7 +3,8 @@ import type { JetStreamManager } from '@nats-io/jetstream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { MessageDto, ScanEvent, ScanRequest } from '@shared/api'
 import { messageConsumerStatus } from '@shared/messageConsumers'
-import { MINUTE, headerRule, ruleToCondition, windowFor, type TraceQuery } from '@shared/trace'
+import { MINUTE, headerRule, type TraceQuery } from '@shared/trace'
+import { runTrace, type TraceGateway } from '@renderer/features/trace/model/collect'
 import { collect, createHarness, uniqueName, type Harness } from '../helpers/studio'
 
 let h: Harness
@@ -75,18 +76,18 @@ describe('PBI-138 scan end bound', () => {
     await jsm.streams.delete(name)
   })
 
-  it('does not bound a descending scan', async () => {
+  it('refuses an end time on a descending scan', async () => {
     const { js } = await h.client()
     const name = uniqueName('UNTILD')
     await jsm.streams.add({ name, subjects: [`${name}.>`] })
     await js.publish(`${name}.x`, 'a')
-    await js.publish(`${name}.x`, 'b')
     const r = await scan(name, {
       direction: 'desc',
       start: { kind: 'last' },
-      until: new Date(Date.now() - 60_000).toISOString()
+      until: new Date().toISOString()
     })
-    expect(r.matches).toHaveLength(2)
+    expect(r.done.reason).toBe('error')
+    expect(r.done.error?.kind).toBe('validation')
     await jsm.streams.delete(name)
   })
 })
@@ -117,21 +118,14 @@ describe('PBI-138 a trace across three streams', () => {
     await js.publish(`${pay}.noise`, '{"amount":99}', hdr('other-' + tag))
     await js.publish(`${ship}.pack`, JSON.stringify({ ref: { order: tag }, sku: 'A' }))
 
-    // The same fan-out the renderer does: one scan per stream and rule, merged by (stream, seq).
+    // The renderer's own fan-out (runTrace), over the real service.
+    const gateway = {
+      open: (channel, args, on) => h.service.open(channel, args, on),
+      listStreams: (connId) => h.service.listStreams(connId)
+    } as TraceGateway
     const run = async (query: TraceQuery, names = [orders, pay, ship]) => {
-      const window = windowFor(query.window, Date.now())
-      const found: { stream: string; m: MessageDto }[] = []
-      for (const stream of names)
-        for (const rule of query.rules) {
-          const r = await scan(stream, {
-            start: { kind: 'time', time: window.from },
-            until: window.to,
-            filters: { conditions: [ruleToCondition(rule)] }
-          })
-          for (const m of r.matches) found.push({ stream, m })
-        }
-      const unique = new Map(found.map((f) => [`${f.stream}#${f.m.seq}`, f]))
-      return [...unique.values()].sort((a, b) => a.m.time.localeCompare(b.m.time))
+      const result = await runTrace(gateway, id, { ...query, streams: names })
+      return result.messages.map((m) => ({ stream: m.stream, m }))
     }
     const window = { kind: 'last', ms: 10 * MINUTE } as const
 

@@ -21,8 +21,10 @@ import {
   compareMessages,
   mergeMessages,
   runTrace,
+  type StreamProgress,
   type TraceGateway
 } from '@renderer/features/trace/model/collect'
+import { TraceRunner } from '@renderer/features/trace/useTrace'
 import { buildTrace, formatSpan, messageId } from '@renderer/features/trace/model/trace'
 
 const T0 = Date.parse('2026-03-01T10:00:00.000Z')
@@ -53,12 +55,18 @@ function tm(stream: string, seq: number, ms: number, subject = 's'): TraceMessag
 /** A fake gateway: every stream holds messages, and the scan filters them like the server does. */
 function fakeGateway(
   streams: Record<string, MessageDto[]>,
-  opts: { fail?: string[]; delay?: number } = {}
-): TraceGateway & { requests: { stream: string; request: ScanRequest }[]; maxRunning: number } {
+  opts: { fail?: string[]; throwOn?: string[]; delay?: number } = {}
+): TraceGateway & {
+  requests: { stream: string; request: ScanRequest }[]
+  maxRunning: number
+  /** Scans that were closed by the caller before they finished. */
+  stops: number
+} {
   let running = 0
   const gw = {
     requests: [] as { stream: string; request: ScanRequest }[],
     maxRunning: 0,
+    stops: 0,
     listStreams: async () =>
       Object.keys(streams).map((name) => ({ config: { name } }) as unknown as StreamInfoDto),
     open<K extends keyof GatewayStreams>(
@@ -69,6 +77,7 @@ function fakeGateway(
       const { stream, request } = args as GatewayStreams['scan']['args']
       const emit = onEvent as (e: GatewayStreams['scan']['event']) => void
       gw.requests.push({ stream, request })
+      if (opts.throwOn?.includes(stream)) throw new Error(`cannot open ${stream}`)
       running++
       gw.maxRunning = Math.max(gw.maxRunning, running)
       let open = true
@@ -122,6 +131,7 @@ function fakeGateway(
         })
       }, opts.delay ?? 0)
       return () => {
+        if (open) gw.stops++
         if (open && running > 0) running--
         open = false
       }
@@ -253,6 +263,49 @@ describe('PBI-138 collecting across streams', () => {
     expect(scanLimited.streams[0].partial).toBe('limit')
   })
 
+  it('keeps exactly the cap without calling it partial, and one more is partial', async () => {
+    const make = (n: number): MessageDto[] =>
+      Array.from({ length: n }, (_, i) => dto(i + 1, 's', i, hdr('a')))
+    const q = query([headerRule('trace-id', 'a')])
+    const exact = await runTrace(fakeGateway({ S: make(10) }), 'c', q, { matchCap: 10 })
+    expect(exact.messages).toHaveLength(10)
+    expect(exact.streams[0].partial).toBeUndefined()
+    expect(exact.matchCap).toBe(10)
+    const gw = fakeGateway({ S: make(11) })
+    const over = await runTrace(gw, 'c', q, { matchCap: 10 })
+    expect(over.messages).toHaveLength(10)
+    expect(over.streams[0]).toMatchObject({ partial: 'cap', matched: 10 })
+    expect(gw.requests[0].request.limit).toBe(11)
+  })
+
+  it('searches nothing when there are no streams', async () => {
+    const result = await runTrace(fakeGateway({}), 'c', query([headerRule('trace-id', 'a')]))
+    expect(result).toMatchObject({ messages: [], streams: [], cancelled: false })
+  })
+
+  it("a scan that cannot be opened is that stream's error; the others keep their results", async () => {
+    const gw = fakeGateway(data(), { throwOn: ['PAY'] })
+    const result = await runTrace(gw, 'c', query([headerRule('trace-id', 'a')]))
+    expect(result.messages.map(messageId)).toEqual(['ORDERS#1', 'SHIP#4'])
+    expect(result.streams.find((s) => s.stream === 'PAY')).toMatchObject({
+      state: 'error',
+      error: 'cannot open PAY'
+    })
+    expect(result.streams.find((s) => s.stream === 'SHIP')?.state).toBe('done')
+  })
+
+  it('reports progress at a limited rate and always ends with the final state', async () => {
+    const streams = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`S${i}`, [dto(1, 's', 0, hdr('a'))]])
+    )
+    const seen: StreamProgress[][] = []
+    await runTrace(fakeGateway(streams), 'c', query([headerRule('trace-id', 'a')]), {
+      onProgress: (s) => seen.push(s)
+    })
+    expect(seen.length).toBeLessThan(10)
+    expect(seen.at(-1)!.every((s) => s.state === 'done' && s.matched === 1)).toBe(true)
+  })
+
   it('runs at most three scans at once', async () => {
     const streams = Object.fromEntries(
       ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((n) => [n, [dto(1, 's', 0, hdr('a'))]])
@@ -281,6 +334,7 @@ describe('PBI-138 collecting across streams', () => {
     const result = await run
     expect(result.cancelled).toBe(true)
     expect(gw.requests).toHaveLength(3)
+    expect(gw.stops).toBe(3)
     expect(result.messages).toHaveLength(0)
     // Nothing started after the abort.
     await new Promise((r) => setTimeout(r, 60))
@@ -362,5 +416,29 @@ describe('PBI-138 building the trace', () => {
     expect(formatSpan(125_000)).toBe('2 min 5 s')
     expect(formatSpan(HOUR + 3 * MINUTE)).toBe('1 h 3 min')
     expect(formatSpan(DAY + 4 * HOUR)).toBe('1 d 4 h')
+  })
+})
+
+describe('PBI-138 the runner', () => {
+  it('closes the scans of a run that is replaced by a newer one', async () => {
+    const streams = { A: [dto(1, 's', 0, hdr('a'))], B: [dto(1, 's', 0, hdr('a'))] }
+    const gw = fakeGateway(streams, { delay: 30 })
+    const runner = new TraceRunner()
+    const q = query([headerRule('trace-id', 'a')])
+    runner.start(gw, 'c', q)
+    await new Promise((r) => setTimeout(r, 5))
+    expect(gw.requests).toHaveLength(2)
+    runner.start(gw, 'c', { ...q })
+    // The first run's two open scans were closed; the second run opens its own.
+    expect(gw.stops).toBe(2)
+    await new Promise((r) => setTimeout(r, 80))
+    expect(runner.getSnapshot()).toMatchObject({ status: 'done' })
+    expect(runner.getSnapshot().messages).toHaveLength(2)
+    // reset (a closed tab) stops a run that is going.
+    runner.start(gw, 'c', { ...q })
+    await new Promise((r) => setTimeout(r, 5))
+    const before = gw.stops
+    runner.reset()
+    expect(gw.stops).toBe(before + 2)
   })
 })

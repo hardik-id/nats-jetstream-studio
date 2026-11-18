@@ -9,6 +9,8 @@ export interface TraceRunState {
   status: TraceStatus
   streams: StreamProgress[]
   messages: TraceMessage[]
+  /** The match cap the run used. */
+  matchCap?: number
   /** A failure that is not one stream's (the stream list could not be read). */
   error?: string
   /** When the run started: what a "last 24 h" window counted back from. */
@@ -65,11 +67,13 @@ export class TraceRunner {
           status: result.cancelled ? 'cancelled' : 'done',
           streams: result.streams,
           messages: result.messages,
+          matchCap: result.matchCap,
           startedAt
         })
       })
       .catch((err: unknown) => {
         if (!current()) return
+        abort.abort()
         this.set({
           status: 'failed',
           streams: [],

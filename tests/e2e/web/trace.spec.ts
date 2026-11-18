@@ -66,10 +66,13 @@ test('PBI-138 follow a request across three streams from an open message', async
   await expect(hops.nth(1)).toContainText('billing')
   await expect(page.getByText(/3 messages · 3 subjects · 3 streams/)).toBeVisible()
 
-  // Keyboard: the arrows move the selection, the detail follows.
+  // Keyboard: the arrows only move the selection, Enter opens the detail, which then follows.
   await timeline.focus()
   await page.keyboard.press('ArrowDown')
+  await expect(hops.nth(0)).toHaveAttribute('aria-selected', 'true')
   const panel = page.getByRole('complementary', { name: 'Message detail' })
+  await expect(panel).toHaveCount(0)
+  await page.keyboard.press('Enter')
   await expect(panel).toContainText(`${orders}.new`)
   await page.keyboard.press('ArrowDown')
   await expect(hops.nth(1)).toHaveAttribute('aria-selected', 'true')

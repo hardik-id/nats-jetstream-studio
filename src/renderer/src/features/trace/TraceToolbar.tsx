@@ -13,6 +13,7 @@ import {
 } from '@shared/trace'
 import { Button, Checkbox, Input, Select } from '../../components/ui'
 import type { StreamOption } from '../messages/StreamPicker'
+import { isSystemStream } from '../subjects/subjectTree'
 import { Popover } from './Popover'
 import { RuleRow } from './RuleRow'
 import { StreamsMenu } from './StreamsMenu'
@@ -63,9 +64,18 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function fromLocalInput(text: string): string {
+/** The ISO time of `datetime-local` text; an end covers the whole minute it names (to :59.999). */
+function fromLocalInput(text: string, end = false): string {
   const d = new Date(text)
-  return Number.isNaN(d.getTime()) ? '' : d.toISOString()
+  if (Number.isNaN(d.getTime())) return ''
+  if (end) d.setSeconds(59, 999)
+  return d.toISOString()
+}
+
+/** An explicit stream choice without the system streams; nothing left means "all". */
+function withoutSystem(streams: string[] | undefined): string[] | undefined {
+  const kept = streams?.filter((n) => !isSystemStream(n))
+  return kept && kept.length > 0 ? kept : undefined
 }
 
 /** A new, empty rule of the kind people reach for first. */
@@ -234,7 +244,7 @@ export function TraceToolbar({
               className="w-48"
               aria-label="Window end"
               value={toLocalInput(w.to)}
-              onChange={(e) => set({ window: { ...w, to: fromLocalInput(e.target.value) } })}
+              onChange={(e) => set({ window: { ...w, to: fromLocalInput(e.target.value, true) } })}
             />
           </>
         )}
@@ -265,7 +275,8 @@ export function TraceToolbar({
               onChange={(e) =>
                 set({
                   includeSystem: e.target.checked,
-                  streams: e.target.checked ? draft.streams : undefined
+                  // Switching system streams off drops only them from an explicit choice.
+                  streams: e.target.checked ? draft.streams : withoutSystem(draft.streams)
                 })
               }
             />

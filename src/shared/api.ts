@@ -402,8 +402,9 @@ export interface ScanRequest extends MessageQuery {
   /** Stop after examining this many messages. */
   scanLimit: number
   /**
-   * Ascending scans only: stop at the first message stored after this ISO time (PBI-138). The scan
-   * then ends with reason `until`. Together with a `time` start it bounds a window.
+   * Ascending scans only (a descending scan with `until` is refused as a validation error): stop at
+   * the first message stored after this ISO time (PBI-138). The scan then ends with reason `until`.
+   * Together with a `time` start it bounds a window.
    */
   until?: string
 }

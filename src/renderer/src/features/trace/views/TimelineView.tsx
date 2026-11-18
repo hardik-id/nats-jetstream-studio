@@ -61,7 +61,7 @@ function Consumers({ hop }: { hop: TraceHop }): ReactNode {
 /**
  * One row per message in time order (PBI-138). The gap bar makes the slow hop stand out. Rows are
  * virtualized by the shared table, which also gives the keyboard: arrows move the selection and
- * Enter opens the detail.
+ * Enter opens the detail (and so does a click).
  */
 export function TimelineView({ trace, selected, onSelect, onOpen }: TraceViewProps): ReactNode {
   // A trace within one day shows the time only (the date is in the tooltip).
@@ -121,6 +121,7 @@ export function TimelineView({ trace, selected, onSelect, onOpen }: TraceViewPro
       rowKey={(h) => h.id}
       selectedKey={selected}
       onSelect={(h) => onSelect(h.id)}
+      onRowClick={(h) => onOpen(h.id)}
       onOpen={(h) => onOpen(h.id)}
       compact
     />

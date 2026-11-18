@@ -921,6 +921,8 @@ export class StudioService implements GatewayMethods {
         if (request.until !== undefined) {
           until = new Date(request.until).getTime()
           if (Number.isNaN(until)) throw gatewayError('validation', 'End time is not a valid date')
+          if (request.direction !== 'asc')
+            throw gatewayError('validation', 'An end time needs a scan that walks forwards (asc)')
         }
         const { reader, bounds } = await this.reader(this.conn(connId), stream)
         if (bounds.messages === 0) return done('end')

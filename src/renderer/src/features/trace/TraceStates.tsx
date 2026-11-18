@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, Route, XCircle } from 'lucide-react'
 import { formatCount } from '@shared/format'
-import { DEFAULT_MATCH_CAP, scanLimitOf, type TraceQuery } from '@shared/trace'
+import { scanLimitOf, type TraceQuery } from '@shared/trace'
 import { Button, EmptyState, Notice } from '../../components/ui'
 import type { StreamProgress } from './model/collect'
 
@@ -116,18 +116,30 @@ export function NoMatches({
 export function StreamNotices({
   streams,
   query,
+  cancelled,
+  matchCap,
   onScanMore
 }: {
   streams: StreamProgress[]
   query: TraceQuery
+  /** The run was cancelled: the streams that did not finish were not searched. */
+  cancelled: boolean
+  /** The cap the run used (matches kept per stream and rule). */
+  matchCap: number
   onScanMore: () => void
 }): ReactNode {
   const limited = streams.filter((s) => s.partial === 'limit')
   const capped = streams.filter((s) => s.partial === 'cap')
   const failed = streams.filter((s) => s.error)
-  if (limited.length + capped.length + failed.length === 0) return null
+  if (!cancelled && limited.length + capped.length + failed.length === 0) return null
   return (
     <div className="flex flex-col gap-2 border-b border-line px-4 py-2" data-testid="trace-notices">
+      {cancelled && (
+        <Notice tone="warn" className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+          <span>{cancelledText(streams)}. Matches in the other streams may be missing.</span>
+        </Notice>
+      )}
       {limited.length > 0 && (
         <Notice tone="warn" className="flex flex-wrap items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
@@ -144,8 +156,8 @@ export function StreamNotices({
         <Notice tone="warn" className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
           <span>
-            Partial result: {names(capped)} has more than {DEFAULT_MATCH_CAP} matches. The first{' '}
-            {DEFAULT_MATCH_CAP} are shown; narrow the window or the value to see the rest.
+            Partial result: {names(capped)} has more than {matchCap} matches. The first {matchCap}{' '}
+            are shown; narrow the window or the value to see the rest.
           </span>
         </Notice>
       )}
@@ -160,6 +172,12 @@ export function StreamNotices({
       ))}
     </div>
   )
+}
+
+/** "Cancelled: 2 of 5 streams were searched". */
+export function cancelledText(streams: StreamProgress[]): string {
+  const done = streams.filter((s) => s.state === 'done').length
+  return `Cancelled: ${done} of ${streams.length} ${streams.length === 1 ? 'stream was' : 'streams were'} searched`
 }
 
 function names(streams: StreamProgress[]): ReactNode {

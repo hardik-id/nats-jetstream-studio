@@ -1,4 +1,4 @@
-import type { ScanRequest, NatsGateway } from '@shared/api'
+import type { GatewayStreams, NatsGateway, ScanRequest } from '@shared/api'
 import {
   DEFAULT_MATCH_CAP,
   ruleToCondition,
@@ -30,6 +30,8 @@ export interface TraceResult {
   messages: TraceMessage[]
   streams: StreamProgress[]
   cancelled: boolean
+  /** The most matches kept per stream and rule; a stream over it is partial. */
+  matchCap: number
 }
 
 export interface RunOptions {
@@ -45,6 +47,8 @@ export interface RunOptions {
 }
 
 export const DEFAULT_CONCURRENCY = 3
+/** Progress is reported at most this often (the last state is always reported). */
+export const PROGRESS_MS = 100
 
 /** The streams a query searches: the ones it names, or every stream but the system ones. */
 export async function streamsToSearch(
@@ -104,13 +108,30 @@ export async function runTrace(
   // Per job: what it found so far and where it stands, summed into the stream's progress.
   const found = new Map<Job, TraceMessage[]>()
   const counts = new Map<Job, { scanned: number; running: boolean }>()
-  const report = (): void => onProgress?.(names.map((n) => ({ ...progress.get(n)! })))
+  // The distinct messages of each stream, counted as they arrive (no sorting while running).
+  const keys = new Map<string, Set<string>>(names.map((n) => [n, new Set()]))
+  const emit = (): void => onProgress?.(names.map((n) => ({ ...progress.get(n)! })))
+  let lastReport = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const report = (): void => {
+    if (!onProgress) return
+    const wait = lastReport + PROGRESS_MS - Date.now()
+    if (wait <= 0) {
+      lastReport = Date.now()
+      emit()
+    } else timer ??= setTimeout(flush, wait)
+  }
+  const flush = (): void => {
+    timer = undefined
+    lastReport = Date.now()
+    emit()
+  }
 
   const refresh = (stream: string): void => {
     const mine = jobs.filter((j) => j.stream === stream)
     const p = progress.get(stream)!
     p.scanned = mine.reduce((n, j) => n + (counts.get(j)?.scanned ?? 0), 0)
-    p.matched = mergeMessages(mine.map((j) => found.get(j) ?? [])).length
+    p.matched = keys.get(stream)!.size
     if (p.state === 'waiting' && mine.some((j) => counts.has(j))) p.state = 'scanning'
     if (mine.every((j) => counts.get(j) && !counts.get(j)!.running) && !signal?.aborted)
       p.state = p.error ? 'error' : 'done'
@@ -127,7 +148,8 @@ export async function runTrace(
         direction: 'asc',
         start: { kind: 'time', time: window.from },
         until: window.to,
-        limit: cap,
+        // One more than the cap: getting it means there are more matches than are kept.
+        limit: cap + 1,
         scanLimit,
         filters: { conditions: [conditions[job.rule]] }
       }
@@ -146,20 +168,26 @@ export async function runTrace(
       }
       if (signal?.aborted) return finish()
       signal?.addEventListener('abort', onAbort, { once: true })
-      stop = gateway.open('scan', { connId, stream: job.stream, request }, (event) => {
+      const onEvent = (event: GatewayStreams['scan']['event']): void => {
         if (!count.running) return
         if (event.type === 'matches') {
           for (const m of event.messages) {
             const ms = new Date(m.time).getTime()
             // A time start past the last message clamps to it: keep only what is in the window.
-            if (ms >= from && ms <= to) list.push({ ...m, stream: job.stream, ms })
+            if (ms < from || ms > to) continue
+            if (list.length >= cap) {
+              p.partial ??= 'cap'
+              continue
+            }
+            list.push({ ...m, stream: job.stream, ms })
+            keys.get(job.stream)!.add(`${job.stream}\u0000${m.seq}`)
           }
         } else if (event.type === 'progress') {
           count.scanned = event.scanned
         } else if (event.type === 'done') {
           count.scanned = event.scanned
           if (event.reason === 'limit') p.partial = 'limit'
-          else if (event.reason === 'page' && !p.partial) p.partial = 'cap'
+          else if (event.reason === 'page') p.partial ??= 'cap'
           if (event.reason === 'error') p.error = event.error?.message ?? 'The scan failed'
           finish()
           return
@@ -172,7 +200,15 @@ export async function runTrace(
         }
         refresh(job.stream)
         report()
-      })
+      }
+      try {
+        stop = gateway.open('scan', { connId, stream: job.stream, request }, onEvent)
+      } catch (err) {
+        // A scan that cannot be opened is this stream's error; the other streams carry on.
+        p.error = err instanceof Error ? err.message : String(err)
+        finish()
+        return
+      }
       // A stream that opened and finished while `open` ran is already done; closing is harmless.
       if (!count.running) stop()
     })
@@ -185,10 +221,13 @@ export async function runTrace(
   const workers = Math.max(1, Math.min(options.concurrency ?? DEFAULT_CONCURRENCY, jobs.length))
   await Promise.all(Array.from({ length: workers }, worker))
 
+  if (timer) clearTimeout(timer)
+  flush()
   const streams = names.map((n) => ({ ...progress.get(n)! }))
   return {
     messages: mergeMessages([...found.values()]),
     streams,
-    cancelled: signal?.aborted ?? false
+    cancelled: signal?.aborted ?? false,
+    matchCap: cap
   }
 }

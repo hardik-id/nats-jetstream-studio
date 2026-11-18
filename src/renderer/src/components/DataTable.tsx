@@ -37,6 +37,8 @@ export interface DataTableProps<T> {
   onOpen?: (row: T) => void
   /** Click or arrow keys. */
   onSelect?: (row: T) => void
+  /** A click on a row only (not the arrow keys), after `onSelect`. */
+  onRowClick?: (row: T) => void
   selectedKey?: string | number | null
   /** 32 px rows instead of 36 px. */
   compact?: boolean
@@ -64,6 +66,7 @@ export function DataTable<T>({
   ariaLabel,
   onOpen,
   onSelect,
+  onRowClick,
   selectedKey,
   compact,
   empty,
@@ -361,7 +364,10 @@ export function DataTable<T>({
                   role="row"
                   aria-rowindex={item.index + 1}
                   aria-selected={selected}
-                  onClick={() => select(item.index)}
+                  onClick={() => {
+                    select(item.index)
+                    onRowClick?.(row)
+                  }}
                   onDoubleClick={() => onOpen?.(row)}
                   className={cx(
                     'absolute top-0 left-0 grid w-full cursor-default items-center border-b border-line/60',

@@ -7,8 +7,9 @@ export interface TraceViewProps {
   trace: Trace
   /** The id of the selected message (see `messageId`), or null. */
   selected: string | null
+  /** The selection moved (arrow keys, a click). */
   onSelect: (id: string) => void
-  /** Enter or double-click on a message: show it in the detail pane. */
+  /** A click, Enter or double-click on a message: show it in the detail pane. */
   onOpen: (id: string) => void
 }
 

@@ -1,12 +1,14 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { ReactNode } from 'react'
+import type { TraceQuery } from '@shared/trace'
 import type { ConsumerInfoDto, GatewayStreams, ScanRequest } from '@shared/api'
 import { MessageDetail } from '@renderer/components/MessageDetail'
 import { openNav } from '@renderer/features/shell/nav'
 import { followQuery, followValue } from '@renderer/features/trace/followValue'
 import { TraceTab } from '@renderer/features/trace/TraceTab'
+import { TraceToolbar } from '@renderer/features/trace/TraceToolbar'
 import { TRACE_VIEWS } from '@renderer/features/trace/views/registry'
 import { createFakeGateway, type FakeGateway } from '@renderer/gateway/fake'
 import { useTabs } from '@renderer/state/tabs'
@@ -198,12 +200,15 @@ describe('PBI-138 Trace screen', () => {
     const table = await screen.findByRole('table', { name: 'Trace timeline' })
     await waitFor(() => expect(rowsText()).toHaveLength(2))
     table.focus()
+    // Arrows only move the selection: the pane stays closed.
     await user.keyboard('{ArrowDown}')
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    // Enter opens it; then it follows the selection.
+    await user.keyboard('{Enter}')
     const panel = await screen.findByRole('complementary', { name: 'Message detail' })
     expect(within(panel).getByText('Message #1')).toBeInTheDocument()
     await user.keyboard('{ArrowDown}')
-    expect(await within(panel).findByText('Message #1')).toBeInTheDocument()
-    expect(within(screen.getAllByRole('row')[2]).getByText('PAY')).toBeInTheDocument()
     expect(screen.getAllByRole('row')[2]).toHaveAttribute('aria-selected', 'true')
     // The panel shows the selected message (PAY, subject pay.charge).
     expect(within(panel).getAllByText('pay.charge').length).toBeGreaterThan(0)
@@ -213,6 +218,77 @@ describe('PBI-138 Trace screen', () => {
       stream: 'PAY',
       seq: 1
     })
+  })
+
+  it('opens the detail with a click and gives focus back to the timeline when it is closed', async () => {
+    const user = userEvent.setup()
+    setup(gatewayWithRequest())
+    await runHeader(user)
+    const table = await screen.findByRole('table', { name: 'Trace timeline' })
+    await waitFor(() => expect(rowsText()).toHaveLength(2))
+    await user.click(screen.getAllByRole('row')[2])
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    await user.click(within(panel).getByRole('button', { name: 'Close message detail' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    )
+    expect(table).toHaveFocus()
+    // Escape inside the pane does the same.
+    await user.click(screen.getAllByRole('row')[1])
+    const again = await screen.findByRole('complementary', { name: 'Message detail' })
+    within(again).getByRole('button', { name: 'Close message detail' }).focus()
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    )
+    expect(table).toHaveFocus()
+  })
+
+  it('closes its scans on Cancel and when the tab goes away', async () => {
+    const user = userEvent.setup()
+    const gateway = gatewayWithRequest()
+    let opened = 0
+    let closed = 0
+    // Scans that never finish; each close is counted once.
+    gateway.open = (() => {
+      opened++
+      let done = false
+      return () => {
+        if (!done) closed++
+        done = true
+      }
+    }) as typeof gateway.open
+    const { unmount } = renderWithGateway(<Host />, gateway)
+    act(() => openNav('dev', 'trace'))
+    await runHeader(user)
+    await screen.findByTestId('trace-progress')
+    await waitFor(() => expect(opened).toBe(3))
+    await user.click(screen.getAllByRole('button', { name: 'Cancel' })[0])
+    await waitFor(() => expect(closed).toBe(3))
+    // Run again; closing the tab stops that run's scans too.
+    await user.click(screen.getByRole('button', { name: 'Run trace' }))
+    await screen.findByTestId('trace-progress')
+    await waitFor(() => expect(opened).toBe(6))
+    unmount()
+    expect(closed).toBe(6)
+  })
+
+  it('says a cancelled run is incomplete, also when it has matches', async () => {
+    const user = userEvent.setup()
+    const gateway = gatewayWithRequest()
+    const open = gateway.open.bind(gateway)
+    gateway.open = ((channel: 'scan', args: GatewayStreams['scan']['args'], on: never) =>
+      args.stream === 'ORDERS' ? open(channel, args, on) : () => {}) as typeof gateway.open
+    setup(gateway)
+    await runHeader(user)
+    const progress = await screen.findByTestId('trace-progress')
+    await waitFor(() => expect(within(progress).getByText(/1 found/)).toBeInTheDocument())
+    await user.click(within(progress).getByRole('button', { name: 'Cancel' }))
+    const notices = await screen.findByTestId('trace-notices')
+    expect(notices).toHaveTextContent('Cancelled: 1 of 3 streams were searched')
+    expect(
+      screen.getByText(/1 message ·.*Cancelled: 1 of 3 streams were searched/)
+    ).toBeInTheDocument()
   })
 
   it('says so when nothing matches and suggests a wider window', async () => {
@@ -404,5 +480,43 @@ describe('PBI-138 follow this value', () => {
     act(() => followValue('dev', { kind: 'text', value: 'zzz' }, time))
     expect(useTabs.getState().tabs.map((t) => t.id)).toEqual(['trace:dev:1', 'trace:dev:2'])
     expect(followQuery({ kind: 'text', value: 'x' }, 0).window).toMatchObject({ kind: 'around' })
+  })
+})
+
+describe('PBI-138 toolbar details', () => {
+  const base: TraceQuery = {
+    rules: [{ kind: 'header', key: 'k', value: 'v' }],
+    window: { kind: 'range', from: '2026-03-01T10:00:00.000Z', to: '2026-03-01T11:00:00.000Z' }
+  }
+  const toolbar = (draft: TraceQuery, onChange: (q: TraceQuery) => void) =>
+    renderWithGateway(
+      <TraceToolbar
+        draft={draft}
+        onChange={onChange}
+        streams={[{ name: 'ORDERS', messages: 1 }]}
+        running={false}
+        viewId="timeline"
+        onViewChange={() => {}}
+        onRun={() => {}}
+        onCancel={() => {}}
+      />
+    )
+
+  it('makes the end of a custom range cover the whole minute', () => {
+    const seen: TraceQuery[] = []
+    toolbar(base, (q) => seen.push(q))
+    fireEvent.change(screen.getByLabelText('Window end'), { target: { value: '2026-03-01T12:15' } })
+    const to = (seen[0].window as { to: string }).to
+    const expected = new Date('2026-03-01T12:15')
+    expected.setSeconds(59, 999)
+    expect(to).toBe(expected.toISOString())
+  })
+
+  it('switching system streams off keeps the rest of an explicit choice', async () => {
+    const seen: TraceQuery[] = []
+    toolbar({ ...base, streams: ['ORDERS', 'KV_cfg'], includeSystem: true }, (q) => seen.push(q))
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Include system streams/ }))
+    expect(seen[0]).toMatchObject({ includeSystem: false, streams: ['ORDERS'] })
   })
 })

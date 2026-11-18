@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import type { ConsumerInfoDto } from '@shared/api'
 import { formatCount } from '@shared/format'
-import { scanLimitOf, validateTraceQuery, MAX_SCAN_LIMIT, type TraceQuery } from '@shared/trace'
+import {
+  DEFAULT_MATCH_CAP,
+  scanLimitOf,
+  validateTraceQuery,
+  MAX_SCAN_LIMIT,
+  type TraceQuery
+} from '@shared/trace'
 import { Button, ErrorNote, Page } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useTabActive } from '../../lib/hooks'
@@ -11,7 +17,7 @@ import { useTabs } from '../../state/tabs'
 import { isSystemStream } from '../subjects/subjectTree'
 import type { StreamOption } from '../messages/StreamPicker'
 import { buildTrace, formatSpan, type ConsumersByStream } from './model/trace'
-import { NoMatches, NothingRun, ScanProgress, StreamNotices } from './TraceStates'
+import { cancelledText, NoMatches, NothingRun, ScanProgress, StreamNotices } from './TraceStates'
 import { blankRule, DEFAULT_WINDOW, TraceToolbar } from './TraceToolbar'
 import { TraceDetail } from './TraceDetail'
 import { useTrace } from './useTrace'
@@ -46,8 +52,10 @@ export function TraceTab({
   const [problem, setProblem] = useState<string>()
   const [viewId, setViewId] = useState(TRACE_VIEWS[0].id)
   const [selected, setSelected] = useState<string | null>(null)
-  // Escape closes the detail; moving to another message (or Enter) opens it again.
-  const [dismissed, setDismissed] = useState(false)
+  // The detail pane opens on a click or Enter, then follows the selection (arrows, Previous, Next).
+  // Arrow keys alone only move the selection. Escape or Close hides it again.
+  const [paneOpen, setPaneOpen] = useState(false)
+  const tableBox = useRef<HTMLDivElement>(null)
 
   // Runs the tab's query when the tab is shown, once per query object. This is the one place a
   // trace starts from state; Run only changes the spec.
@@ -96,11 +104,13 @@ export function TraceTab({
     // A copy, so that running the same draft again is a new query for the effect above.
     patch(tabId, { query: { ...draft } })
     setSelected(null)
+    setPaneOpen(false)
   }
   const cancel = (): void => runner.cancel()
   const refresh = (): void => {
     if (query) runner.start(gateway, connId, query)
     setSelected(null)
+    setPaneOpen(false)
   }
   const scanMore = (): void => {
     if (!query) return
@@ -115,19 +125,24 @@ export function TraceTab({
   const hops = trace.hops
   const selectedIndex = selected === null ? -1 : hops.findIndex((h) => h.id === selected)
   const hop = selectedIndex >= 0 ? hops[selectedIndex] : null
-  const select = (id: string): void => {
-    if (id !== selected) setDismissed(false)
-    setSelected(id)
+  const select = (id: string): void => setSelected(id)
+  const closePane = (): void => {
+    setPaneOpen(false)
+    // The pane (and the focus in it) goes away: keep the keyboard in the timeline.
+    tableBox.current?.querySelector<HTMLElement>('[role=table]')?.focus()
   }
 
+  const cancelledNote = state.status === 'cancelled' ? ` · ${cancelledText(state.streams)}` : ''
+  const found =
+    hops.length === 0
+      ? 'No messages found'
+      : `${formatCount(hops.length)} ${hops.length === 1 ? 'message' : 'messages'} · ${trace.subjects} ${trace.subjects === 1 ? 'subject' : 'subjects'} · ${trace.streams.length} ${trace.streams.length === 1 ? 'stream' : 'streams'}${hops.length > 1 ? ` · ${formatSpan(trace.durationMs)} end to end` : ''}`
   const subtitle =
     state.status === 'idle'
       ? 'Follow a header or a JSON value across the streams'
       : running
         ? 'Searching...'
-        : hops.length === 0
-          ? 'No messages found'
-          : `${formatCount(hops.length)} ${hops.length === 1 ? 'message' : 'messages'} · ${trace.subjects} ${trace.subjects === 1 ? 'subject' : 'subjects'} · ${trace.streams.length} ${trace.streams.length === 1 ? 'stream' : 'streams'}${hops.length > 1 ? ` · ${formatSpan(trace.durationMs)} end to end` : ''}`
+        : found + cancelledNote
 
   let body: ReactNode
   if (state.status === 'idle') body = <NothingRun />
@@ -141,23 +156,23 @@ export function TraceTab({
       // Side by side when there is room (container width, not the window's), else stacked.
       <div className="@container min-h-0 flex-1">
         <div className="flex h-full min-h-0 flex-col @5xl:flex-row">
-          <div className="min-h-32 min-w-0 flex-1">
+          <div ref={tableBox} className="min-h-32 min-w-0 flex-1">
             <View
               trace={trace}
               selected={selected}
               onSelect={select}
               onOpen={(id) => {
                 select(id)
-                setDismissed(false)
+                setPaneOpen(true)
               }}
             />
           </div>
-          {hop && !dismissed && (
+          {hop && paneOpen && (
             <div className="h-[55%] shrink-0 @5xl:h-auto @5xl:w-[44%] @5xl:max-w-[720px] @5xl:min-w-[380px]">
               <TraceDetail
                 connId={connId}
                 message={hop.message}
-                onClose={() => setDismissed(true)}
+                onClose={closePane}
                 onPrevious={
                   selectedIndex > 0 ? () => select(hops[selectedIndex - 1].id) : undefined
                 }
@@ -204,7 +219,13 @@ export function TraceTab({
         onCancel={cancel}
       />
       {!running && state.status !== 'idle' && state.status !== 'failed' && query && (
-        <StreamNotices streams={state.streams} query={query} onScanMore={scanMore} />
+        <StreamNotices
+          streams={state.streams}
+          query={query}
+          cancelled={state.status === 'cancelled'}
+          matchCap={state.matchCap ?? DEFAULT_MATCH_CAP}
+          onScanMore={scanMore}
+        />
       )}
       <div className="flex min-h-0 flex-1 flex-col">{body}</div>
     </Page>

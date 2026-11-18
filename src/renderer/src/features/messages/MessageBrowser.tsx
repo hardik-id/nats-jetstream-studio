@@ -104,6 +104,8 @@ interface Outcome {
   walk: Walk
 }
 
+/** How often the stream info is read while Live is on. */
+const LIVE_MS = 2000
 const FULL_PAYLOAD = 64 * 1024 * 1024
 /** An export of saved filters and favourites is a few kilobytes; anything huge is another file. */
 const MAX_SAVED_IMPORT_BYTES = 1024 * 1024
@@ -497,6 +499,38 @@ export function MessageBrowser({
 
   const latest = useCallback((v: View) => run('desc', { kind: 'last' }, v), [run])
 
+  // Live: while on, the stream info is polled (the same query the stream page uses, so its counts
+  // follow too) and the latest page is read again when the last sequence has moved. It is only
+  // meaningful from the latest messages, so any other start position or paging turns it off.
+  const [live, setLive] = useState(false)
+  const liveOn = live && startMode === 'latest'
+  const liveSeen = useRef(0)
+  const liveInfo = useQuery({
+    queryKey: ['stream', connId, stream],
+    queryFn: () => gateway.streamInfo(connId, stream),
+    enabled: liveOn,
+    refetchInterval: liveOn ? LIVE_MS : false
+  })
+  const liveLast = liveOn ? liveInfo.data?.state.last_seq : undefined
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    // A tick that arrives while a read or scan runs is skipped; this runs again when it ends.
+    if (liveLast === undefined || busy !== null || liveLast === liveSeen.current) return
+    liveSeen.current = liveLast
+    keepSelection.current = true
+    latest(view)
+  }, [liveLast, busy]) // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const toggleLive = (): void => {
+    if (live) {
+      setLive(false)
+      return
+    }
+    liveSeen.current = info.state.last_seq
+    setLive(true)
+    go(view, 'latest')
+  }
+
   // First load, and whenever another part of the app asks for a subject or a sequence (a subject
   // clicked in the Subjects tab, "show the next undelivered message" on a consumer). Answering
   // such a request means both updating the controls and starting a load, so state is set here.
@@ -514,6 +548,7 @@ export function MessageBrowser({
     if (requestSubject !== undefined) setSubjectDraft(requestSubject)
     setView(next)
     if (requestSeq !== undefined) {
+      setLive(false)
       setStartMode('seq')
       setSeqInput(String(requestSeq))
       run('asc', { kind: 'seq', seq: requestSeq }, next)
@@ -548,6 +583,7 @@ export function MessageBrowser({
       latest(next)
       return true
     }
+    setLive(false)
     // "From here on" reads best oldest first, with the starting message at the top.
     const next = { ...v, order: 'asc' as Walk }
     setView(next)
@@ -578,6 +614,7 @@ export function MessageBrowser({
 
   const page = (which: 'older' | 'newer'): void => {
     if (messages.length === 0) return
+    setLive(false)
     const seqs = messages.map((m) => m.seq)
     if (which === 'older')
       run('desc', { kind: 'seq', seq: Math.min(...seqs) - 1 }, view, { paging: 'older' })
@@ -958,7 +995,11 @@ export function MessageBrowser({
               <Select
                 id={id}
                 value={startMode}
-                onChange={(e) => setStartMode(e.target.value as StartMode)}
+                onChange={(e) => {
+                  const mode = e.target.value as StartMode
+                  if (mode !== 'latest') setLive(false)
+                  setStartMode(mode)
+                }}
               >
                 <option value="latest">Latest messages</option>
                 <option value="first">First message</option>
@@ -1108,6 +1149,21 @@ export function MessageBrowser({
           title="Jump to the latest messages"
         >
           Latest
+        </Button>
+        <Button
+          size="sm"
+          variant={liveOn ? 'primary' : 'default'}
+          aria-pressed={liveOn}
+          icon={
+            <span
+              aria-hidden
+              className={`h-2 w-2 rounded-full ${liveOn ? 'animate-pulse bg-current' : 'bg-faint'}`}
+            />
+          }
+          title="Show new messages as they arrive"
+          onClick={toggleLive}
+        >
+          Live
         </Button>
         <Button
           size="sm"

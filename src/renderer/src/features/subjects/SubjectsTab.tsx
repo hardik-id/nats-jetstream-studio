@@ -396,14 +396,14 @@ export function SubjectsTab({ connId }: { connId: string }): ReactNode {
                 <div className="flex gap-2">
                   <Button
                     icon={<Radio className="h-3.5 w-3.5" aria-hidden />}
-                    onClick={() => tabs.openNew('tail', connId)}
+                    onClick={() => tabs.openNew({ kind: 'tail', connId })}
                   >
                     Start a live tail
                   </Button>
                   <Button
                     icon={<Send className="h-3.5 w-3.5" aria-hidden />}
                     {...readOnlyProps(readOnly)}
-                    onClick={() => tabs.openNew('publish', connId)}
+                    onClick={() => tabs.openNew({ kind: 'publish', connId })}
                   >
                     Publish a message
                   </Button>

@@ -917,6 +917,13 @@ export class StudioService implements GatewayMethods {
         }
         const limit = Math.min(Math.max(1, Math.floor(request.limit)), MAX_PAGE)
         const scanLimit = Math.max(1, Math.floor(request.scanLimit))
+        let until = Number.POSITIVE_INFINITY
+        if (request.until !== undefined) {
+          until = new Date(request.until).getTime()
+          if (Number.isNaN(until)) throw gatewayError('validation', 'End time is not a valid date')
+          if (request.direction !== 'asc')
+            throw gatewayError('validation', 'An end time needs a scan that walks forwards (asc)')
+        }
         const { reader, bounds } = await this.reader(this.conn(connId), stream)
         if (bounds.messages === 0) return done('end')
         const start = await this.resolveStart(reader, bounds, request)
@@ -933,6 +940,12 @@ export class StudioService implements GatewayMethods {
 
         for await (const msg of this.walk(reader, bounds, { ...request, limit: 200 }, start.seq)) {
           if (cancelled) return done('cancelled')
+          if (request.direction === 'asc' && msg.time.getTime() > until) {
+            // Stored times grow with the sequence, so nothing after this one is in range either.
+            flush(msg.seq)
+            resumeSeq = null
+            return done('until')
+          }
           scanned++
           resumeSeq = request.direction === 'asc' ? msg.seq + 1 : msg.seq - 1
           const verdict = test(storedHeaders(msg, direct), msg.data, msg.subject)

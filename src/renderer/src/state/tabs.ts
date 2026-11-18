@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { TraceQuery } from '@shared/trace'
+import { traceTitle } from '@shared/trace'
 
 export type StreamSection = 'overview' | 'consumers' | 'subjects' | 'config'
 
@@ -20,6 +22,8 @@ export type TabSpec =
   | { kind: 'subjects'; connId: string }
   | { kind: 'tail'; connId: string; subject?: string; n: number }
   | { kind: 'publish'; connId: string; subject?: string; n: number }
+  /** A request followed across streams (PBI-138): numbered like Live tail, so two can be compared. */
+  | { kind: 'trace'; connId: string; n: number; query?: TraceQuery }
   | { kind: 'kv'; connId: string }
   | { kind: 'kvBucket'; connId: string; bucket: string }
   | { kind: 'objects'; connId: string }
@@ -27,6 +31,12 @@ export type TabSpec =
   | { kind: 'alerts'; connId: string }
   | { kind: 'decoders'; connId: string }
   | { kind: 'audit'; connId: string }
+
+/** Tabs that can be open several times at once: they carry a number, and the id is made from it. */
+type NumberedSpec = Extract<TabSpec, { n: number }>
+
+/** A numbered tab as the caller describes it: the store picks the number. */
+export type NewTabSpec = NumberedSpec extends infer S ? (S extends S ? Omit<S, 'n'> : never) : never
 
 export interface Tab {
   id: string
@@ -46,6 +56,7 @@ export function tabId(spec: TabSpec): string {
       return `objBucket:${spec.connId}:${spec.bucket}`
     case 'tail':
     case 'publish':
+    case 'trace':
       return `${spec.kind}:${spec.connId}:${spec.n}`
     default:
       return `${spec.kind}:${spec.connId}`
@@ -72,6 +83,8 @@ export function tabTitle(spec: TabSpec): string {
       return spec.subject ? `Tail ${spec.subject}` : 'Live tail'
     case 'publish':
       return 'Publish'
+    case 'trace':
+      return traceTitle(spec.query)
     case 'kv':
       return 'KV buckets'
     case 'kvBucket':
@@ -143,8 +156,8 @@ interface TabsState {
   activeId: string | null
   counter: number
   open(spec: TabSpec): void
-  /** Opens another tail or publish tab even when one exists. */
-  openNew(kind: 'tail' | 'publish', connId: string, subject?: string): void
+  /** Opens another tail, publish or trace tab even when one exists. */
+  openNew(spec: NewTabSpec): void
   close(id: string): void
   closeOthers(id: string): void
   activate(id: string): void
@@ -175,14 +188,11 @@ export const useTabs = create<TabsState>()(
           set({ tabs: [...get().tabs, { id, spec }], activeId: id })
         }
       },
-      openNew(kind, connId, subject) {
+      openNew(wanted) {
         const n = get().counter
-        const spec = { kind, connId, subject, n } as TabSpec
-        set({
-          counter: n + 1,
-          tabs: [...get().tabs, { id: tabId(spec), spec }],
-          activeId: tabId(spec)
-        })
+        const spec: NumberedSpec = { ...wanted, n }
+        const id = tabId(spec)
+        set({ counter: n + 1, tabs: [...get().tabs, { id, spec }], activeId: id })
       },
       close(id) {
         const { tabs, activeId } = get()

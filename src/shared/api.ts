@@ -401,6 +401,12 @@ export interface ScanRequest extends MessageQuery {
   filters: ContentFilters
   /** Stop after examining this many messages. */
   scanLimit: number
+  /**
+   * Ascending scans only (a descending scan with `until` is refused as a validation error): stop at
+   * the first message stored after this ISO time (PBI-138). The scan then ends with reason `until`.
+   * Together with a `time` start it bounds a window.
+   */
+  until?: string
 }
 
 export type ScanEvent =
@@ -408,8 +414,11 @@ export type ScanEvent =
   | { type: 'progress'; scanned: number; matched: number; seq: number }
   | {
       type: 'done'
-      /** `page`: enough matches found. `end`: no more messages. `limit`: scan limit reached. */
-      reason: 'page' | 'end' | 'limit' | 'cancelled' | 'error'
+      /**
+       * `page`: enough matches found. `end`: no more messages. `limit`: scan limit reached.
+       * `until`: the request's end time was passed.
+       */
+      reason: 'page' | 'end' | 'limit' | 'until' | 'cancelled' | 'error'
       scanned: number
       matched: number
       skippedNonJson: number

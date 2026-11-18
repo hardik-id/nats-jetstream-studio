@@ -4,6 +4,7 @@ import type { FilterCondition } from '@shared/api'
 import { fromBase64, toHexDump, tryDecodeText, utf8Decode } from '@shared/encoding'
 import { formatBytes } from '@shared/format'
 import { fitDepth, maxDepth, searchJson, SEARCH_MAX_MATCHES } from '@shared/jsonTree'
+import type { TraceRule } from '@shared/trace'
 import { useSetting } from '../lib/hooks'
 import type { PayloadDecoder } from '../lib/decoders'
 import { JSON_CHUNK, JsonView } from './JsonView'
@@ -31,6 +32,8 @@ export interface PayloadViewerProps {
   showSize?: boolean
   /** Adds "Filter" and "Exclude" buttons to the JSON tree's primitive rows (message browser). */
   onFilter?: (condition: FilterCondition) => void
+  /** Adds "Follow" to the JSON tree's primitive rows (Trace). */
+  onFollow?: (rule: TraceRule) => void
 }
 
 /**
@@ -47,7 +50,8 @@ export function PayloadViewer({
   loadingFull,
   className,
   showSize = true,
-  onFilter
+  onFilter,
+  onFollow
 }: PayloadViewerProps): ReactNode {
   const parsed = useMemo(() => {
     const bytes = fromBase64(payload)
@@ -409,6 +413,7 @@ export function PayloadViewer({
             expandDepth={depth}
             resetKey={resetKey}
             onFilter={onFilter}
+            onFollow={onFollow}
             wrap={wrap}
             fontSize={fontSize}
             search={

@@ -5,6 +5,7 @@ import { formatBytes, formatCount, formatRate, formatTime } from '@shared/format
 import { validateSubject } from '@shared/subject'
 import { DataTable, type Column } from '../../components/DataTable'
 import { MessageDetail } from '../../components/MessageDetail'
+import { followValue } from '../trace/followValue'
 import {
   Button,
   ConfirmDialog,
@@ -268,7 +269,7 @@ export function TailTab({
       actions={
         <Button
           icon={<CopyPlus className="h-3.5 w-3.5" aria-hidden />}
-          onClick={() => tabs.openNew('tail', connId)}
+          onClick={() => tabs.openNew({ kind: 'tail', connId })}
         >
           New tail
         </Button>
@@ -459,6 +460,7 @@ export function TailTab({
               onClose={() => setSelected(null)}
               onPrevious={step(-1)}
               onNext={step(1)}
+              onFollow={(rule) => followValue(connId, rule, detail.received)}
             />
           </div>
         )}

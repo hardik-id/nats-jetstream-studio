@@ -24,7 +24,8 @@ import { useGateway } from '../../gateway'
 import { useRefetchInterval } from '../../lib/hooks'
 import { useTabs } from '../../state/tabs'
 
-const STATES: Record<
+/** The icon and tone of each state, shared with the consumer badges of a trace. */
+export const CONSUMER_STATES: Record<
   MessageConsumerState,
   { Icon: LucideIcon; tone: 'neutral' | 'accent' | 'ok' | 'warn' }
 > = {
@@ -140,7 +141,7 @@ export function MessageConsumers({
           )}
           <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-md border border-line">
             {rows.slice(0, shown).map(({ c, status }) => {
-              const { Icon, tone } = STATES[status.state]
+              const { Icon, tone } = CONSUMER_STATES[status.state]
               return (
                 <li key={c.name} className="flex flex-col gap-0.5 px-2 py-1.5">
                   <div className="flex min-w-0 items-center gap-2">

@@ -272,14 +272,23 @@ export function createFakeGateway(
               : request.direction === 'asc'
                 ? 0
                 : Infinity
+          const fromTime =
+            request.start.kind === 'time' ? new Date(request.start.time).getTime() : -Infinity
+          const until = request.until ? new Date(request.until).getTime() : Infinity
           const ordered = (
             request.direction === 'asc'
-              ? all.filter((m) => m.seq >= from)
+              ? all.filter((m) => m.seq >= from && new Date(m.time).getTime() >= fromTime)
               : all.filter((m) => m.seq <= from).reverse()
           ).filter((m) => !request.subject || subjectMatches(request.subject, m.subject))
           const messages: MessageDto[] = []
           let scanned = 0
+          let passedEnd = false
           for (const m of ordered) {
+            // Like the real scan: an ascending walk ends at the first message after `until`.
+            if (request.direction === 'asc' && new Date(m.time).getTime() > until) {
+              passedEnd = true
+              break
+            }
             scanned++
             if (test(m.headers ?? [], utf8Encode(m.payload), m.subject).match)
               messages.push({
@@ -296,7 +305,7 @@ export function createFakeGateway(
           if (messages.length) emitScan({ type: 'matches', messages })
           emitScan({
             type: 'done',
-            reason: scanned < ordered.length ? 'page' : 'end',
+            reason: passedEnd ? 'until' : scanned < ordered.length ? 'page' : 'end',
             scanned,
             matched: messages.length,
             skippedNonJson: 0,

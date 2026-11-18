@@ -10,10 +10,11 @@ import {
 } from 'lucide-react'
 import type { FilterCondition, Header } from '@shared/api'
 import { formatBytes, formatTime } from '@shared/format'
+import { headerRule, type TraceRule } from '@shared/trace'
 import type { PayloadDecoder } from '../lib/decoders'
 import { useSetting } from '../lib/hooks'
 import { DetailSectionsContext, normalizeSections, type DetailSectionId } from './detailSections'
-import { FilterButton } from './JsonView'
+import { FilterButton, FollowButton } from './JsonView'
 import { PayloadViewer } from './PayloadViewer'
 import { Button, CollapsibleSection, CopyButton, cx } from './ui'
 
@@ -52,6 +53,11 @@ export interface MessageDetailProps {
    * tree's values. Absent (Live tail): no buttons.
    */
   onFilter?: (condition: FilterCondition) => void
+  /**
+   * Follows a header or JSON value across streams (PBI-138): a "Follow" button next to the filter
+   * buttons. It does not need `onFilter`: the two are offered separately.
+   */
+  onFollow?: (rule: TraceRule) => void
 }
 
 /** The side panel for one message: subject, sequence, time, headers and payload (PBI-043). */
@@ -68,7 +74,8 @@ export function MessageDetail({
   loadingFull,
   actions,
   sections,
-  onFilter
+  onFilter,
+  onFollow
 }: MessageDetailProps): ReactNode {
   const utc = new Date(message.time).toISOString()
   const [stored, setStored, storedLoaded, storedError] = useSetting<unknown>(
@@ -285,23 +292,34 @@ export function MessageDetail({
                           {key}
                         </th>
                         <td className="py-1 font-mono break-all">{value}</td>
-                        {onFilter && (
-                          <td className="w-14 py-1 pl-1 text-right align-top whitespace-nowrap">
+                        {(onFilter || onFollow) && (
+                          <td className="w-24 py-1 pl-1 text-right align-top whitespace-nowrap">
                             <span className="inline-flex gap-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-                              <FilterButton
-                                exclude={false}
-                                text=""
-                                label={`Include header ${key} = ${value}`}
-                                onClick={() => onFilter({ kind: 'header', key, value })}
-                              />
-                              <FilterButton
-                                exclude
-                                text=""
-                                label={`Exclude header ${key} = ${value}`}
-                                onClick={() =>
-                                  onFilter({ kind: 'header', key, value, exclude: true })
-                                }
-                              />
+                              {onFilter && (
+                                <>
+                                  <FilterButton
+                                    exclude={false}
+                                    text=""
+                                    label={`Include header ${key} = ${value}`}
+                                    onClick={() => onFilter({ kind: 'header', key, value })}
+                                  />
+                                  <FilterButton
+                                    exclude
+                                    text=""
+                                    label={`Exclude header ${key} = ${value}`}
+                                    onClick={() =>
+                                      onFilter({ kind: 'header', key, value, exclude: true })
+                                    }
+                                  />
+                                </>
+                              )}
+                              {onFollow && (
+                                <FollowButton
+                                  text=""
+                                  label={`Follow ${key} ${value} across streams`}
+                                  onClick={() => onFollow(headerRule(key, value))}
+                                />
+                              )}
                             </span>
                           </td>
                         )}
@@ -334,6 +352,7 @@ export function MessageDetail({
               onLoadFull={onLoadFull}
               loadingFull={loadingFull}
               onFilter={onFilter}
+              onFollow={onFollow}
             />
           </CollapsibleSection>
         </div>

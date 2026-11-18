@@ -9,10 +9,12 @@ import type { ViewControl as Control } from './views/types'
 export function ViewControl({
   control,
   value,
+  disabled,
   onChange
 }: {
   control: Control
   value: string | boolean | undefined
+  disabled?: boolean
   onChange: (value: string | boolean) => void
 }): ReactNode {
   if (control.kind === 'toggle')
@@ -21,6 +23,7 @@ export function ViewControl({
         label={control.label}
         hint={control.hint}
         checked={value === true}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
     )
@@ -31,6 +34,7 @@ export function ViewControl({
         compact
         className="w-32"
         value={typeof value === 'string' ? value : control.default}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
       >
         {control.options.map((o) => (

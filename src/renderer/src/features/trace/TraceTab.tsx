@@ -178,6 +178,7 @@ export function TraceTab({
               selected={selected}
               onSelect={select}
               settings={viewSettings}
+              detailOpen={paneOpen && hop !== null}
               onOpen={(id) => {
                 select(id)
                 setPaneOpen(true)

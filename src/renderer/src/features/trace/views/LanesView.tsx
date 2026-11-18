@@ -1,6 +1,5 @@
 import {
   Fragment,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -56,7 +55,8 @@ export function LanesView({
   selected,
   onSelect,
   onOpen,
-  settings
+  settings,
+  detailOpen
 }: TraceViewProps): ReactNode {
   const uid = useId().replace(/:/g, '')
   const { by, scale, group } = laneOptions(settings)
@@ -83,16 +83,31 @@ export function LanesView({
   const box = useRef<HTMLDivElement>(null)
   const tooltip = useRef<HTMLDivElement>(null)
   const selectedIndex = selected === null ? -1 : layout.dots.findIndex((d) => d.id === selected)
-  const shownIndex = hover ?? (focused && selectedIndex >= 0 ? selectedIndex : null)
+  // A selected message that is not drawn (past the cap): reachable from the Timeline or the pane.
+  const beyond = useMemo(
+    () => selected !== null && selectedIndex < 0 && trace.hops.some((h) => h.id === selected),
+    [selected, selectedIndex, trace.hops]
+  )
+  // The tooltip follows the pointer, and the selection while the keyboard is in the view and the
+  // detail pane (which shows everything) is closed.
+  const shownIndex = hover ?? (focused && !detailOpen && selectedIndex >= 0 ? selectedIndex : null)
+  const latest = useRef(layout)
 
-  // Keeps the selected dot visible, clear of the sticky labels and axis, also when the area
-  // changes size (the detail pane opening narrows it).
-  useEffect(() => {
+  // The three effects below run in this order, before paint: the layout is remembered, the
+  // selected dot is revealed (scrolling), and then the tooltip is placed from the new scroll.
+  useLayoutEffect(() => {
+    latest.current = layout
+  }, [layout])
+
+  // Keeps the selected dot visible, clear of the sticky labels and axis, when the selection or
+  // the scale changes and when the area changes size (the detail pane opening narrows it). A
+  // refetch that only rebuilds the layout does not scroll the user back.
+  useLayoutEffect(() => {
     const el = box.current
     if (!el) return
     const reveal = (): void => {
-      if (selectedIndex < 0 || el.clientWidth === 0) return
-      const dot = layout.dots[selectedIndex]
+      const dot = latest.current.dots[selectedIndex]
+      if (!dot || el.clientWidth === 0) return
       const x = LABEL_WIDTH + dot.x
       const y = AXIS_HEIGHT + laneY(dot.lane)
       if (x - SCROLL_MARGIN < el.scrollLeft + LABEL_WIDTH) {
@@ -111,7 +126,7 @@ export function LanesView({
     const observer = new ResizeObserver(reveal)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [selectedIndex, layout])
+  }, [selectedIndex, by, scale, group])
 
   // Puts the tooltip next to its dot, inside the visible part of the drawing: above the dot, or
   // below when there is no room above. It changes the element's style only (no state).
@@ -135,20 +150,21 @@ export function LanesView({
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.ctrlKey || e.altKey || e.metaKey) return
     const last = layout.dots.length - 1
-    const from = selectedIndex
+    // A selection past the drawing continues from the last drawn message.
+    const from = beyond ? last : selectedIndex
     let handled = true
     switch (e.key) {
       case 'ArrowRight':
         move(from < 0 ? 0 : Math.min(last, from + 1))
         break
       case 'ArrowLeft':
-        move(from < 0 ? 0 : Math.max(0, from - 1))
+        move(from < 0 ? 0 : beyond ? last : Math.max(0, from - 1))
         break
       case 'ArrowDown':
         move(from < 0 ? 0 : (neighbourInLane(layout, from, 1) ?? from))
         break
       case 'ArrowUp':
-        move(from < 0 ? 0 : (neighbourInLane(layout, from, -1) ?? from))
+        move(from < 0 ? 0 : beyond ? last : (neighbourInLane(layout, from, -1) ?? from))
         break
       case 'Home':
         move(0)
@@ -157,7 +173,8 @@ export function LanesView({
         move(last)
         break
       case 'Enter':
-        if (from >= 0) onOpen(layout.dots[from].id)
+        if (beyond && selected !== null) onOpen(selected)
+        else if (from >= 0) onOpen(layout.dots[from].id)
         break
       default:
         handled = false
@@ -189,6 +206,15 @@ export function LanesView({
             {' '}
             {layout.shortened === 1 ? 'One long gap is' : `${layout.shortened} long gaps are`} drawn
             shorter (marked //).
+          </>
+        )}
+        {beyond && (
+          <>
+            {' '}
+            <span className="font-medium text-fg">
+              The selected message is beyond the ones drawn; the arrow keys continue from the last
+              drawn message.
+            </span>
           </>
         )}
         {clipped > 0 && (
@@ -355,9 +381,9 @@ export function LanesView({
                       className={link.slowest ? 'stroke-warn' : 'stroke-faint'}
                       markerEnd={`url(#${uid}-arrow${link.slowest ? '-slow' : ''})`}
                     />
-                    {link.shortened && !shape.curved && (
+                    {link.shortened && (
                       <path
-                        d={`M${link.x1 + 22} ${laneY(link.fromLane) - 5}l-4 10M${link.x1 + 27} ${laneY(link.fromLane) - 5}l-4 10`}
+                        d={`M${shape.breakAt.x - 2} ${shape.breakAt.y - 5}l-4 10M${shape.breakAt.x + 3} ${shape.breakAt.y - 5}l-4 10`}
                         className="stroke-faint"
                         strokeWidth="1.2"
                         fill="none"
@@ -367,7 +393,15 @@ export function LanesView({
                       <LinkLabel x={shape.mid.x} y={ly} text={label} slow={link.slowest} />
                     )}
                     {link.slowest && (
-                      <LinkLabel x={shape.mid.x} y={ly - 13} text="SLOWEST" slow tag />
+                      // Above the gap label; below the arrow in the first lane, where the top of
+                      // the drawing would cut it off.
+                      <LinkLabel
+                        x={shape.mid.x}
+                        y={!shape.curved && link.fromLane === 0 ? shape.mid.y + 17 : ly - 13}
+                        text="SLOWEST"
+                        slow
+                        tag
+                      />
                     )}
                   </g>
                 )

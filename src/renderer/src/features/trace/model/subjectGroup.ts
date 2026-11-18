@@ -20,6 +20,13 @@ const MIN_RANDOM_LENGTH = 10
  */
 export function isIdToken(token: string): boolean {
   if (token === '' || token === '*' || token === '>') return false
+  // A prefixed id: `order-1234`, `cust_0001`, `usr_8f3a9c21`. The rest must look like an id on
+  // its own, and a bare number after a prefix needs four digits (`sha-256`, `utf-8` are words).
+  const prefixed = /^[A-Za-z]+[-_](.+)$/.exec(token)
+  if (prefixed) {
+    const rest = prefixed[1]
+    return /^\d+$/.test(rest) ? rest.length >= 4 : isIdToken(rest)
+  }
   if (/^\d+$/.test(token)) return true
   if (UUID.test(token)) return true
   if (HEX.test(token) && /\d/.test(token)) return true

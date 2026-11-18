@@ -785,4 +785,78 @@ describe('PBI-138 phase 2: Lanes view', () => {
     await waitFor(() => expect(dots().length).toBe(1000))
     expect(screen.getByText(/Showing the first 1,000 of 1,204 messages/)).toBeInTheDocument()
   })
+
+  it('has no slowest hop with a single hop (two messages)', async () => {
+    const user = userEvent.setup()
+    const g = gatewayForLanes((gw) => {
+      gw.streams.get('SHIP')!.messages = []
+      gw.streams.get('ORDERS')!.messages.pop()
+    })
+    await openLanes(user, g)
+    expect(dots()).toHaveLength(2)
+    expect(screen.getAllByTestId('lane-link')).toHaveLength(1)
+    expect(screen.queryByTestId('lane-link-slowest')).toBeNull()
+    expect(screen.queryByText(/Slowest hop/)).toBeNull()
+    expect(dots()[1].getAttribute('aria-label')).not.toContain('slowest')
+  })
+
+  it('shows the tooltip of the selected message only while the detail pane is closed', async () => {
+    const user = userEvent.setup()
+    const box = await openLanes(user)
+    box.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByTestId('lane-tooltip')).toHaveTextContent('orders.101.new')
+    await user.keyboard('{Enter}')
+    await screen.findByRole('complementary', { name: 'Message detail' })
+    expect(screen.queryByTestId('lane-tooltip')).toBeNull()
+    // The pointer still gets one.
+    await user.hover(dots()[2])
+    expect(await screen.findByTestId('lane-tooltip')).toHaveTextContent('ship.pack')
+  })
+
+  it('disables Group similar subjects while lanes are by stream', async () => {
+    const user = userEvent.setup()
+    await openLanes(user)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('checkbox', { name: /Group similar subjects/ })).toBeEnabled()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Lane by' }), 'stream')
+    // The popover closed with the click outside it.
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('checkbox', { name: /Group similar subjects/ })).toBeDisabled()
+  })
+
+  it('says when the selected message is beyond the drawing, and the keyboard continues from the last drawn one', async () => {
+    const user = userEvent.setup()
+    const g = gatewayForLanes((gw) => {
+      for (const [name, base] of [
+        ['ORDERS', 10],
+        ['PAY', 500],
+        ['SHIP', 900]
+      ] as const)
+        for (let i = 0; i < 400; i++)
+          gw.streams.get(name)!.messages.push({
+            seq: base + i,
+            subject: `${name.toLowerCase()}.${i % 7}.ev`,
+            payload: '{}',
+            time: ago(80 - i / 10),
+            headers: [['trace-id', 'abc']]
+          })
+    })
+    const box = await openLanes(user, g)
+    await waitFor(() => expect(dots()).toHaveLength(1000))
+    box.focus()
+    await user.keyboard('{End}{Enter}')
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    expect(selectedDots()).toEqual([999])
+    // Next in the pane goes to the first message that is not drawn.
+    await user.click(within(panel).getByRole('button', { name: 'Next message' }))
+    await waitFor(() => expect(selectedDots()).toEqual([]))
+    expect(box).not.toHaveAttribute('aria-activedescendant')
+    expect(screen.getByText(/The selected message is beyond the ones drawn/)).toBeInTheDocument()
+    box.focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(selectedDots()).toEqual([999])
+    expect(box).toHaveAttribute('aria-activedescendant', dots()[999].id)
+    expect(screen.queryByText(/The selected message is beyond/)).toBeNull()
+  })
 })

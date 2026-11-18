@@ -207,6 +207,7 @@ export function TraceToolbar({
             key={c.id}
             control={c}
             value={viewSettings[c.id]}
+            disabled={c.disabled?.(viewSettings)}
             onChange={(v) => onViewSettingChange(c.id, v)}
           />
         ))}
@@ -307,6 +308,7 @@ export function TraceToolbar({
                     key={c.id}
                     control={c}
                     value={viewSettings[c.id]}
+                    disabled={c.disabled?.(viewSettings)}
                     onChange={(v) => onViewSettingChange(c.id, v)}
                   />
                 ))}

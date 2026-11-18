@@ -27,9 +27,10 @@ export const LANES_CONTROLS: readonly ViewControl[] = [
     kind: 'toggle',
     id: 'groupSubjects',
     label: 'Group similar subjects',
-    hint: 'Messages whose subjects differ only by an id (a number, UUID or hash) share a lane, as orders.*.paid. Applies to Lane by Subject.',
+    hint: 'Messages whose subjects differ only by an id (a number, UUID or hash) share a lane, as orders.*.paid. Only with Lane by Subject.',
     default: DEFAULT_LANE_OPTIONS.group,
-    placement: 'more'
+    placement: 'more',
+    disabled: (settings) => settings.laneBy === 'stream'
   }
 ]
 

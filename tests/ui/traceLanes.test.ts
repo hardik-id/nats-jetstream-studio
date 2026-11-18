@@ -104,14 +104,46 @@ describe('PBI-138 lanes layout', () => {
     expect(l.links.map((k) => k.slowest)).toEqual([false, true, false])
   })
 
-  it('has no slowest hop for one message or when all gaps are zero; ties take the first', () => {
+  it('has no slowest hop for one hop, or when the gaps are equal; a tie among different gaps takes the first', () => {
     expect(layoutLanes(trace(['A', 'a', 0])).slowest).toBeNull()
+    // One hop alone is not "slowest".
+    const one = layoutLanes(trace(['A', 'a', 0], ['A', 'b', 900]))
+    expect(one.slowest).toBeNull()
+    expect(one.links.map((k) => k.slowest)).toEqual([false])
     expect(layoutLanes(trace(['A', 'a', 5], ['A', 'b', 5])).slowest).toBeNull()
-    expect(layoutLanes(trace(['A', 'a', 0], ['A', 'b', 100], ['A', 'c', 200])).slowest).toBe(1)
-    const one = layoutLanes(trace(['A', 'a', 0]))
-    expect(one.links).toEqual([])
-    expect(one.dots).toHaveLength(1)
-    expect(one.lanes).toHaveLength(1)
+    // Equal gaps: none is slower.
+    expect(layoutLanes(trace(['A', 'a', 0], ['A', 'b', 100], ['A', 'c', 200])).slowest).toBeNull()
+    expect(layoutLanes(trace(['A', 'a', 0], ['A', 'b', 0], ['A', 'c', 0])).slowest).toBeNull()
+    // Different gaps, the largest twice: the first.
+    expect(
+      layoutLanes(trace(['A', 'a', 0], ['A', 'b', 10], ['A', 'c', 110], ['A', 'd', 210])).slowest
+    ).toBe(2)
+    const one0 = layoutLanes(trace(['A', 'a', 0]))
+    expect(one0.links).toEqual([])
+    expect(one0.dots).toHaveLength(1)
+    expect(one0.lanes).toHaveLength(1)
+  })
+
+  it('real time: lone or equal gaps are not "shortened"', () => {
+    for (const times of [
+      [0, 5],
+      [0, 5, 10],
+      [0, 1000, 2000, 3000],
+      [0, 0, 0]
+    ]) {
+      const l = layoutLanes(
+        trace(...times.map((ms): [string, string, number] => ['A', 'a', ms])),
+        opts({ scale: 'time' })
+      )
+      expect(l.shortened, times.join()).toBe(0)
+      expect(l.links.every((k) => !k.shortened)).toBe(true)
+    }
+    // A gap of 5 s among 1 s gaps is not an outlier either (under ten times the typical one).
+    const l = layoutLanes(
+      trace(['A', 'a', 0], ['A', 'b', 1000], ['A', 'c', 2000], ['A', 'd', 7000]),
+      opts({ scale: 'time' })
+    )
+    expect(l.shortened).toBe(0)
   })
 
   it('real time: x grows with time, with a minimum spacing so dots never overlap', () => {
@@ -207,6 +239,8 @@ describe('PBI-138 lanes layout', () => {
     const l = layoutLanes(trace())
     expect(l.lanes).toEqual([])
     expect(l.dots).toEqual([])
+    expect(l.axis).toEqual([])
+    expect(l.links).toEqual([])
   })
 })
 
@@ -232,6 +266,12 @@ describe('PBI-138 lanes navigation and arrows', () => {
     const cross = linkShape(l.links[0])
     expect(cross.curved).toBe(true)
     expect(cross.d).toContain('C')
+    // The // mark of a shortened gap sits on the arrow, between the lanes' heights.
+    expect(cross.breakAt.x).toBeGreaterThan(l.links[0].x1)
+    expect(cross.breakAt.x).toBeLessThan(l.links[0].x2)
+    expect(cross.breakAt.y).toBeGreaterThanOrEqual(laneY(0))
+    expect(cross.breakAt.y).toBeLessThanOrEqual(laneY(1))
+    expect(same.breakAt.y).toBe(laneY(0))
     expect(cross.mid.y).toBe((laneY(0) + laneY(1)) / 2)
     // It starts after the first dot and ends before the second.
     const [xa] = cross.d.slice(1).split(' ').map(Number)

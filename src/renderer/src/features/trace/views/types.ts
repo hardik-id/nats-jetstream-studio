@@ -16,6 +16,8 @@ export interface TraceViewProps {
   onOpen: (id: string) => void
   /** The view's own settings, completed with the defaults of its controls (see `resolveSettings`). */
   settings: ViewSettings
+  /** The detail pane is open, so it already shows the selected message. */
+  detailOpen: boolean
 }
 
 /** Where the toolbar puts a control: next to the View dropdown, or in the "More" popover. */
@@ -26,6 +28,8 @@ interface ControlBase {
   id: string
   label: string
   placement?: ControlPlacement
+  /** The control is shown but cannot be changed while this is true (given the settings). */
+  disabled?: (settings: ViewSettings) => boolean
 }
 
 /** A choice from a short list, shown as a dropdown. */

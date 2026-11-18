@@ -57,7 +57,7 @@ export interface LaneLink {
   x2: number
   gapMs: number
   slowest: boolean
-  /** The gap is drawn shorter than its time says (real-time scale only). */
+  /** The gap was an outlier and is drawn shorter than its time says (real-time scale only). */
   shortened: boolean
 }
 
@@ -68,7 +68,10 @@ export interface LanesLayout {
   links: LaneLink[]
   /** Width of the drawing, without the lane labels. */
   width: number
-  /** The index of the message after the slowest hop, or null when no hop is slower than another. */
+  /**
+   * The index of the message after the slowest hop. Null unless there are two hops or more and
+   * the largest gap is longer than the smallest (equal gaps have no slowest hop).
+   */
   slowest: number | null
   /** Indexes of the messages that carry a label on the axis. */
   axis: number[]
@@ -108,7 +111,7 @@ function positions(
   gaps.forEach((g, i) => {
     const px = Math.min(MAX_GAP_PX, Math.max(MIN_GAP_PX, effective[i] * pxPerMs))
     xs.push(xs[i] + px)
-    shortened.push(g > cap || (g * pxPerMs > MAX_GAP_PX && pxPerMs > 0))
+    shortened.push(g > cap)
   })
   return { xs, shortened }
 }
@@ -157,15 +160,20 @@ export function layoutLanes(
     x: xs[index]
   }))
 
-  // The slowest hop: the largest gap (the first one on a tie), if there is a gap at all.
+  // The slowest hop: the largest gap (the first one on a tie among several), but only when the
+  // hops differ: a single hop, or all gaps equal, has no slowest one.
   let slowest: number | null = null
   let most = 0
+  let least = Infinity
   hops.forEach((h, i) => {
-    if (h.gapMs !== null && h.gapMs > most) {
+    if (h.gapMs === null) return
+    least = Math.min(least, h.gapMs)
+    if (h.gapMs > most) {
       most = h.gapMs
       slowest = i
     }
   })
+  if (hops.length < 3 || most <= least) slowest = null
   const links = hops.slice(1).map((hop, k): LaneLink => {
     const i = k + 1
     return {
@@ -187,7 +195,7 @@ export function layoutLanes(
     links,
     width: xs[xs.length - 1] + PAD_RIGHT,
     slowest,
-    axis: axisMarks(xs),
+    axis: hops.length ? axisMarks(xs) : [],
     shortened: shortened.filter(Boolean).length
   }
 }
@@ -214,6 +222,8 @@ export interface LinkShape {
   d: string
   /** Where the gap label goes. */
   mid: { x: number; y: number }
+  /** Where the `//` mark of a shortened gap goes: a quarter of the way along the arrow. */
+  breakAt: { x: number; y: number }
   curved: boolean
 }
 
@@ -231,11 +241,22 @@ export function linkShape(link: LaneLink): LinkShape {
   const xa = link.x1 + DOT_RADIUS + 1
   const xb = link.x2 - DOT_RADIUS - 2
   if (link.fromLane === link.toLane)
-    return { d: `M${xa} ${y1}H${xb}`, mid: { x: (xa + xb) / 2, y: y1 }, curved: false }
+    return {
+      d: `M${xa} ${y1}H${xb}`,
+      mid: { x: (xa + xb) / 2, y: y1 },
+      breakAt: { x: xa + (xb - xa) / 4, y: y1 },
+      curved: false
+    }
   const dx = (xb - xa) / 2
+  // The point a quarter of the way along the cubic curve.
+  const t = 0.25
+  const u = 1 - t
+  const bx = u * u * u * xa + 3 * u * u * t * (xa + dx) + 3 * u * t * t * (xb - dx) + t * t * t * xb
+  const by = u * u * u * y1 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y2
   return {
     d: `M${xa} ${y1}C${xa + dx} ${y1} ${xb - dx} ${y2} ${xb} ${y2}`,
     mid: { x: (xa + xb) / 2, y: (y1 + y2) / 2 },
+    breakAt: { x: bx, y: by },
     curved: true
   }
 }

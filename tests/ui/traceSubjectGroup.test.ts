@@ -32,6 +32,25 @@ describe('PBI-138 subject grouping', () => {
     expect(isIdToken('>')).toBe(false)
   })
 
+  it('collapses prefixed ids but not ordinary hyphenated words', () => {
+    for (const id of ['order-1234', 'cust_0001', 'usr_8f3a9c21', 'ord_01HZXABCDEF', 'Order-98765'])
+      expect(isIdToken(id), id).toBe(true)
+    expect(isIdToken('order-9f1c2e7a-4b3d-4e8a-9c1d-0123456789ab')).toBe(true)
+    for (const word of [
+      'eu-west',
+      'order-created',
+      'us-east-1', // a judgement call: kept
+      'sha-256',
+      'utf-8',
+      'cust_vip',
+      'order-v2',
+      'payment-processed'
+    ])
+      expect(isIdToken(word), word).toBe(false)
+    expect(groupSubject('billing.cust_0001.invoice.order-1234')).toBe('billing.*.invoice.*')
+    expect(groupSubject('region.us-east-1.up')).toBe('region.us-east-1.up')
+  })
+
   it('groups a subject: id-like tokens become *, the first token stays', () => {
     expect(groupSubject('orders.123.paid')).toBe('orders.*.paid')
     expect(groupSubject('orders.456.paid')).toBe('orders.*.paid')

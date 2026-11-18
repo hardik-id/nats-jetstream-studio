@@ -56,6 +56,7 @@ import {
 } from '../../components/ui'
 import { useGateway } from '../../gateway'
 import { useDecoders } from '../../lib/decoders'
+import { followValue } from '../trace/followValue'
 import { useFavorites } from '../../lib/favorites'
 import { pickFile, safeFileName, saveText } from '../../lib/files'
 import { useConnection, useLatest, useSetting, useTabActive } from '../../lib/hooks'
@@ -1430,6 +1431,7 @@ export function MessageBrowser({
                 }
                 loadingFull={full.isFetching}
                 onFilter={addFromMessage}
+                onFollow={(rule) => followValue(connId, rule, detail.time)}
                 sections={
                   <MessageConsumers
                     connId={connId}

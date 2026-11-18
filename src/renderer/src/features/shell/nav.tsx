@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListTree,
   MessageSquareText,
+  Route,
   Package,
   Radio,
   ScrollText,
@@ -19,6 +20,7 @@ export type NavKind =
   | 'overview'
   | 'streams'
   | 'messages'
+  | 'trace'
   | 'consumers'
   | 'subjects'
   | 'tail'
@@ -33,6 +35,7 @@ export const NAV: { kind: NavKind; label: string }[] = [
   { kind: 'overview', label: 'Overview' },
   { kind: 'streams', label: 'Streams' },
   { kind: 'messages', label: 'Messages' },
+  { kind: 'trace', label: 'Trace' },
   { kind: 'consumers', label: 'Consumers' },
   { kind: 'subjects', label: 'Subjects' },
   { kind: 'tail', label: 'Live tail' },
@@ -60,6 +63,8 @@ export function TabIcon({
       return <Database {...props} />
     case 'messages':
       return <MessageSquareText {...props} />
+    case 'trace':
+      return <Route {...props} />
     case 'consumers':
     case 'consumer':
       return <Users {...props} />
@@ -84,13 +89,13 @@ export function TabIcon({
   }
 }
 
-/** Opens a section of a connection. Tail and publish reuse an open tab of that kind if there is one. */
+/** Opens a section of a connection. Tail, publish and trace reuse an open tab of that kind if there is one. */
 export function openNav(connId: string, kind: NavKind): void {
   const tabs = useTabs.getState()
-  if (kind === 'tail' || kind === 'publish') {
+  if (kind === 'tail' || kind === 'publish' || kind === 'trace') {
     const existing = tabs.tabs.find((t) => t.spec.kind === kind && t.spec.connId === connId)
     if (existing) tabs.activate(existing.id)
-    else tabs.openNew(kind, connId)
+    else tabs.openNew({ kind, connId })
     return
   }
   if (kind === 'messages') return openMessages(connId)
@@ -112,6 +117,7 @@ export function isNavActive(connId: string, kind: NavKind, active: TabSpec | und
     overview: ['overview'],
     streams: ['streams', 'stream'],
     messages: ['messages'],
+    trace: ['trace'],
     consumers: ['consumers', 'consumer'],
     subjects: ['subjects'],
     tail: ['tail'],

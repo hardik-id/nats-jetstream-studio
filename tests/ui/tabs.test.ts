@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { openMessages } from '@renderer/features/shell/nav'
+import { openMessages, openNav } from '@renderer/features/shell/nav'
 import { messagesSpec, migrateTabs, tabId, tabTitle, useTabs } from '@renderer/state/tabs'
 
 beforeEach(() => {
@@ -103,5 +103,42 @@ describe('PBI-128 stored tabs of an older version', () => {
     })
     expect(activeId).toBe('stream:dev:ORDERS')
     expect(JSON.parse(localStorage.getItem('studio.tabs.v1')!).version).toBe(1)
+  })
+})
+
+describe('PBI-138 Trace tab model', () => {
+  it('is numbered like Live tail, titled by its value, and reused by the left panel', () => {
+    openNav('dev', 'trace')
+    openNav('dev', 'trace')
+    expect(useTabs.getState().tabs.map((t) => t.id)).toEqual(['trace:dev:1'])
+    expect(tabTitle({ kind: 'trace', connId: 'dev', n: 1 })).toBe('Trace')
+    const query = {
+      rules: [{ kind: 'header' as const, key: 'trace-id', value: 'abc' }],
+      window: { kind: 'last' as const, ms: 3_600_000 }
+    }
+    expect(tabTitle({ kind: 'trace', connId: 'dev', n: 2, query })).toBe('Trace abc')
+    useTabs.getState().openNew({ kind: 'trace', connId: 'dev', query })
+    useTabs.getState().openNew({ kind: 'tail', connId: 'dev', subject: 'a.>' })
+    expect(useTabs.getState().tabs.map((t) => t.id)).toEqual([
+      'trace:dev:1',
+      'trace:dev:2',
+      'tail:dev:3'
+    ])
+    expect(useTabs.getState().tabs[2].spec).toEqual({
+      kind: 'tail',
+      connId: 'dev',
+      subject: 'a.>',
+      n: 3
+    })
+  })
+
+  it('keeps tabs stored before Trace existed (version 1) as they are', () => {
+    const stored = {
+      tabs: [
+        { id: 'tail:dev:1', spec: { kind: 'tail', connId: 'dev', n: 1 } },
+        { id: 'stream:dev:S', spec: { kind: 'stream', connId: 'dev', stream: 'S' } }
+      ]
+    }
+    expect(migrateTabs(stored, 1)).toBe(stored)
   })
 })

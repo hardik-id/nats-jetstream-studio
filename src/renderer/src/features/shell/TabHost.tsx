@@ -20,6 +20,7 @@ import { StreamTab } from '../streams/StreamTab'
 import { StreamsTab } from '../streams/StreamsTab'
 import { SubjectsTab } from '../subjects/SubjectsTab'
 import { TailTab } from '../tail/TailTab'
+import { TraceTab } from '../trace/TraceTab'
 import { ConnectionGate } from './ConnectionGate'
 
 function content(tab: Tab): ReactNode {
@@ -63,6 +64,8 @@ function content(tab: Tab): ReactNode {
       return <SubjectsTab connId={spec.connId} />
     case 'tail':
       return <TailTab tabId={tab.id} connId={spec.connId} subject={spec.subject} />
+    case 'trace':
+      return <TraceTab tabId={tab.id} connId={spec.connId} query={spec.query} />
     case 'publish':
       return <PublishTab connId={spec.connId} subject={spec.subject} />
     case 'kv':

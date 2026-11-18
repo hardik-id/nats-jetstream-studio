@@ -9,7 +9,7 @@ import { Copy, Database, Radio, Send } from 'lucide-react'
 import { toast } from '../../state/toasts'
 import { subjectsOverlap } from '@shared/subject'
 import { readOnlyProps, type MenuItem } from '../../components/ui'
-import { messagesSpec, type TabSpec } from '../../state/tabs'
+import { messagesSpec, type NewTabSpec, type TabSpec } from '../../state/tabs'
 import {
   availableScopes,
   canPublish,
@@ -24,7 +24,7 @@ import {
 /** The part of the tabs store the actions need (`useTabs()` fits). */
 export interface ActionTabs {
   open(spec: TabSpec): void
-  openNew(kind: 'tail' | 'publish', connId: string, subject?: string): void
+  openNew(spec: NewTabSpec): void
 }
 
 export interface ActionDescriptor {
@@ -197,12 +197,14 @@ export function runBrowse(
 
 /** Opens a Live tail tab on the scope's filter. */
 export function runTail(tabs: ActionTabs, connId: string, action: ActionDescriptor): void {
-  if (action.enabled && action.subject) tabs.openNew('tail', connId, action.subject)
+  if (action.enabled && action.subject)
+    tabs.openNew({ kind: 'tail', connId, subject: action.subject })
 }
 
 /** Opens the Publish tab with the exact subject. Sending still goes through the gateway rules. */
 export function runPublish(tabs: ActionTabs, connId: string, action: ActionDescriptor): void {
-  if (action.enabled && action.subject) tabs.openNew('publish', connId, action.subject)
+  if (action.enabled && action.subject)
+    tabs.openNew({ kind: 'publish', connId, subject: action.subject })
 }
 
 /** Copies text; resolves to false when the clipboard is missing or refuses (never rejects). */

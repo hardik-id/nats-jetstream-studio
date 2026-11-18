@@ -104,12 +104,16 @@ describe('subjectActions', () => {
     const tabs = fakeTabs()
     const below = describeActions(node('orders'), 'below', PATTERNS, false)
     runTail(tabs, 'c1', below.tail)
-    expect(tabs.openNew).toHaveBeenCalledWith('tail', 'c1', 'orders.>')
+    expect(tabs.openNew).toHaveBeenCalledWith({ kind: 'tail', connId: 'c1', subject: 'orders.>' })
     runPublish(tabs, 'c1', below.publish)
     expect(tabs.openNew).toHaveBeenCalledTimes(1)
     const subj = describeActions(node('orders'), 'subject', PATTERNS, false)
     runPublish(tabs, 'c1', subj.publish)
-    expect(tabs.openNew).toHaveBeenLastCalledWith('publish', 'c1', 'orders')
+    expect(tabs.openNew).toHaveBeenLastCalledWith({
+      kind: 'publish',
+      connId: 'c1',
+      subject: 'orders'
+    })
   })
 
   it('an invalid subject offers nothing but Copy subject', () => {
@@ -151,7 +155,7 @@ describe('subjectActions', () => {
     const publish = items.find((i) => i.label.startsWith('Publish message'))!
     expect(publish.disabled).toBe(true)
     items.find((i) => i.label === 'Start live tail on orders.>')!.onSelect()
-    expect(tabs.openNew).toHaveBeenCalledWith('tail', 'c1', 'orders.>')
+    expect(tabs.openNew).toHaveBeenCalledWith({ kind: 'tail', connId: 'c1', subject: 'orders.>' })
     const multi = rowMenuItems(node('orders.eu.created'), {
       connId: 'c1',
       tabs,

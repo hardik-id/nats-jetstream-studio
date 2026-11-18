@@ -25,7 +25,8 @@ Epics and product backlog items (PBIs) for NATS JetStream Studio. See the [READM
 | 10. Packaging and distribution | 100 to 101 | | 1 | 1 |
 | 11. Visual design | 110 to 123 | | 14 | |
 | 12. Website | 130 to 137 | | 8 | |
-| **Total (69)** | | **27** | **40** | **2** |
+| 13. Trace | 138 | | 1 | |
+| **Total (70)** | | **27** | **41** | **2** |
 
 ## MVP slice and build order
 
@@ -1105,3 +1106,29 @@ screenshots of each new page (dark and light, 1280 px and 390 px wide); do not m
 - The site loads no third-party scripts, fonts or trackers. If visit counts are wanted later, that is a separate decision.
 - A link checker runs in the workflow and fails on broken internal links.
 - The README links to the site, and `docs/status.md` marks PBI-130 to PBI-137 done.
+
+## Epic 13: Trace
+
+### PBI-138: Trace: follow a request across subjects and consumers
+**Priority:** v1 · **Size:** L (four phases, one pull request each) · **Depends on:** PBI-040, PBI-049, PBI-126, PBI-128 · **Files:** `src/shared/trace.ts`, `src/renderer/src/features/trace/**`, `src/shared/api.ts` (`ScanRequest.until`), `src/core/service.ts`, `src/renderer/src/components/` (`MessageDetail.tsx`, `JsonView.tsx`, `PayloadViewer.tsx`), `src/renderer/src/state/tabs.ts`, `src/renderer/src/features/shell/nav.tsx`, tests
+
+(The plan used the number 130 for this item, but PBI-130 is the site scaffold above, so the item is numbered 138.)
+
+**Story:** As a developer chasing one request, I want to give a value that travels with it (a trace id in a header, an order id in the payload) and see every stored message that carries it across all streams, in time order, with the consumers that received each one, so that I can see where the request went and where it was slow.
+
+What is known and what is inferred: per message, the stream, sequence, subject, time, headers, payload and each consumer's state (PBI-049) are known. That a message on subject B was caused by a consumer handling the message on subject A is not recorded by NATS; the views order by time and say so. Only JetStream messages are visible, so core request and reply hops are missing.
+
+**Phase 1 (done): model, collecting, the Trace tab with its toolbar, the Timeline view, the detail pane, "Follow this value"**
+- "Trace" is a left panel item after Messages and a "Go to" entry in the command palette. Tabs are numbered like Live tail (`trace:<connId>:<n>`), titled "Trace" or "Trace <value>", and hold the query (not the results), so the query survives a restart and runs when the tab is shown. The left panel reuses an open Trace tab; "Follow this value" always opens a new one.
+- Toolbar: one or more match rules (Header name = value, JSON field path = value, Text anywhere) that are ORed ("+ or"), a stream multi-select (all by default; system streams `KV_` and `OBJ_` off), a window, and a "More" popover (scan limit per stream, include system streams). Run, Cancel and Enter in a field. A View dropdown appears only when there is more than one view.
+- Window: started from a message, ±5 min, ±15 min (default) or ±1 h around that message, plus the absolute options; started from the toolbar, Last 1 h, Last 24 h (default), Last 7 days or a custom range. The scan gets an end time: `ScanRequest.until` (an existing stream, not a new gateway method) ends an ascending scan at the first message stored after it, with done reason `until`.
+- Collecting: one scan per stream and per rule, at most three at once, abortable, merged and de-duplicated by (stream, seq) and sorted by time, stream, sequence. Per-stream progress and errors are kept apart, so one failing stream does not hide the others. At most 500 matches per stream and rule; a stream that hit the match cap or its scan limit is reported as partial, with "Scan more" (limit x10) for the scan limit. Reading uses the get-message APIs, never a consumer.
+- Timeline view: one row per message (time, gap since the previous message as a bar scaled to the largest gap and as text, stream, subject, consumer badges), virtualized by the shared table; arrows move the selection, Enter opens the detail. Consumers are read once per stream with matches (the same query key as the consumer list), and the badges leave out consumers the message is not for.
+- Detail: the Messages detail panel (`MessageDetail`) with "Open in Messages" (`openMessages` with stream and sequence) and the Consumers section. Escape closes it; moving to another message or Enter opens it again. Side by side from about 1024 px of room, stacked below that.
+- "Follow this value": a third button beside Include and Exclude on a header value and on a JSON value in an open message (accessible name "Follow trace-id abc across streams"), also in Live tail's detail (which has no filter buttons). It opens a new Trace tab with the rule filled in, the window centred on that message, and runs it.
+- States: nothing run yet (what a trace is, with an example), scanning (progress per stream and Cancel), no matches (suggests a wider window), partial, and an error per stream.
+
+**Not done (phases 2 to 4)**
+- Phase 2: Lanes view (one lane per subject or stream, a time axis, messages as dots, arrows between consecutive ones; own SVG).
+- Phase 3: Graph view with React Flow (`@xyflow/react`), subjects and consumers as boxes, arrows labelled with the delay, inferred links dashed, loaded lazily.
+- Phase 4: optional server-side `traceScan`; a Flow map across many requests. Also left out of phase 1: subject grouping (collapse id-like tokens to `*`) and a parent-id field (W3C `traceparent`) that makes links exact.

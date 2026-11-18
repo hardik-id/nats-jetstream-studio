@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Ban, Check, ChevronDown, ChevronRight, Copy, ListFilter } from 'lucide-react'
+import { Ban, Check, ChevronDown, ChevronRight, Copy, ListFilter, Route } from 'lucide-react'
 import type { FilterCondition } from '@shared/api'
 import { anyItemPath, valueCondition } from '@shared/filters'
 import { appendSegment, valueText, type JsonSearch } from '@shared/jsonTree'
+import { jsonRule, type TraceRule } from '@shared/trace'
 import { cx } from './ui'
 
 /** Containers list this many children at first; "Show more" adds five times as many. */
@@ -24,6 +25,7 @@ interface Ctx {
   roving: string
   setRoving: (id: string) => void
   onFilter?: (condition: FilterCondition) => void
+  onFollow?: (rule: TraceRule) => void
 }
 
 /** What the filter buttons of a primitive row add: the value, and the array it is an item of. */
@@ -51,7 +53,8 @@ export function JsonView({
   fontSize = 13,
   search,
   resetKey = 0,
-  onFilter
+  onFilter,
+  onFollow
 }: {
   value: unknown
   expandDepth?: number
@@ -62,6 +65,8 @@ export function JsonView({
   resetKey?: number
   /** Adds the filter buttons to primitive rows. Absent (Live tail): no buttons. */
   onFilter?: (condition: FilterCondition) => void
+  /** Adds "Follow" to primitive rows: follow this value across streams (Trace). */
+  onFollow?: (rule: TraceRule) => void
 }): ReactNode {
   const root = useRef<HTMLDivElement>(null)
   const [roving, setRoving] = useState('$')
@@ -96,7 +101,7 @@ export function JsonView({
         id="$"
         value={value}
         depth={0}
-        ctx={{ expandDepth, search, matchIds, roving, setRoving, onFilter }}
+        ctx={{ expandDepth, search, matchIds, roving, setRoving, onFilter, onFollow }}
       />
     </div>
   )
@@ -285,6 +290,17 @@ function Row({
             />
           </>
         )}
+        {filter && ctx.onFollow && (
+          <FollowButton
+            label={`Follow ${filter.name} ${shortValue(filter.value)} across streams`}
+            tabIndex={inside ? 0 : -1}
+            onClick={() =>
+              ctx.onFollow?.(
+                jsonRule({ path: id, value: filter.value, arrayPath: filter.arrayPath })
+              )
+            }
+          />
+        )}
       </span>
     </div>
   )
@@ -324,6 +340,36 @@ function FilterChip({
         )
       }
     />
+  )
+}
+
+/** A small "Follow" button: start a trace on this value (PBI-138). */
+export function FollowButton({
+  label,
+  text,
+  tabIndex,
+  onClick
+}: {
+  /** The accessible name and the tooltip. */
+  label: string
+  /** The visible text; "Follow" by default. */
+  text?: string
+  tabIndex?: number
+  onClick: () => void
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      tabIndex={tabIndex}
+      title={label}
+      aria-label={label}
+      data-follow-action=""
+      className="inline-flex h-5 items-center gap-1 rounded border border-line bg-raised px-1.5 font-sans text-[11px] text-muted hover:text-fg"
+      onClick={onClick}
+    >
+      <Route className="h-3 w-3" aria-hidden />
+      {text ?? 'Follow'}
+    </button>
   )
 }
 

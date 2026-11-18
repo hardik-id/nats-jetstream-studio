@@ -110,3 +110,57 @@ test('PBI-138 run a trace from the left panel (text, then header)', async ({ pag
     .filter({ hasText: /\.(new|charge|pack)/ })
   await expect(hops).toHaveCount(3)
 })
+
+test('PBI-138 Lanes view: lanes and dots for a three-stream trace, open a message from a dot', async ({
+  page
+}) => {
+  await openStudio(page)
+  await go(page, 'Trace')
+  await page.getByRole('textbox', { name: 'Header name 1' }).fill('trace-id')
+  await page.getByRole('textbox', { name: 'Value 1' }).fill(tag)
+  await page.getByRole('button', { name: 'Run trace' }).click()
+  await expect(page.getByRole('table', { name: 'Trace timeline' })).toBeVisible()
+
+  await page.getByRole('combobox', { name: 'View' }).selectOption('lanes')
+  const lanes = page.getByRole('listbox', { name: 'Trace lanes' })
+  await expect(lanes).toBeVisible()
+  // One lane per subject, in the order the request went; one dot per message.
+  const labels = page.getByTestId('lane-label')
+  await expect(labels).toHaveText([`${orders}.new`, `${pay}.charge`, `${ship}.pack`])
+  const dots = lanes.getByRole('option')
+  await expect(dots).toHaveCount(3)
+  await expect(dots.nth(1)).toHaveAccessibleName(
+    new RegExp(
+      `^${pay}\\.charge, ${pay}, \\d\\d:\\d\\d:\\d\\d\\.\\d{3}, \\+\\d+(\\.\\d)? (ms|s) after the previous message`
+    )
+  )
+
+  // By stream the lanes are the streams.
+  await page.getByRole('combobox', { name: 'Lane by' }).selectOption('stream')
+  await expect(labels).toHaveText([orders, pay, ship])
+  await page.getByRole('combobox', { name: 'Scale' }).selectOption('time')
+  await expect(dots).toHaveCount(3)
+
+  // Hovering shows the message; a click on a dot opens it in the detail pane.
+  await dots.nth(2).hover()
+  await expect(page.getByTestId('lane-tooltip')).toContainText(`${ship}.pack`)
+  await dots.nth(1).click()
+  const panel = page.getByRole('complementary', { name: 'Message detail' })
+  await expect(panel).toContainText(`${pay}.charge`)
+  await expect(dots.nth(1)).toHaveAttribute('aria-selected', 'true')
+
+  // The keyboard moves the selection; the open detail follows it.
+  await lanes.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(dots.nth(2)).toHaveAttribute('aria-selected', 'true')
+  await expect(panel).toContainText(`${ship}.pack`)
+
+  // Back to the Timeline: the same message stays selected.
+  await page.getByRole('combobox', { name: 'View' }).selectOption('timeline')
+  await expect(
+    page
+      .getByRole('table', { name: 'Trace timeline' })
+      .getByRole('row')
+      .filter({ hasText: `${ship}.pack` })
+  ).toHaveAttribute('aria-selected', 'true')
+})

@@ -21,7 +21,9 @@ import { cancelledText, NoMatches, NothingRun, ScanProgress, StreamNotices } fro
 import { blankRule, DEFAULT_WINDOW, TraceToolbar } from './TraceToolbar'
 import { TraceDetail } from './TraceDetail'
 import { useTrace } from './useTrace'
+import { resolveSettings } from './views/controls'
 import { TRACE_VIEWS } from './views/registry'
+import type { ViewSettings } from './views/types'
 
 const emptyQuery = (): TraceQuery => ({ rules: [blankRule()], window: DEFAULT_WINDOW })
 
@@ -33,11 +35,16 @@ const emptyQuery = (): TraceQuery => ({ rules: [blankRule()], window: DEFAULT_WI
 export function TraceTab({
   tabId,
   connId,
-  query
+  query,
+  view: storedView,
+  viewSettings: storedSettings
 }: {
   tabId: string
   connId: string
   query?: TraceQuery
+  /** The view and its settings from the tab spec. */
+  view?: string
+  viewSettings?: ViewSettings
 }): ReactNode {
   const gateway = useGateway()
   const patch = useTabs((s) => s.patch)
@@ -50,7 +57,6 @@ export function TraceTab({
     query?.window.kind === 'around' ? query.window.anchor : undefined
   )
   const [problem, setProblem] = useState<string>()
-  const [viewId, setViewId] = useState(TRACE_VIEWS[0].id)
   const [selected, setSelected] = useState<string | null>(null)
   // The detail pane opens on a click or Enter, then follows the selection (arrows, Previous, Next).
   // Arrow keys alone only move the selection. Escape or Close hides it again.
@@ -120,7 +126,17 @@ export function TraceTab({
     patch(tabId, { query: next })
   }
 
-  const View = TRACE_VIEWS.find((v) => v.id === viewId)!.Component
+  // The view and its settings live in the tab spec (so they survive a restart and a rerun); an
+  // unknown view id falls back to the first view. Switching views keeps the selection and the pane.
+  const viewDef = TRACE_VIEWS.find((v) => v.id === storedView) ?? TRACE_VIEWS[0]
+  const viewSettings = useMemo(
+    () => resolveSettings(viewDef, storedSettings),
+    [viewDef, storedSettings]
+  )
+  const changeView = (id: string): void => patch(tabId, { view: id })
+  const changeSetting = (id: string, value: string | boolean): void =>
+    patch(tabId, { viewSettings: { ...storedSettings, [id]: value } })
+  const View = viewDef.Component
   const running = state.status === 'scanning'
   const hops = trace.hops
   const selectedIndex = selected === null ? -1 : hops.findIndex((h) => h.id === selected)
@@ -128,8 +144,8 @@ export function TraceTab({
   const select = (id: string): void => setSelected(id)
   const closePane = (): void => {
     setPaneOpen(false)
-    // The pane (and the focus in it) goes away: keep the keyboard in the timeline.
-    tableBox.current?.querySelector<HTMLElement>('[role=table]')?.focus()
+    // The pane (and the focus in it) goes away: keep the keyboard in the view.
+    tableBox.current?.querySelector<HTMLElement>('[role=table],[role=listbox]')?.focus()
   }
 
   const cancelledNote = state.status === 'cancelled' ? ` · ${cancelledText(state.streams)}` : ''
@@ -161,6 +177,8 @@ export function TraceTab({
               trace={trace}
               selected={selected}
               onSelect={select}
+              settings={viewSettings}
+              detailOpen={paneOpen && hop !== null}
               onOpen={(id) => {
                 select(id)
                 setPaneOpen(true)
@@ -213,8 +231,10 @@ export function TraceTab({
         streamsLoading={list.isLoading}
         running={running}
         problem={problem}
-        viewId={viewId}
-        onViewChange={setViewId}
+        view={viewDef}
+        viewSettings={viewSettings}
+        onViewChange={changeView}
+        onViewSettingChange={changeSetting}
         onRun={run}
         onCancel={cancel}
       />

@@ -23,7 +23,15 @@ export type TabSpec =
   | { kind: 'tail'; connId: string; subject?: string; n: number }
   | { kind: 'publish'; connId: string; subject?: string; n: number }
   /** A request followed across streams (PBI-138): numbered like Live tail, so two can be compared. */
-  | { kind: 'trace'; connId: string; n: number; query?: TraceQuery }
+  | {
+      kind: 'trace'
+      connId: string
+      n: number
+      query?: TraceQuery
+      /** The chosen view (a `TRACE_VIEWS` id) and its settings, which survive a restart. */
+      view?: string
+      viewSettings?: Record<string, string | boolean>
+    }
   | { kind: 'kv'; connId: string }
   | { kind: 'kvBucket'; connId: string; bucket: string }
   | { kind: 'objects'; connId: string }

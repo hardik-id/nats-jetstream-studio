@@ -18,6 +18,8 @@ import { Popover } from './Popover'
 import { RuleRow } from './RuleRow'
 import { StreamsMenu } from './StreamsMenu'
 import { TRACE_VIEWS } from './views/registry'
+import type { TraceViewDef, ViewSettings } from './views/types'
+import { ViewControl } from './ViewControl'
 
 /** The most match rules a trace can have. */
 const MAX_RULES = 8
@@ -84,7 +86,7 @@ export const blankRule = (): TraceRule => ({ kind: 'header', key: '', value: '' 
 /**
  * The parameters of a trace: what to match, which streams, which window. It edits a draft; Run
  * applies the draft to the tab (see `TraceTab`). With one view in the registry there is no View
- * dropdown.
+ * dropdown. View settings are not part of the query: they apply at once and are not rerun.
  */
 export function TraceToolbar({
   draft,
@@ -94,8 +96,10 @@ export function TraceToolbar({
   streamsLoading,
   running,
   problem,
-  viewId,
+  view,
+  viewSettings,
   onViewChange,
+  onViewSettingChange,
   onRun,
   onCancel
 }: {
@@ -109,14 +113,21 @@ export function TraceToolbar({
   running: boolean
   /** Why Run did not start, shown under the controls. */
   problem?: string
-  viewId: string
+  /** The active view; its declared controls are shown next to the View dropdown. */
+  view: TraceViewDef
+  /** The active view's settings, completed with the defaults of its controls. */
+  viewSettings: ViewSettings
   onViewChange: (id: string) => void
+  onViewSettingChange: (id: string, value: string | boolean) => void
   onRun: () => void
   onCancel: () => void
 }): ReactNode {
   const set = (patch: Partial<TraceQuery>): void => onChange({ ...draft, ...patch })
   const setRule = (i: number, rule: TraceRule): void =>
     set({ rules: draft.rules.map((r, j) => (j === i ? rule : r)) })
+  const controls = view.controls ?? []
+  const barControls = controls.filter((c) => c.placement !== 'more')
+  const moreControls = controls.filter((c) => c.placement === 'more')
   const windowOptions = anchor ? [...AROUND, ...LAST] : LAST
   const w = draft.window
   const chooseWindow = (key: string): void => {
@@ -180,7 +191,7 @@ export function TraceToolbar({
             <Select
               compact
               className="w-32"
-              value={viewId}
+              value={view.id}
               onChange={(e) => onViewChange(e.target.value)}
             >
               {TRACE_VIEWS.map((v) => (
@@ -191,6 +202,15 @@ export function TraceToolbar({
             </Select>
           </label>
         )}
+        {barControls.map((c) => (
+          <ViewControl
+            key={c.id}
+            control={c}
+            value={viewSettings[c.id]}
+            disabled={c.disabled?.(viewSettings)}
+            onChange={(v) => onViewSettingChange(c.id, v)}
+          />
+        ))}
         <StreamsMenu
           options={streams}
           value={draft.streams}
@@ -280,6 +300,20 @@ export function TraceToolbar({
                 })
               }
             />
+            {moreControls.length > 0 && (
+              <div className="flex flex-col gap-2 border-t border-line pt-2">
+                <span className="text-xs text-muted">{view.label} view</span>
+                {moreControls.map((c) => (
+                  <ViewControl
+                    key={c.id}
+                    control={c}
+                    value={viewSettings[c.id]}
+                    disabled={c.disabled?.(viewSettings)}
+                    onChange={(v) => onViewSettingChange(c.id, v)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </Popover>
         <span className="ml-auto flex items-center gap-2">

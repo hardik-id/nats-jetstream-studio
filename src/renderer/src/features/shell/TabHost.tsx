@@ -65,7 +65,15 @@ function content(tab: Tab): ReactNode {
     case 'tail':
       return <TailTab tabId={tab.id} connId={spec.connId} subject={spec.subject} />
     case 'trace':
-      return <TraceTab tabId={tab.id} connId={spec.connId} query={spec.query} />
+      return (
+        <TraceTab
+          tabId={tab.id}
+          connId={spec.connId}
+          query={spec.query}
+          view={spec.view}
+          viewSettings={spec.viewSettings}
+        />
+      )
     case 'publish':
       return <PublishTab connId={spec.connId} subject={spec.subject} />
     case 'kv':

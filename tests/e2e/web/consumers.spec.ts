@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { go, nats, openStream, openStudio, toast, unique } from './helpers'
+import { go, nats, openStream, openStudio, streamPicker, toast, unique } from './helpers'
 
 test('PBI-050/051/054 consumers list, health and detail with lag', async ({ page }) => {
   await openStudio(page)
@@ -54,6 +54,7 @@ test('PBI-050/051/054 consumers list, health and detail with lag', async ({ page
   await expect(page.locator('pre').filter({ hasText: '"durable_name": "audit"' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Show the next undelivered message' }).click()
+  await expect(streamPicker(page)).toHaveValue('ORDERS')
   await expect(page.getByLabel('Start from')).toHaveValue('seq')
   const first = await page
     .getByRole('table', { name: 'Messages in ORDERS' })

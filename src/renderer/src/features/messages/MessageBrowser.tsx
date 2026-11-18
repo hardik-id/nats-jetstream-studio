@@ -245,11 +245,11 @@ export function MessageBrowser({
   info: StreamInfoDto
   requestSubject?: string
   requestSeq?: number
-  /** False while another section of the stream is shown (this page stays mounted). */
+  /** False while the browser is mounted but not shown. */
   visible?: boolean
   /**
-   * "Expand to read" is on. The stream page owns it (controlled) so it can silence its own header
-   * and tabs, which the panel covers; without it the page keeps the state itself.
+   * "Expand to read" is on. The Messages page owns it (controlled) so it can silence its own
+   * header, which the panel covers; without it the browser keeps the state itself.
    */
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
@@ -269,7 +269,7 @@ export function MessageBrowser({
     scanLimit: 10_000
   })
   const [subjectDraft, setSubjectDraft] = useState(view.subject)
-  // Open or closed is kept for as long as this stream's page is open (one page per stream) and is
+  // Open or closed is kept for as long as this stream is shown in the Messages tab, and is
   // not stored: a panel left open would take a third of the window on every later visit, and the
   // chips already show what is active. It closes by itself after Apply and Clear (PBI-125 follow-up).
   const [panelOpen, setPanelOpen] = useState(false)
@@ -300,8 +300,8 @@ export function MessageBrowser({
     onExpandedChange?.(value)
   }
   const setExpandedRef = useLatest(setExpanded)
-  // The page that owns the state must not keep it once this browser is gone (the stream page shows
-  // an error instead of it, for example): nothing would be covering its header and tabs then.
+  // The page that owns the state must not keep it once this browser is gone (the Messages page
+  // shows an error instead of it, for example): nothing would be covering its header then.
   useEffect(() => {
     const ref = setExpandedRef
     return () => ref.current(false)

@@ -12,9 +12,9 @@ Linux) and, with the same UI, as a web app.
 
 - **Connect** to several servers at once, with a colour per environment, read-only mode and
   automatic reconnect. Contexts from the `nats` CLI are found automatically.
-- **Browse messages** in any stream without creating a consumer or acknowledging anything. Filter
-  by subject, header, payload text, regex or JSONPath, and view payloads as JSON, text, hex, base64
-  or Protobuf.
+- **Browse messages** in any stream, from the Messages screen in the left panel, without creating a
+  consumer or acknowledging anything. Filter by subject, header, payload text, regex or JSONPath,
+  and view payloads as JSON, text, hex, base64 or Protobuf.
 - **Manage streams and consumers**: create, edit, purge, delete, pause, and see lag and unhealthy
   consumers at a glance.
 - **Tail and publish** on any subject, including request/reply.

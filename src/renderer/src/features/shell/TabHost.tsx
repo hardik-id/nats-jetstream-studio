@@ -11,6 +11,7 @@ import { ConsumersTab } from '../consumers/ConsumersTab'
 import { DecodersTab } from '../decoders/DecodersTab'
 import { KvBucketTab } from '../kv/KvBucketTab'
 import { KvTab } from '../kv/KvTab'
+import { MessagesTab } from '../messages/MessagesTab'
 import { ObjBucketTab } from '../objects/ObjBucketTab'
 import { ObjectsTab } from '../objects/ObjectsTab'
 import { OverviewTab } from '../overview/OverviewTab'
@@ -35,6 +36,14 @@ function content(tab: Tab): ReactNode {
           connId={spec.connId}
           stream={spec.stream}
           section={spec.section}
+        />
+      )
+    case 'messages':
+      return (
+        <MessagesTab
+          tabId={tab.id}
+          connId={spec.connId}
+          stream={spec.stream}
           subject={spec.subject}
           seq={spec.seq}
         />

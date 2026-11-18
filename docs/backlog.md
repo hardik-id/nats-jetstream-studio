@@ -915,6 +915,19 @@ Each item below is small enough for one agent in one session. Rules for every it
 - Data: loading shows rows as each stream answers, a failed stream keeps the others, live-only subjects are labelled "live"; 10,000 subjects stay responsive and the DOM holds under 100 rows. Expanded paths, selection, sort, filters and pane state are remembered per connection; the top level is open on the first visit.
 - Not in this work: deleting a branch, payload preview per subject, rate and last-seen columns, discovery of core subjects nobody tailed.
 
+### PBI-128: Messages as a top-level screen in the left panel
+**Priority:** v1 · **Size:** M · **Depends on:** PBI-040, PBI-117 · **Files:** `src/renderer/src/features/messages/MessagesTab.tsx`, `StreamPicker.tsx`, `src/renderer/src/state/tabs.ts`, `src/renderer/src/features/shell/nav.tsx`, `src/renderer/src/features/streams/StreamTab.tsx`, tests
+
+**Story:** As a user who reads messages more than anything else, I want Messages in the left panel with a stream picker, so that I do not have to open a stream first and every "browse messages" link lands in the same place.
+
+**Acceptance criteria**
+- "Messages" is a left panel item right after Streams and a "Go to" entry in the command palette, which also offers "Browse messages in <stream>". There is one Messages tab per connection (`messages:<connId>`), reused by every link; its title is "Messages · <stream>" once a stream is chosen.
+- The stream, subject and sequence live in the tab, so they survive a restart. Opening it for a stream replaces a subject or sequence of the previous visit; opening it from the left panel keeps what it shows.
+- A searchable "Stream" picker (type to filter, arrows, Enter, Escape) in the header; it works with hundreds of streams (shows 100 at a time). "Open stream" and "Refresh" next to it. Choosing a stream resets the browser's filters and paging.
+- States: no stream chosen (picker focused, "Choose a stream to browse its messages"), no streams on the connection, the chosen stream deleted (said, the stored stream cleared, picker usable), stream info error with Retry. With exactly one stream it is chosen by itself.
+- The stream page loses its Messages section and gets a "Browse messages" button; its Subjects section, subject favourites, the Subjects screen and a consumer's "next undelivered message" open the Messages screen through one helper (`openMessages`). Stored stream tabs on the old Messages section open on Overview.
+- Live, Reload and "Expand to read" keep working; the screen's header is inert while the panel is expanded.
+
 ## Epic 12: Website
 
 A public website on GitHub Pages, so that people can see what the studio does, download it and read

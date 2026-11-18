@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useSetting } from './hooks'
-import type { TabSpec } from '../state/tabs'
+import { messagesSpec, type TabSpec } from '../state/tabs'
 
 export type Favorite =
   | { kind: 'stream'; stream: string }
@@ -24,7 +24,7 @@ export function favoriteTab(connId: string, f: Favorite): TabSpec {
   if (f.kind === 'stream') return { kind: 'stream', connId, stream: f.stream }
   if (f.kind === 'consumer')
     return { kind: 'consumer', connId, stream: f.stream, consumer: f.consumer }
-  return { kind: 'stream', connId, stream: f.stream, section: 'messages', subject: f.subject }
+  return messagesSpec(connId, { stream: f.stream, subject: f.subject })
 }
 
 /** Starred streams, consumers and subjects of a connection (PBI-091). */

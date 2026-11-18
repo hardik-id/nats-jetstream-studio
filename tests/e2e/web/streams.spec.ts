@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { go, nats, openStream, openStudio, toast, unique } from './helpers'
+import {
+  connection,
+  go,
+  nats,
+  openStream,
+  openStudio,
+  streamPicker,
+  toast,
+  unique
+} from './helpers'
 
 test('PBI-030 streams list: columns, search, filters and hidden bucket streams', async ({
   page
@@ -220,8 +229,62 @@ test('PBI-034 per-subject counts, filter, and jump to messages', async ({ page }
 
   // Clicking a subject opens the message browser filtered to it.
   await table.getByRole('button', { name: `${name}.us.created`, exact: true }).click()
+  await expect(streamPicker(page)).toHaveValue(name)
   await expect(page.getByLabel('Subject filter')).toHaveValue(`${name}.us.created`)
   await expect(page.getByTestId('message-range')).toContainText('3 messages')
   await jsm.streams.delete(name)
   await nc.close()
+})
+
+test('PBI-128 the stream page has no Messages section and browses in the Messages screen', async ({
+  page
+}) => {
+  await openStudio(page)
+  await openStream(page, 'ORDERS')
+  const sections = page.getByRole('tabpanel', { name: 'ORDERS', exact: true })
+  await expect(sections.getByRole('tab')).toHaveText([
+    'Overview',
+    'Consumers',
+    'Subjects',
+    'Configuration'
+  ])
+  await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
+  const tabs = page.getByRole('tablist', { name: 'Open tabs' })
+  await expect(tabs.getByRole('tab', { name: 'Messages · ORDERS', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(streamPicker(page)).toHaveValue('ORDERS')
+  await expect(page.getByTestId('message-range')).toContainText('50 messages')
+
+  // The left panel shows the same screen; another stream reuses it.
+  await expect(
+    connection(page, 'Local dev').getByRole('button', { name: 'Messages', exact: true })
+  ).toHaveAttribute('aria-current', 'page')
+  await openStream(page, 'EVENTS')
+  await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
+  await expect(streamPicker(page)).toHaveValue('EVENTS')
+  await expect(tabs.getByRole('tab', { name: /^Messages/ })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Open stream', exact: true }).click()
+  await expect(tabs.getByRole('tab', { name: 'EVENTS', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+})
+
+test('PBI-128 the Messages screen starts empty and its picker filters as you type', async ({
+  page
+}) => {
+  await openStudio(page)
+  await go(page, 'Messages')
+  await expect(page.getByText('Choose a stream to browse its messages')).toBeVisible()
+  const picker = streamPicker(page)
+  await expect(picker).toBeFocused()
+  await picker.fill('tele')
+  const list = page.getByRole('listbox', { name: 'Streams' })
+  // Other tests add streams at the same time, so only the best match is checked.
+  await expect(list.getByRole('option').first()).toContainText('TELEMETRY')
+  await page.keyboard.press('Enter')
+  await expect(picker).toHaveValue('TELEMETRY')
+  await expect(page.getByRole('table', { name: 'Messages in TELEMETRY' })).toBeVisible()
 })

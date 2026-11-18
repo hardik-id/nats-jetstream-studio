@@ -6,17 +6,19 @@ import {
   KeyRound,
   LayoutDashboard,
   ListTree,
+  MessageSquareText,
   Package,
   Radio,
   ScrollText,
   Send,
   Users
 } from 'lucide-react'
-import { tabId, useTabs, type TabSpec } from '../../state/tabs'
+import { messagesSpec, tabId, useTabs, type MessagesTarget, type TabSpec } from '../../state/tabs'
 
 export type NavKind =
   | 'overview'
   | 'streams'
+  | 'messages'
   | 'consumers'
   | 'subjects'
   | 'tail'
@@ -30,6 +32,7 @@ export type NavKind =
 export const NAV: { kind: NavKind; label: string }[] = [
   { kind: 'overview', label: 'Overview' },
   { kind: 'streams', label: 'Streams' },
+  { kind: 'messages', label: 'Messages' },
   { kind: 'consumers', label: 'Consumers' },
   { kind: 'subjects', label: 'Subjects' },
   { kind: 'tail', label: 'Live tail' },
@@ -55,6 +58,8 @@ export function TabIcon({
     case 'streams':
     case 'stream':
       return <Database {...props} />
+    case 'messages':
+      return <MessageSquareText {...props} />
     case 'consumers':
     case 'consumer':
       return <Users {...props} />
@@ -88,7 +93,17 @@ export function openNav(connId: string, kind: NavKind): void {
     else tabs.openNew(kind, connId)
     return
   }
+  if (kind === 'messages') return openMessages(connId)
   tabs.open({ kind, connId } as TabSpec)
+}
+
+/**
+ * The one way into the Messages tab (PBI-128): every "browse messages" link calls this. Without a
+ * stream it shows the tab as it was; with one it shows that stream, filtered on `subject` or
+ * starting at `seq` when given.
+ */
+export function openMessages(connId: string, target?: MessagesTarget): void {
+  useTabs.getState().open(messagesSpec(connId, target))
 }
 
 export function isNavActive(connId: string, kind: NavKind, active: TabSpec | undefined): boolean {
@@ -96,6 +111,7 @@ export function isNavActive(connId: string, kind: NavKind, active: TabSpec | und
   const groups: Record<NavKind, TabSpec['kind'][]> = {
     overview: ['overview'],
     streams: ['streams', 'stream'],
+    messages: ['messages'],
     consumers: ['consumers', 'consumer'],
     subjects: ['subjects'],
     tail: ['tail'],

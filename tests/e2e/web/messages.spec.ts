@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { headers } from '@nats-io/transport-node'
 import { expect, test, type Page } from '@playwright/test'
-import { nats, openStream, openStudio, toast, unique, type Nats } from './helpers'
+import { go, nats, openMessages, openStudio, toast, unique, type Nats } from './helpers'
 
 let client: Nats
 let stream: string
@@ -41,7 +41,7 @@ test('PBI-040/041 page through messages, newest first or oldest first, from any 
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
 
   // Default: the latest 50, newest at the top.
   await expect(range(page)).toHaveText('50 messages, #81 to #130')
@@ -96,7 +96,7 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await expect(range(page)).toContainText('50 messages')
 
   // Subject filter, applied by the server.
@@ -176,7 +176,7 @@ test('PBI-042/048 filter by subject, header, payload text, regex and JSONPath', 
 test('PBI-043/045 message detail, payload views, copy and export', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await expect(range(page)).toContainText('50 messages')
 
   await rowOf(page, 120).click()
@@ -268,7 +268,7 @@ test('PBI-046/047 delete and republish a message', async ({ page }) => {
   for (let i = 1; i <= 5; i++) await client.js.publish(`${name}.x`, `payload ${i}`)
 
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   await rowOf(page, 3, name).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
 
@@ -319,7 +319,7 @@ test('PBI-046 delete is disabled on a stream that denies it', async ({ page }) =
   await client.jsm.streams.add({ name, subjects: [`${name}.>`], deny_delete: true })
   await client.js.publish(`${name}.x`, 'keep')
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   await page
     .getByRole('table', { name: `Messages in ${name}` })
     .getByRole('row')
@@ -363,7 +363,7 @@ test('PBI-049 the message panel shows which consumers have received the message'
   for await (const m of await consumer.fetch({ max_messages: 1, expires: 2000 })) m.ack()
 
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   await rowOf(page, 1, name).click()
   // The Consumers section starts closed (PBI-125); open it.
   await page
@@ -395,7 +395,7 @@ test('PBI-049 the message panel shows which consumers have received the message'
   await only.getByRole('button', { name: 'only-a' }).click()
   await expect(page.getByTestId('consumer-pending')).toBeVisible()
 
-  await openStream(page, queue, 'Messages')
+  await openMessages(page, queue)
   await rowOf(page, 1, queue).click()
   await expect(
     page.getByRole('region', { name: 'Consumers' }).getByText('removed once its consumer')
@@ -409,7 +409,7 @@ test('PBI-125 the Filters button shows its state and a count, Apply hides the pa
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   const button = page.getByRole('button', { name: /^Filters/ })
   await expect(button).toHaveAttribute('aria-expanded', 'false')
   await button.click()
@@ -443,7 +443,7 @@ test('PBI-125 the Filters button shows its state and a count, Apply hides the pa
   await expect(panel).toBeVisible()
   await page.reload()
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await expect(page.getByRole('form', { name: 'Message filters' })).toBeHidden()
 
   // Clear also hides the panel and focuses the button.
@@ -457,7 +457,7 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   const frame = page.getByTestId('detail-frame')
@@ -472,7 +472,7 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   await expect(detail.getByRole('row', { name: /Trace-Id/ })).toBeHidden()
   await page.reload()
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   await expect(headers).toHaveAttribute('aria-expanded', 'false')
   await headers.click()
@@ -489,7 +489,7 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   expect(await tableWidth()).toBeGreaterThan(before + framed - 60)
   await page.reload()
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   await expect(rail).toBeVisible()
   await rail.getByRole('button', { name: 'Expand message panel' }).click()
@@ -517,7 +517,7 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
 test('PBI-125 the panel works in a 1000 px window', async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 700 })
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   await expect(detail).toBeVisible()
@@ -538,7 +538,7 @@ test('PBI-125 readable JSON: text size, levels, search and copy path', async ({
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   const body = detail.getByTestId('payload-body')
@@ -550,7 +550,7 @@ test('PBI-125 readable JSON: text size, levels, search and copy path', async ({
   await expect(tree).toHaveCSS('font-size', '15px')
   await page.reload()
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   await expect(tree).toHaveCSS('font-size', '15px')
   await detail.getByRole('button', { name: 'Smaller text' }).click()
@@ -590,7 +590,7 @@ for (const size of [
   }) => {
     await page.setViewportSize(size)
     await openStudio(page)
-    await openStream(page, stream, 'Messages')
+    await openMessages(page, stream)
     const button = page.getByRole('button', { name: /^Filters/ })
     if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click()
     await rowOf(page, 120).click()
@@ -649,7 +649,7 @@ for (const { width, height, closed, open } of [
   }) => {
     await page.setViewportSize({ width, height })
     await openStudio(page)
-    await openStream(page, stream, 'Messages')
+    await openMessages(page, stream)
     await rowOf(page, 120).click()
     await expect(page.getByRole('complementary', { name: 'Message detail' })).toBeVisible()
     await DEFAULT_SECTIONS(page)
@@ -680,7 +680,7 @@ for (const size of [
   }) => {
     await page.setViewportSize(size)
     await openStudio(page)
-    await openStream(page, stream, 'Messages')
+    await openMessages(page, stream)
     await rowOf(page, 120).click()
     const detail = page.getByRole('complementary', { name: 'Message detail' })
     await expect(detail).toBeVisible()
@@ -726,7 +726,7 @@ test('#58 1000x600 with the filters open and nothing selected does not scroll th
 }) => {
   await page.setViewportSize({ width: 1000, height: 600 })
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await page.getByRole('button', { name: /^Filters/ }).click()
   await expect(page.getByRole('form', { name: 'Message filters' })).toBeVisible()
   const m = await page.evaluate(() => ({
@@ -740,7 +740,7 @@ test('#58 while expanded, Tab and Shift+Tab never reach what the panel covers', 
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   await detail.getByRole('button', { name: 'Expand to read' }).click()
@@ -788,7 +788,9 @@ test('#58 an expanded panel leaves nothing inert when the tab changes, closes or
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  // A Streams tab to switch to later, while the sidebar is the icon rail.
+  await go(page, 'Streams')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   await detail.getByRole('button', { name: 'Expand to read' }).click()
@@ -805,24 +807,29 @@ test('#58 an expanded panel leaves nothing inert when the tab changes, closes or
   })
   expect(inertOutside).toBe(false)
 
-  // Another stream opens in a new tab: nothing visible is inert there.
+  // A stream page opens in a new tab: nothing visible is inert there.
   // (The sidebar is the icon rail while a message is open; the tab strip is always there.)
-  await page.getByRole('tab', { name: 'Streams', exact: true }).click()
+  const openTabs = page.getByRole('tablist', { name: 'Open tabs' })
+  await openTabs.getByRole('tab', { name: 'Streams', exact: true }).click()
   await page
     .getByRole('table', { name: 'Streams' })
     .getByRole('button', { name: 'ORDERS', exact: true })
     .click()
-  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
+  await expect(
+    page
+      .getByRole('tabpanel', { name: 'ORDERS', exact: true })
+      .getByRole('tab', { name: 'Overview' })
+  ).toBeVisible()
   expect(await visibleInert(page)).toBe(0)
 
-  // Back on the first stream the panel is still expanded and its page is inert again.
-  await page.getByRole('tab', { name: stream }).click()
+  // Back on the Messages screen the panel is still expanded and its page is inert again.
+  await openTabs.getByRole('tab', { name: `Messages · ${stream}`, exact: true }).click()
   await expect(detail.getByRole('button', { name: 'Restore panel size' })).toBeVisible()
   expect(await visibleInert(page)).toBeGreaterThan(0)
 
   // Closing the tab removes the page, and its marks with it.
   await page.keyboard.press('Control+w')
-  await page.getByRole('tab', { name: 'ORDERS' }).waitFor({ state: 'visible' })
+  await openTabs.getByRole('tab', { name: 'ORDERS', exact: true }).waitFor({ state: 'visible' })
   expect(await visibleInert(page)).toBe(0)
   expect(await page.evaluate(() => document.querySelectorAll('[inert]').length)).toBe(0)
 })
@@ -850,7 +857,7 @@ test('#58 when the stream info fails while expanded, nothing stays inert and Ret
     server.onMessage((raw) => ws.send(raw))
   })
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   await detail.getByRole('button', { name: 'Expand to read' }).click()
@@ -862,8 +869,6 @@ test('#58 when the stream info fails while expanded, nothing stays inert and Ret
   await expect(retry).toBeVisible({ timeout: 20_000 })
   expect(await visibleInert(page)).toBe(0)
   await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
-  await page.getByRole('tab', { name: 'Configuration' }).click()
-  await page.getByRole('tab', { name: 'Messages', exact: true }).click()
 
   // Retry brings the browser back; the expanded state was reset with it.
   fail = false
@@ -888,7 +893,7 @@ test('PBI-126 filter from a message: include, exclude, flip and remove chips', a
       })
     )
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   await expect(range(page)).toHaveText('8 messages, #1 to #8')
   await rowOf(page, 8, name).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
@@ -943,7 +948,7 @@ test('PBI-126 the Consumers list is readable when the section is open', async ({
     await client.jsm.consumers.add(name, { durable_name: `c${i}`, ack_policy: 'explicit' as never })
   await page.setViewportSize({ width: 1440, height: 900 })
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   await rowOf(page, 1, name).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   const toggle = detail.getByRole('button', { name: /^Consumers/ })
@@ -963,7 +968,7 @@ test('PBI-126 Expand all and Collapse all are clear icon buttons as tall as the 
   page
 }) => {
   await openStudio(page)
-  await openStream(page, stream, 'Messages')
+  await openMessages(page, stream)
   await rowOf(page, 120).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })
   const expand = detail.getByRole('button', { name: 'Expand all' })
@@ -984,7 +989,7 @@ test('Reload view reads the stream again and shows messages published since', as
   await client.jsm.streams.add({ name, subjects: [`${name}.>`], allow_direct: true })
   for (let i = 1; i <= 3; i++) await client.js.publish(`${name}.a`, `first ${i}`)
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   const rows = page.getByRole('table', { name: `Messages in ${name}` })
   await expect(rows.getByText('first 3')).toBeVisible()
   await client.js.publish(`${name}.a`, 'fresh 4')
@@ -998,7 +1003,7 @@ test('Live shows a message published afterwards without any click', async ({ pag
   await client.jsm.streams.add({ name, subjects: [`${name}.>`], allow_direct: true })
   for (let i = 1; i <= 3; i++) await client.js.publish(`${name}.a`, `first ${i}`)
   await openStudio(page)
-  await openStream(page, name, 'Messages')
+  await openMessages(page, name)
   const rows = page.getByRole('table', { name: `Messages in ${name}` })
   await expect(rows.getByText('first 3')).toBeVisible()
   const live = page.getByRole('button', { name: 'Live', exact: true })

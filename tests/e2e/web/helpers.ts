@@ -44,8 +44,30 @@ export async function openStream(page: Page, stream: string, tab?: string): Prom
     .getByRole('table', { name: 'Streams' })
     .getByRole('button', { name: stream, exact: true })
     .click()
-  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
-  if (tab) await page.getByRole('tab', { name: tab, exact: true }).click()
+  // The sections of the stream page, not the open tabs (which can hold an "Overview" tab too).
+  const sections = page.getByRole('tabpanel', { name: stream, exact: true })
+  await expect(sections.getByRole('tab', { name: 'Overview', exact: true })).toBeVisible()
+  if (tab) await sections.getByRole('tab', { name: tab, exact: true }).click()
+}
+
+/** The stream picker of the Messages screen. */
+export function streamPicker(page: Page): Locator {
+  return page.getByRole('combobox', { name: 'Stream', exact: true })
+}
+
+/** Opens the Messages screen from the left panel and chooses a stream in its picker (PBI-128). */
+export async function openMessages(page: Page, stream: string, name = 'Local dev'): Promise<void> {
+  await go(page, 'Messages', name)
+  const picker = streamPicker(page)
+  await picker.click()
+  await picker.fill(stream)
+  await page
+    .getByRole('listbox', { name: 'Streams' })
+    .getByRole('option')
+    .filter({ has: page.getByText(stream, { exact: true }) })
+    .click()
+  await expect(picker).toHaveValue(stream)
+  await expect(page.getByRole('table', { name: `Messages in ${stream}` })).toBeVisible()
 }
 
 export interface Nats {

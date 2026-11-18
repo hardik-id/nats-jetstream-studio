@@ -347,7 +347,7 @@ describe('PBI-127 subjects screen', () => {
         screen.getByRole('menuitem', { name: /Browse stored messages on orders.eu.>/ })
       )
       const open = useTabs.getState().tabs.at(-1)!.spec
-      expect(open).toMatchObject({ kind: 'stream', stream: 'ORDERS', subject: 'orders.eu.>' })
+      expect(open).toMatchObject({ kind: 'messages', stream: 'ORDERS', subject: 'orders.eu.>' })
       await userEvent.click(screen.getByRole('button', { name: 'Actions for orders.eu' }))
       await userEvent.click(
         screen.getByRole('menuitem', { name: /Start live tail on orders.eu.>/ })

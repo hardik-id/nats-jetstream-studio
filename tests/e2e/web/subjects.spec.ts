@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { go, nats, openStudio, unique } from './helpers'
+import { go, nats, openStudio, streamPicker, unique } from './helpers'
 
 /** The demo server has many subjects and the tree is virtualised: search narrows it to a stream. */
 async function narrow(page: Page, text: string) {
@@ -72,11 +72,16 @@ test('PBI-127 subjects: select, Expand all, search, scope, browse, tail, publish
   await expect(row(`${stream}.us`)).toHaveCount(0)
   await expect(page.getByText('1 match')).toBeVisible()
 
-  // Browse from the pane: the filter of the scope is applied in the stream's Messages tab.
+  // Browse from the pane: the Messages screen opens on the stream, filtered on the scope.
   await narrow(page, `${stream}.eu`)
   await row(`${stream}.eu`).click()
   await detail(page).getByRole('button', { name: 'Browse stored messages' }).click()
-  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
+  await expect(streamPicker(page)).toHaveValue(stream)
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Open tabs' })
+      .getByRole('tab', { name: `Messages · ${stream}` })
+  ).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.eu.>`)
   await expect(page.getByTestId('message-range')).toContainText('4 messages')
 
@@ -162,7 +167,7 @@ test('PBI-127 subjects: several streams hold a subject, the pane offers a stream
   await chooser.click()
   await page.getByRole('menuitem', { name: copy }).click()
   await detail(page).getByRole('button', { name: 'Browse stored messages' }).click()
-  await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible()
+  await expect(streamPicker(page)).toHaveValue(copy)
   await expect(page.getByLabel('Subject filter')).toHaveValue(`${stream}.a`)
   await expect(page.getByTestId('message-range')).toContainText('2 messages')
 

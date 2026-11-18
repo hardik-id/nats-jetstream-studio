@@ -7,7 +7,7 @@ import { useGateway } from '../../gateway'
 import { useConnectActions } from '../../lib/connect'
 import { fuzzyScore } from '../../lib/fuzzy'
 import { useConnections } from '../../lib/hooks'
-import { useTabs, type TabSpec } from '../../state/tabs'
+import { messagesSpec, useTabs, type TabSpec } from '../../state/tabs'
 import { useOverlays, useUi } from '../../state/ui'
 import { NAV, openNav, TabIcon } from './nav'
 
@@ -74,6 +74,15 @@ export function CommandPalette({ onClose }: { onClose: () => void }): ReactNode 
           icon: 'stream',
           color: conn.color,
           run: go({ kind: 'stream', connId: conn.id, stream })
+        })
+        out.push({
+          id: `m:${conn.id}:${stream}`,
+          group: 'Streams',
+          label: `Browse messages in ${stream}`,
+          detail: conn.name,
+          icon: 'messages',
+          color: conn.color,
+          run: go(messagesSpec(conn.id, { stream }))
         })
       }
       for (const c of index?.consumers ?? []) {

@@ -80,10 +80,9 @@ describe('subjectActions', () => {
     const tabs = fakeTabs()
     runBrowse(tabs, 'c1', a.browse, 'AUDIT')
     expect(tabs.open).toHaveBeenCalledWith({
-      kind: 'stream',
+      kind: 'messages',
       connId: 'c1',
       stream: 'AUDIT',
-      section: 'messages',
       subject: 'orders.eu.created',
       seq: undefined
     })

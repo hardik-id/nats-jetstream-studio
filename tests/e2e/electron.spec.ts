@@ -112,7 +112,9 @@ test('PBI-030/040 streams and messages load over IPC', async () => {
     .getByRole('button', { name: 'Streams', exact: true })
     .click()
   await page.getByRole('button', { name: 'ORDERS', exact: true }).click()
-  await page.getByRole('tab', { name: 'Messages' }).click()
+  // The stream page sends you to the Messages screen of the connection (PBI-128).
+  await page.getByRole('button', { name: 'Browse messages', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: 'Stream', exact: true })).toHaveValue('ORDERS')
   await expect(page.getByTestId('message-range')).toContainText(/50 messages, #\d+ to #\d+/)
   await page.getByRole('table', { name: 'Messages in ORDERS' }).getByRole('row').nth(2).click()
   const detail = page.getByRole('complementary', { name: 'Message detail' })

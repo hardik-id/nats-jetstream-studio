@@ -281,7 +281,7 @@ export function createFakeGateway(
           let scanned = 0
           for (const m of ordered) {
             scanned++
-            if (test(m.headers ?? [], utf8Encode(m.payload)).match)
+            if (test(m.headers ?? [], utf8Encode(m.payload), m.subject).match)
               messages.push({
                 seq: m.seq,
                 subject: m.subject,

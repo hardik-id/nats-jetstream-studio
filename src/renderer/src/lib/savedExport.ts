@@ -74,10 +74,10 @@ function parseCondition(c: unknown, where: string): FilterCondition {
       ...exclude
     }
   }
-  if (c.kind !== 'jsonPath' && c.kind !== 'contains' && c.kind !== 'regex')
+  if (c.kind !== 'jsonPath' && c.kind !== 'contains' && c.kind !== 'regex' && c.kind !== 'subject')
     throw new Error(
       `${where} has a condition ${isText(c.kind) ? `of the unknown kind "${c.kind}"` : 'without a kind'}. ` +
-        'The kind must be "jsonPath", "contains", "regex" or "header".'
+        'The kind must be "jsonPath", "contains", "regex", "subject" or "header".'
     )
   if (!isText(c.expr)) throw new Error(`${where} has a ${c.kind} condition without text.`)
   return { kind: c.kind, expr: c.expr, ...exclude }
@@ -114,6 +114,8 @@ function parseFilters(value: unknown, where: string): ContentFilters {
   for (const c of normalizeFilters(out)) {
     const message = validateCondition(c)
     if (!message) continue
+    if (c.kind === 'subject')
+      throw new Error(`${where} has an invalid subject condition. ${withStop(message)}`)
     if (c.kind === 'regex')
       throw new Error(`${where} has an invalid payload regular expression. ${withStop(message)}`)
     throw new Error(`${where} has an invalid JSONPath. ${withStop(message)}`)

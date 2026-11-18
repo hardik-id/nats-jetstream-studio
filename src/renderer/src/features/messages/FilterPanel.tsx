@@ -58,13 +58,15 @@ const KINDS: { kind: Kind; label: string }[] = [
   { kind: 'jsonPath', label: 'JSONPath' },
   { kind: 'contains', label: 'Contains' },
   { kind: 'regex', label: 'Regex' },
-  { kind: 'header', label: 'Header' }
+  { kind: 'header', label: 'Header' },
+  { kind: 'subject', label: 'Subject' }
 ]
 
 const PLACEHOLDER: Record<Exclude<Kind, 'header'>, string> = {
   jsonPath: '$.order.total > 100   or   $.tags contains "urgent"   or   $..status == "failed"',
   contains: 'Plain text, upper and lower case are treated the same',
-  regex: '"id":"A-\\d+"'
+  regex: '"id":"A-\\d+"',
+  subject: 'orders.*.paid   or   orders.us.>'
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { act, screen } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessageBrowser } from '@renderer/features/messages/MessageBrowser'
@@ -63,6 +63,20 @@ describe('Live', () => {
     gateway.streams.get('ORDERS')!.messages.push(msg(4))
     await tick(2500)
     await screen.findByText('body 4')
+  })
+
+  it('keeps a subject exclude while live (PBI-129)', async () => {
+    const { gateway } = setup()
+    await screen.findByText('body 2')
+    await userEvent.click(screen.getByText('body 1'))
+    const panel = await screen.findByRole('complementary', { name: 'Message detail' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Exclude subject orders.eu' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Live' }))
+    const stream = gateway.streams.get('ORDERS')!
+    stream.messages.push({ ...msg(3), subject: 'orders.us' }, msg(4))
+    await tick(2500)
+    await screen.findByText('body 3')
+    expect(screen.queryByText('body 4')).toBeNull()
   })
 
   it('does not read again while the last sequence is unchanged', async () => {

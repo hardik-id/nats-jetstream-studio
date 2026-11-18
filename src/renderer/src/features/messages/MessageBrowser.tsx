@@ -30,6 +30,7 @@ import {
   conditionKey,
   hasContentFilters,
   normalizeFilters,
+  removeCondition,
   toggleCondition
 } from '@shared/filters'
 import { formatBytes, formatCount, formatTime } from '@shared/format'
@@ -37,6 +38,7 @@ import { validateSubject } from '@shared/subject'
 import { DataTable, type Column } from '../../components/DataTable'
 import { DetailRail, MessageDetail } from '../../components/MessageDetail'
 import { MessageConsumers } from './MessageConsumers'
+import { SubjectCell } from './SubjectCell'
 import {
   Button,
   cx,
@@ -650,6 +652,12 @@ export function MessageBrowser({
   // while the message is still in the result; when it is not (it was excluded), the panel closes
   // and focus goes to the new chip, so the keyboard never falls back to the page.
   const addFromMessage = (condition: FilterCondition): void => {
+    // "Filter to this subject" is the Subject field, not a condition (PBI-129): conditions are
+    // ANDed, so two included subjects would match nothing, and the server filters the field.
+    if (condition.kind === 'subject' && !condition.exclude) {
+      filterToSubject(condition.expr)
+      return
+    }
     const next = addCondition(view.filters, condition)
     const key = conditionKey(condition)
     const index = normalizeFilters(next).findIndex((c) => conditionKey(c) === key)
@@ -660,6 +668,26 @@ export function MessageBrowser({
       chipFocus.current = null
     }
   }
+  const filterToSubject = (subject: string): void => {
+    const invalid = validateSubject(subject)
+    if (invalid) {
+      setNotice(`Cannot filter to the subject "${subject}". ${invalid}.`)
+      return
+    }
+    // Including what an exclude condition rejects would leave nothing: the exclude goes.
+    const key = conditionKey({ kind: 'subject', expr: subject })
+    const at = normalizeFilters(view.filters).findIndex((c) => c.exclude && conditionKey(c) === key)
+    const filters = at >= 0 ? removeCondition(view.filters, at) : view.filters
+    // The Subject chip has no toggle: if focus is lost, it goes to the Filters button.
+    chipFocus.current = -1
+    keepSelection.current = true
+    setSubjectDraft(subject)
+    if (!apply({ subject, filters })) {
+      keepSelection.current = false
+      chipFocus.current = null
+    }
+  }
+  const onFilterRef = useLatest(addFromMessage)
   const flipChip = (index: number): void => {
     chipFocus.current = index
     apply({ filters: toggleCondition(view.filters, index) })
@@ -851,7 +879,19 @@ export function MessageBrowser({
         width: 'minmax(140px, 1fr)',
         mono: true,
         title: (m) => m.subject,
-        cell: (m) => m.subject
+        cell: (m) => (
+          <SubjectCell
+            subject={m.subject}
+            tabbable={m.seq === selected}
+            onFilter={(exclude) =>
+              onFilterRef.current({
+                kind: 'subject',
+                expr: m.subject,
+                ...(exclude ? { exclude } : {})
+              })
+            }
+          />
+        )
       },
       {
         id: 'preview',
@@ -875,7 +915,7 @@ export function MessageBrowser({
         cell: (m) => formatBytes(m.size)
       }
     ],
-    [messages, checked, toggleChecked]
+    [messages, checked, toggleChecked, selected, onFilterRef]
   )
 
   const savedItems: MenuItem[] = [

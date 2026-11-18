@@ -1,5 +1,6 @@
 import type { ContentFilters, FilterCondition, Header } from './api'
 import { utf8Decode } from './encoding'
+import { subjectMatches, validateSubject } from './subject'
 import {
   jsonPathLiteral,
   type JsonPathFilter,
@@ -37,7 +38,7 @@ export function normalizeFilters(filters: ContentFilters | undefined): FilterCon
 function isBlank(c: FilterCondition): boolean {
   return c.kind === 'header'
     ? c.key.trim() === ''
-    : c.kind === 'jsonPath'
+    : c.kind === 'jsonPath' || c.kind === 'subject'
       ? !c.expr.trim()
       : !c.expr
 }
@@ -52,7 +53,11 @@ function cleanCondition(c: FilterCondition): FilterCondition {
       ...(c.value ? { value: c.value } : {}),
       ...exclude
     }
-  return { kind: c.kind, expr: c.kind === 'jsonPath' ? c.expr.trim() : c.expr, ...exclude }
+  return {
+    kind: c.kind,
+    expr: c.kind === 'jsonPath' || c.kind === 'subject' ? c.expr.trim() : c.expr,
+    ...exclude
+  }
 }
 
 /** The current shape of a filter: `{ conditions }` only, or `{}` when there is nothing to apply. */
@@ -69,7 +74,7 @@ export function hasContentFilters(filters: ContentFilters | undefined): boolean 
 export function conditionKey(c: FilterCondition): string {
   return c.kind === 'header'
     ? `header\u0000${c.key.trim().toLowerCase()}\u0000${c.value ?? ''}`
-    : `${c.kind}\u0000${c.kind === 'jsonPath' ? c.expr.trim() : c.expr}`
+    : `${c.kind}\u0000${c.kind === 'jsonPath' || c.kind === 'subject' ? c.expr.trim() : c.expr}`
 }
 
 /**
@@ -146,11 +151,12 @@ export function valueCondition(
 
 /** Checks one condition before a scan starts: an error message, or undefined when it is valid. */
 export function validateCondition(c: FilterCondition): string | undefined {
-  if (!['jsonPath', 'contains', 'regex', 'header'].includes(c.kind))
+  if (!['jsonPath', 'contains', 'regex', 'header', 'subject'].includes(c.kind))
     return `Unknown condition kind "${String(c.kind)}"`
   try {
     if (c.kind === 'regex' && c.expr) new RegExp(c.expr)
     else if (c.kind === 'jsonPath' && c.expr.trim()) parseJsonPathFilter(c.expr)
+    else if (c.kind === 'subject' && c.expr) return validateSubject(c.expr) ?? undefined
   } catch (err) {
     return (err as Error).message
   }
@@ -181,6 +187,7 @@ const KIND_LABEL = { jsonPath: 'JSONPath', contains: 'Payload contains', regex: 
 /** Short text for a chip or a list: "JSONPath $.a == 1", "Header X = y". Without the "not". */
 export function describeCondition(c: FilterCondition): string {
   if (c.kind === 'header') return c.value ? `Header ${c.key} = ${c.value}` : `Has header ${c.key}`
+  if (c.kind === 'subject') return `Subject matches ${c.expr}`
   if (c.kind === 'contains') return `${KIND_LABEL.contains} "${c.expr}"`
   if (c.kind === 'regex') return `${KIND_LABEL.regex} /${c.expr}/`
   return `${KIND_LABEL.jsonPath} ${c.expr}`
@@ -192,11 +199,17 @@ export interface FilterVerdict {
   nonJson: boolean
 }
 
-export type CompiledFilter = (headers: Header[], payload: Uint8Array) => FilterVerdict
+/** `subject` is the message's subject; it is only read by `subject` conditions. */
+export type CompiledFilter = (
+  headers: Header[],
+  payload: Uint8Array,
+  subject?: string
+) => FilterVerdict
 
 type Outcome = 'yes' | 'no' | 'nonJson'
 
 interface Subject {
+  subject: string
   headers: Header[]
   text: () => string
   json: () => { ok: true; doc: unknown } | { ok: false }
@@ -232,6 +245,10 @@ export function compileFilters(filters: ContentFilters): CompiledFilter {
         }
       ]
     }
+    if (c.kind === 'subject') {
+      const pattern = c.expr
+      return [exclude, (s) => (subjectMatches(pattern, s.subject) ? 'yes' : 'no')]
+    }
     if (c.kind === 'contains') {
       const needle = c.expr.toLowerCase()
       return [exclude, (s) => (s.text().toLowerCase().includes(needle) ? 'yes' : 'no')]
@@ -252,11 +269,12 @@ export function compileFilters(filters: ContentFilters): CompiledFilter {
     ]
   })
 
-  return (headers, payload) => {
+  return (headers, payload, messageSubject = '') => {
     if (tests.length === 0) return { match: true, nonJson: false }
     let text: string | undefined
     let json: ReturnType<Subject['json']> | undefined
     const subject: Subject = {
+      subject: messageSubject,
       headers,
       text: () => (text ??= utf8Decode(payload)),
       json: () => {

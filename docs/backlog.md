@@ -928,6 +928,19 @@ Each item below is small enough for one agent in one session. Rules for every it
 - The stream page loses its Messages section and gets a "Browse messages" button; its Subjects section, subject favourites, the Subjects screen and a consumer's "next undelivered message" open the Messages screen through one helper (`openMessages`). Stored stream tabs on the old Messages section open on Overview.
 - Live, Reload and "Expand to read" keep working; the screen's header is inert while the panel is expanded.
 
+### PBI-129: Include or exclude a subject from a message
+**Priority:** v1 · **Size:** S · **Depends on:** PBI-126, PBI-128 · **Files:** `src/shared/filters.ts`, `src/shared/api.ts`, `src/core/service.ts`, `src/renderer/src/features/messages/` (`MessageBrowser.tsx`, `SubjectCell.tsx`, `FilterPanel.tsx`), `MessageDetail.tsx`, `src/renderer/src/lib/savedExport.ts`, tests, site
+
+**Story:** As a user reading messages, I want to click a message's subject and keep only that subject or leave it out, so that I can narrow a busy stream down without typing a subject.
+
+**Acceptance criteria**
+- New condition kind `subject` (`expr` is a NATS subject pattern: tokens, `*`, a trailing `>`). A message matches when its subject matches the pattern. It is validated like the Subject field (client, server and on import), counts towards the 50 conditions, has a chip ("Subject matches ...") and a "Subject" type in the filters panel with Include and Exclude.
+- "Exclude subject" adds `{ kind: 'subject', expr: <exact subject>, exclude: true }`; several can be stacked; the same one is never added twice.
+- "Filter to subject" does not add a condition: it sets the Subject filter field to the exact subject and reads again from the current start position (conditions are ANDed, so two included subjects would match nothing, and the field is filtered by the server without a scan). An exclude of the same subject is removed.
+- Where: the subject of the open message (next to Copy subject) and the subject cell of every row (on hover and keyboard focus; the buttons of the open row are tab stops, the others are for the pointer, so the table keeps one tab stop). Clicking them does not select the row. Names: "Filter to subject X", "Exclude subject X". Not in Live tail.
+- Focus as in PBI-126: after an exclude the message is gone, the panel closes and focus goes to the new chip; after Filter to subject the message stays open if it is still in the result and focus stays on the button.
+- Live and Reload keep working with subject conditions.
+
 ## Epic 12: Website
 
 A public website on GitHub Pages, so that people can see what the studio does, download it and read

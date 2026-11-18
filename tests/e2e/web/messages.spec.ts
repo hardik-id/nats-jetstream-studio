@@ -1016,3 +1016,51 @@ test('Live shows a message published afterwards without any click', async ({ pag
   await expect(live).toHaveAttribute('aria-pressed', 'false')
   await client.jsm.streams.delete(name)
 })
+
+test('PBI-129 exclude or include a subject from a row or the open message', async ({ page }) => {
+  const name = unique('SUBJ')
+  await client.jsm.streams.add({ name, subjects: [`${name}.>`] })
+  // 9 messages on three subjects: 1,4,7 paid; 2,5,8 open; 3,6,9 refund.
+  const kinds = ['paid', 'open', 'refund']
+  for (let i = 1; i <= 9; i++)
+    await client.js.publish(`${name}.orders.us.${kinds[(i - 1) % 3]}`, `m${i}`)
+  await openStudio(page)
+  await openMessages(page, name)
+  await expect(range(page)).toHaveText('9 messages, #1 to #9')
+  const rows = page.getByRole('table', { name: `Messages in ${name}` })
+  const chips = page.getByLabel('Active filters')
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const subject = (kind: string): string => `${name}.orders.us.${kind}`
+
+  // Exclude from the subject cell of a row: the rows of that subject disappear.
+  await rowOf(page, 9, name).getByRole('cell').nth(2).hover()
+  await rowOf(page, 9, name)
+    .getByRole('button', { name: `Exclude subject ${subject('refund')}` })
+    .click()
+  await expect(range(page)).toHaveText('6 messages, #1 to #8')
+  await expect(rows.getByText(subject('refund'))).toHaveCount(0)
+  await expect(chips).toContainText(`Subject matches ${subject('refund')}`)
+
+  // Exclude a second one from the open message: the exclusions stack.
+  await rowOf(page, 8, name).click()
+  await expect(detail).toBeVisible()
+  await detail.getByRole('button', { name: `Exclude subject ${subject('open')}` }).click()
+  await expect(range(page)).toHaveText('3 messages, #1 to #7')
+  await expect(page.getByRole('button', { name: 'Filters, 2 active' })).toBeVisible()
+  await expect(detail).toBeHidden()
+
+  // Remove both chips, then include a subject: the Subject field is set and the rows narrow.
+  for (let i = 0; i < 2; i++)
+    await chips
+      .getByRole('button', { name: /^Remove filter/ })
+      .first()
+      .click()
+  await expect(range(page)).toHaveText('9 messages, #1 to #9')
+  await rowOf(page, 5, name).click()
+  await detail.getByRole('button', { name: `Filter to subject ${subject('open')}` }).click()
+  await expect(page.getByLabel('Subject filter')).toHaveValue(subject('open'))
+  await expect(range(page)).toHaveText('3 messages, #2 to #8')
+  await expect(rows.getByText(subject('paid'))).toHaveCount(0)
+  await expect(detail).toBeVisible()
+  await client.jsm.streams.delete(name)
+})

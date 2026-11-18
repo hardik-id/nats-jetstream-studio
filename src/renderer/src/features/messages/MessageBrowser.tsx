@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftRight,
   Bookmark,
@@ -254,6 +254,7 @@ export function MessageBrowser({
 }): ReactNode {
   const tabActive = useTabActive()
   const gateway = useGateway()
+  const queryClient = useQueryClient()
   const conn = useConnection(connId)
   const decoders = useDecoders(connId)
   const stream = info.config.name
@@ -566,6 +567,13 @@ export function MessageBrowser({
       run('asc', { kind: 'time', time: time.toISOString() }, next)
     }
     return true
+  }
+
+  // Reads the stream again, not only the page: the counts in the header and the bounds used for
+  // paging are refreshed too, and the view starts again from the chosen start position.
+  const reload = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['stream', connId, stream] })
+    go(view, startMode)
   }
 
   const page = (which: 'older' | 'newer'): void => {
@@ -1123,9 +1131,10 @@ export function MessageBrowser({
           size="sm"
           variant="ghost"
           icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+          busy={busy !== null}
           title="Load this view again"
           aria-label="Reload view"
-          onClick={() => go(view, startMode)}
+          onClick={reload}
         />
         <Select
           className="!h-6 w-36 !text-xs"

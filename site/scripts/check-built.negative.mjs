@@ -53,7 +53,8 @@ const cases = [
   ['broken link', '<a href="/nats-jetstream-studio/nope/">x</a>', /broken link/],
   ['missing anchor', '<a href="/nats-jetstream-studio/docs/faq/#zzz">x</a>', /missing anchor/],
   ['img without alt', '<img src="/nats-jetstream-studio/favicon.svg">', /img without alt/],
-  ['second h1', '<h1>Again</h1>', /h1 elements/]
+  ['second h1', '<h1>Again</h1>', /h1 elements/],
+  ['heading jump', '<h2>A</h2><h4>Jump</h4>', /heading jumps from h2 to h4/]
 ]
 const jsonLdCases = [
   ['price not 0', (j) => (j.offers.price = '10'), /offers\.price/],

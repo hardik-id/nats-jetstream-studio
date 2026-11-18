@@ -142,12 +142,33 @@ const scenes = [
   {
     name: 'message-browser',
     group: 'features',
-    alt: 'Messages of the ORDERS stream with the detail panel showing headers and a JSON payload',
+    alt: 'Messages of the ORDERS stream filtered by a condition chip made from a JSON value, with the detail panel showing a JSON payload',
     async run(page) {
       await openStream(page, 'ORDERS', 'Messages')
       await sleep(1500)
       const rows = page.getByRole('table', { name: 'Messages in ORDERS' }).getByRole('row')
       await rows.nth(2).getByRole('cell').nth(2).click()
+      await sleep(1500)
+      // One condition made from a JSON value of the open message, shown as a chip.
+      const add = page.getByRole('button', { name: /^Filter to .* equals / }).first()
+      if (await add.count()) {
+        await add.click()
+        await sleep(1500)
+      }
+    }
+  },
+  {
+    name: 'subjects',
+    group: 'features',
+    alt: 'Subjects screen: a tree of subjects with stored and live message counts, and a details pane with labelled actions',
+    async run(page) {
+      await nav(page, 'Subjects')
+      const tree = page.getByRole('treegrid', { name: 'Subjects' })
+      await tree.getByRole('row').nth(1).waitFor()
+      await sleep(2500)
+      await page.getByRole('button', { name: 'Expand all' }).click()
+      await sleep(800)
+      await tree.getByRole('row').nth(3).click()
       await sleep(1500)
     }
   },

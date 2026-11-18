@@ -90,6 +90,15 @@ export const featureContent = {
         text: 'See subject, sequence, time, size and headers. View the payload as JSON, text, hex or base64; the format is detected and you can switch. Big payloads load on demand. Copy any part, and step to the previous or next message from the keyboard.'
       },
       {
+        title: 'A panel you can shape',
+        text: 'The detail sections (Details, Headers, Payload, Consumers) collapse and the panel folds to a narrow rail. Expand to read widens it over most of the stream page. JSON can be shown at three text sizes, opened to a chosen level, searched, and navigated with the arrow keys; Copy path and Copy value work on every line. The filter panel closes after Apply to give the messages room, and the chips stay.'
+      },
+      {
+        title: 'Which consumers have received it',
+        text: "The Consumers section of the panel lists the stream's consumers and whether each has received the message, worked out from its delivered position and ack floor. For consumers that start at the last message or the last per subject, the answer can only be \"probably not delivered\".",
+        note: 'Tested against a real server in the web app. Not run in the desktop app.'
+      },
+      {
         title: 'Protobuf decoding',
         text: 'Register .proto files per connection and map a subject pattern to a message type. Matching payloads show as JSON. If decoding fails, you get the hex view and the error. Protobuf groups are not supported.'
       },
@@ -148,11 +157,11 @@ export const featureContent = {
     capabilities: [
       {
         title: 'One list of every consumer',
-        text: 'See name, durable or ephemeral, pull or push, filter subjects, ack policy, pending, ack pending, redelivered, waiting pulls and last activity. Search and sort. View one stream or all streams of a connection. It was tested with 1,000 consumers on one stream.'
+        text: 'See name, durable or ephemeral, pull or push, filter subjects, ack policy, pending, ack pending, redelivered, waiting pulls and last activity. Search and sort, and resize the columns. View one stream or all streams of a connection. It was tested with 1,000 consumers on one stream.'
       },
       {
         title: 'Lag and position',
-        text: "The detail page shows the delivered position and the ack floor with their times, and lag as the number of unprocessed messages next to the stream's last sequence. A link opens the message browser at the next message the consumer has not received."
+        text: "The detail page shows the delivered position and the ack floor with their times, and lag as the number of unprocessed messages next to the stream's last sequence. A link opens the message browser at the next message the consumer has not received. From the message browser you can also see which consumers have received a given message."
       },
       {
         title: 'Health flags',
@@ -188,7 +197,10 @@ export const featureContent = {
       },
       {
         title: 'Subject tree',
-        text: 'See your subjects as a tree built token by token from stream subject counts and from subjects seen in tails. Columns show the stored messages (with a bar to compare siblings), the messages seen live and the stream that captures each subject. Expand all, Collapse all and Levels open the hierarchy; search by text or by a pattern such as orders.*.created, sort, show only subjects with messages, or filter by stream or live source. Select a subject for its details, and use the actions menu on a row to browse stored messages, start a tail or publish. The tree is keyboard navigable, remembers what you opened for each connection, and draws only the rows on screen, so large trees stay light on the page. It shows the 5,000 busiest subjects per stream.'
+        text: 'See your subjects as a tree built token by token from stream subject counts and from subjects seen in tails. Columns show the stored messages (with a bar to compare siblings), the messages seen live and the stream that captures each subject. Expand all, Collapse all and Levels open the hierarchy; search by text or by a pattern such as orders.*.created, sort, show only subjects with messages, or filter by stream or live source. Select a subject for its details pane, with labelled actions: Browse stored messages, Start live tail, Publish message, Copy subject and Copy filter. The pane shows the counts, the streams that capture the subject and a scope choice with the exact filter that will be used, and Browse asks which stream when there are several. The ⋯ menu on a row offers the same actions. The tree is keyboard navigable, remembers what you opened for each connection, and draws only the rows on screen, so large trees stay light on the page. It shows the 5,000 busiest subjects per stream.',
+        extra: {
+          name: 'features-subjects'
+        }
       },
       {
         title: 'Publish',

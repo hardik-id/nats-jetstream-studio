@@ -128,7 +128,7 @@
       "theme": "dark",
       "width": 1440,
       "height": 860,
-      "alt": "Messages of the ORDERS stream with the detail panel showing headers and a JSON payload"
+      "alt": "Messages of the ORDERS stream filtered by a condition chip made from a JSON value, with the detail panel showing a JSON payload"
     },
     {
       "file": "features-message-browser-light.webp",
@@ -138,7 +138,7 @@
       "theme": "light",
       "width": 1440,
       "height": 860,
-      "alt": "Messages of the ORDERS stream with the detail panel showing headers and a JSON payload"
+      "alt": "Messages of the ORDERS stream filtered by a condition chip made from a JSON value, with the detail panel showing a JSON payload"
     },
     {
       "file": "features-monitoring-and-alerts-dark.webp",
@@ -199,6 +199,26 @@
       "width": 1440,
       "height": 860,
       "alt": "List of JetStream streams with message counts, sizes, storage type and retention"
+    },
+    {
+      "file": "features-subjects-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "subjects",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Subjects screen: a tree of subjects with stored and live message counts, and a details pane with labelled actions"
+    },
+    {
+      "file": "features-subjects-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "subjects",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Subjects screen: a tree of subjects with stored and live message counts, and a details pane with labelled actions"
     },
     {
       "file": "home-still.webp",

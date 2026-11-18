@@ -221,6 +221,96 @@ describe('PBI-126 filter from a message', () => {
   })
 })
 
+const panelOf = (): HTMLElement => screen.getByRole('complementary', { name: 'Message detail' })
+
+describe('PBI-129 filter from the subject of a message', () => {
+  it('"Exclude subject" adds a chip, removes the rows and moves focus to the chip', async () => {
+    const gateway = await setup()
+    await screen.findByText('ev.refund')
+    await open(3)
+    await userEvent.click(
+      within(panelOf()).getByRole('button', { name: 'Exclude subject ev.refund' })
+    )
+    expect(lastFilters(gateway)).toEqual({
+      conditions: [{ kind: 'subject', expr: 'ev.refund', exclude: true }]
+    })
+    const chips = await screen.findByLabelText('Active filters')
+    const chip = within(chips).getByRole('group', {
+      name: 'Exclude filter: Subject matches ev.refund'
+    })
+    expect(chip).toHaveTextContent('not')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(rows().some((r) => r.includes('ev.refund'))).toBe(false)
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Message detail' })).toBeNull()
+    )
+    expect(within(chip).getByRole('button', { name: /^Include instead: / })).toHaveFocus()
+  })
+
+  it('excluding two subjects stacks two chips', async () => {
+    const gateway = await setup()
+    await screen.findByText('ev.refund')
+    await open(3)
+    await userEvent.click(
+      within(panelOf()).getByRole('button', { name: 'Exclude subject ev.refund' })
+    )
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    await open(1)
+    await userEvent.click(
+      within(panelOf()).getByRole('button', { name: 'Exclude subject ev.order' })
+    )
+    expect(lastFilters(gateway).conditions).toEqual([
+      { kind: 'subject', expr: 'ev.refund', exclude: true },
+      { kind: 'subject', expr: 'ev.order', exclude: true }
+    ])
+    expect(screen.getByRole('button', { name: 'Filters, 2 active' })).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(0))
+  })
+
+  it('"Filter to subject" sets the Subject field and adds no condition', async () => {
+    const gateway = await setup()
+    await screen.findByText('ev.refund')
+    await open(3)
+    await userEvent.click(
+      within(panelOf()).getByRole('button', { name: 'Filter to subject ev.refund' })
+    )
+    expect(screen.getByLabelText('Subject filter')).toHaveValue('ev.refund')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    const read = gateway.calls.filter((c) => c.method === 'getMessages').at(-1)!
+    expect((read.args[2] as { subject?: string }).subject).toBe('ev.refund')
+    expect(screen.queryByLabelText('Active filters')).toHaveTextContent('Subject ev.refund')
+    // The message is still in the result: it stays open and focus stays on the button.
+    expect(
+      within(panelOf()).getByRole('button', { name: 'Filter to subject ev.refund' })
+    ).toHaveFocus()
+  })
+
+  it('row buttons: named per subject, only the open row is a tab stop, clicking keeps selection', async () => {
+    const gateway = await setup()
+    await screen.findByText('ev.refund')
+    const refund = screen.getAllByRole('row').find((r) => r.textContent?.includes('ev.refund'))!
+    const exclude = within(refund).getByRole('button', { name: 'Exclude subject ev.refund' })
+    expect(
+      within(refund).getByRole('button', { name: 'Filter to subject ev.refund' })
+    ).toHaveAttribute('tabindex', '-1')
+    await open(3)
+    expect(exclude).toHaveAttribute('tabindex', '0')
+    const order = screen.getAllByRole('row').find((r) => r.textContent?.includes('ev.order'))!
+    expect(within(order).getByRole('button', { name: 'Exclude subject ev.order' })).toHaveAttribute(
+      'tabindex',
+      '-1'
+    )
+    // Pressing a row button does not select that row first: the open message is still 3 when the
+    // exclude of the other row's subject is added.
+    await userEvent.click(within(order).getByRole('button', { name: 'Exclude subject ev.order' }))
+    expect(lastFilters(gateway).conditions).toEqual([
+      { kind: 'subject', expr: 'ev.order', exclude: true }
+    ])
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(panelOf()).toHaveTextContent('ev.refund')
+  })
+})
+
 describe('PBI-126 filter panel conditions', () => {
   it('lists conditions, validates per row and applies include and exclude', async () => {
     const gateway = await setup()
@@ -250,6 +340,33 @@ describe('PBI-126 filter panel conditions', () => {
       { kind: 'header', key: 'Region', value: 'eu' }
     ])
     expect(screen.getByRole('button', { name: 'Filters, 3 active' })).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+  })
+
+  it('adds and edits a Subject condition (PBI-129)', async () => {
+    const gateway = await setup()
+    await screen.findByText('ev.refund')
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const panel = await screen.findByRole('form', { name: 'Message filters' })
+    await userEvent.selectOptions(within(panel).getByLabelText('Condition 1 type'), 'subject')
+    await userEvent.type(within(panel).getByLabelText('Condition 1 expression'), 'ev..x')
+    expect(within(panel).getByRole('alert')).toHaveTextContent(/empty tokens/)
+    expect(within(panel).getByRole('button', { name: 'Apply filters' })).toBeDisabled()
+    await userEvent.clear(within(panel).getByLabelText('Condition 1 expression'))
+    await userEvent.type(within(panel).getByLabelText('Condition 1 expression'), 'ev.*')
+    await userEvent.selectOptions(within(panel).getByLabelText('Condition 1 mode'), 'exclude')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Apply filters' }))
+    expect(lastFilters(gateway).conditions).toEqual([
+      { kind: 'subject', expr: 'ev.*', exclude: true }
+    ])
+    await waitFor(() => expect(rows()).toHaveLength(0))
+    // Editing it: the panel shows what was applied.
+    await userEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const again = await screen.findByRole('form', { name: 'Message filters' })
+    expect(within(again).getByLabelText('Condition 1 type')).toHaveValue('subject')
+    await userEvent.clear(within(again).getByLabelText('Condition 1 expression'))
+    await userEvent.type(within(again).getByLabelText('Condition 1 expression'), 'ev.order')
+    await userEvent.click(within(again).getByRole('button', { name: 'Apply filters' }))
     await waitFor(() => expect(rows()).toHaveLength(1))
   })
 

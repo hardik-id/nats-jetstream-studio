@@ -935,7 +935,7 @@ export class StudioService implements GatewayMethods {
           if (cancelled) return done('cancelled')
           scanned++
           resumeSeq = request.direction === 'asc' ? msg.seq + 1 : msg.seq - 1
-          const verdict = test(storedHeaders(msg, direct), msg.data)
+          const verdict = test(storedHeaders(msg, direct), msg.data, msg.subject)
           if (verdict.nonJson) skippedNonJson++
           if (verdict.match) {
             matched++

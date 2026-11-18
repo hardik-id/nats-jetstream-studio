@@ -179,6 +179,26 @@ describe('PBI-091 export and import of saved filters and favourites', () => {
       '"exclude"'
     )
     expect(() => parseSavedExport(bad([{ kind: 'header' }]))).toThrow('without a header name')
+    expect(() => parseSavedExport(bad([{ kind: 'subject', expr: 'a..b' }]))).toThrow(
+      'invalid subject condition'
+    )
+  })
+
+  it('keeps a subject condition (PBI-129)', () => {
+    const parsed = parseSavedExport(
+      file({
+        savedFilters: [
+          {
+            name: 'A',
+            subject: '',
+            filters: { conditions: [{ kind: 'subject', expr: 'a.*', exclude: true }] }
+          }
+        ]
+      })
+    )
+    expect(parsed.savedFilters[0].filters.conditions).toEqual([
+      { kind: 'subject', expr: 'a.*', exclude: true }
+    ])
   })
 
   it('trims names and subjects, as the studio does when they are typed', () => {

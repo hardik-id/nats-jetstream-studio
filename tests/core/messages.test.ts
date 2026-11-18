@@ -735,6 +735,55 @@ describe('PBI-042 and PBI-048 filters', () => {
     expect(seqs(old.matches)).toEqual(seqs(both.matches))
   })
 
+  it('applies subject conditions: an exclude, stacked excludes and a wildcard include (PBI-129)', async () => {
+    const exclude = await scan({
+      filters: {
+        conditions: [{ kind: 'subject', expr: `${name}.orders.eu.shipped`, exclude: true }]
+      }
+    })
+    expect(exclude.matches).toHaveLength(300 - 30)
+    expect(exclude.matches.some((m) => m.subject === `${name}.orders.eu.shipped`)).toBe(false)
+
+    const stacked = await scan({
+      filters: {
+        conditions: [
+          { kind: 'subject', expr: `${name}.orders.eu.shipped`, exclude: true },
+          { kind: 'subject', expr: `${name}.orders.us.created`, exclude: true }
+        ]
+      }
+    })
+    expect(stacked.matches.length).toBeLessThan(exclude.matches.length)
+    expect(
+      stacked.matches.every(
+        (m) =>
+          m.subject !== `${name}.orders.eu.shipped` && m.subject !== `${name}.orders.us.created`
+      )
+    ).toBe(true)
+
+    const wildcard = await scan({
+      filters: { conditions: [{ kind: 'subject', expr: `${name}.orders.*.shipped` }] }
+    })
+    expect(wildcard.matches).toHaveLength(60)
+    expect(wildcard.matches.every((m) => m.subject.endsWith('.shipped'))).toBe(true)
+
+    // Combined with a content condition and the server-side Subject field.
+    const both = await scan({
+      subject: `${name}.orders.eu.>`,
+      filters: {
+        conditions: [
+          { kind: 'subject', expr: `${name}.orders.*.shipped` },
+          { kind: 'header', key: 'Trace-Id' }
+        ]
+      }
+    })
+    expect(both.matches.every((m) => m.subject === `${name}.orders.eu.shipped`)).toBe(true)
+    expect(both.matches.length).toBeGreaterThan(0)
+
+    const bad = await scan({ filters: { conditions: [{ kind: 'subject', expr: 'a..b' }] } })
+    expect(bad.done).toMatchObject({ reason: 'error', scanned: 0 })
+    expect(bad.done.error?.kind).toBe('validation')
+  })
+
   it('rejects an invalid expression before scanning anything', async () => {
     const regex = await scan({ filters: { payloadRegex: '(' } })
     expect(regex.done).toMatchObject({ reason: 'error', scanned: 0 })

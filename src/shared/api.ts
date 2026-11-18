@@ -342,11 +342,12 @@ export interface HeaderFilter {
 }
 
 /**
- * One condition of a content filter (PBI-126). `exclude` turns it around: a message that the
+ * One condition of a content filter (PBI-126). A `subject` condition (PBI-129) holds a NATS subject
+ * pattern in `expr` (tokens, `*`, a trailing `>`) and matches the message's subject. `exclude` turns it around: a message that the
  * condition matches is rejected. All conditions of a filter must hold (AND).
  */
 export type FilterCondition =
-  | { kind: 'jsonPath' | 'contains' | 'regex'; expr: string; exclude?: boolean }
+  | { kind: 'jsonPath' | 'contains' | 'regex' | 'subject'; expr: string; exclude?: boolean }
   | {
       kind: 'header'
       key: string

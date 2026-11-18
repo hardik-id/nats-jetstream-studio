@@ -14,6 +14,8 @@ import {
   validateFilters,
   valueCondition
 } from '@shared/filters'
+import { subjectMatches } from '@shared/subject'
+import { describeCondition } from '@shared/filters'
 import { jsonPathLiteral, matchesJsonPath, parseJsonPathFilter } from '@shared/jsonpath'
 import { formatPath } from '@shared/jsonTree'
 
@@ -303,5 +305,66 @@ describe('PBI-126 limits and kinds are checked when compiling', () => {
     const bad = { conditions: [{ kind: 'xpath', expr: '$.a' }] } as unknown as ContentFilters
     expect(() => compileFilters(bad)).toThrow(/Unknown condition kind "xpath"/)
     expect(validateFilters(bad)[0].message).toMatch(/xpath/)
+  })
+})
+
+describe('PBI-129 subject conditions', () => {
+  const subj = (expr: string, exclude?: boolean): FilterCondition => ({
+    kind: 'subject',
+    expr,
+    ...(exclude ? { exclude } : {})
+  })
+  const run = (c: FilterCondition[], subject: string): boolean =>
+    compileFilters({ conditions: c })([], utf8Encode('x'), subject).match
+
+  it('the matcher: literals, *, > and non-matches', () => {
+    expect(subjectMatches('orders.us.paid', 'orders.us.paid')).toBe(true)
+    expect(subjectMatches('orders.us.paid', 'orders.us.paid.late')).toBe(false)
+    expect(subjectMatches('orders.us.paid', 'orders.us')).toBe(false)
+    expect(subjectMatches('orders.*.paid', 'orders.eu.paid')).toBe(true)
+    expect(subjectMatches('orders.*.paid', 'orders.eu.us.paid')).toBe(false)
+    expect(subjectMatches('orders.*', 'orders')).toBe(false)
+    expect(subjectMatches('orders.>', 'orders.eu.paid')).toBe(true)
+    expect(subjectMatches('orders.>', 'orders')).toBe(false)
+    expect(subjectMatches('orders.>', 'other.eu')).toBe(false)
+    expect(subjectMatches('>', 'anything.at.all')).toBe(true)
+  })
+
+  it('include matches by pattern, exclude rejects what matches', () => {
+    expect(run([subj('orders.*.paid')], 'orders.us.paid')).toBe(true)
+    expect(run([subj('orders.*.paid')], 'orders.us.open')).toBe(false)
+    expect(run([subj('orders.us.paid', true)], 'orders.us.paid')).toBe(false)
+    expect(run([subj('orders.us.paid', true)], 'orders.us.open')).toBe(true)
+    // Excludes stack.
+    const two = [subj('a.b', true), subj('a.c', true)]
+    expect([run(two, 'a.b'), run(two, 'a.c'), run(two, 'a.d')]).toEqual([false, false, true])
+  })
+
+  it('is cleaned, keyed and described like the other kinds', () => {
+    expect(normalizeFilters({ conditions: [subj(' a.b '), subj('  ')] })).toEqual([subj('a.b')])
+    expect(describeCondition(subj('a.>'))).toBe('Subject matches a.>')
+  })
+
+  it('adds once, flips the opposite, and keeps a subject apart from the same text elsewhere', () => {
+    const once = addCondition({}, subj('a.b', true))
+    expect(addCondition(once, subj('a.b', true))).toEqual(once)
+    expect(addCondition(once, subj('a.b'))).toEqual({ conditions: [subj('a.b')] })
+    const withContains = addCondition(once, { kind: 'contains', expr: 'a.b' })
+    expect(withContains.conditions).toHaveLength(2)
+  })
+
+  it('validates the pattern with the rules of the Subject field', () => {
+    expect(validateFilters({ conditions: [subj('a.*.>')] })).toEqual([])
+    for (const bad of ['a..b', 'a.>.b', 'a b'])
+      expect(validateFilters({ conditions: [subj(bad)] })).toHaveLength(1)
+    expect(() => compileFilters({ conditions: [subj('a.>.b')] })).toThrow(/last token/)
+  })
+
+  it('still enforces MAX_CONDITIONS', () => {
+    const many = (n: number): ContentFilters => ({
+      conditions: Array.from({ length: n }, (_, i) => subj(`a.s${i}`, true))
+    })
+    expect(() => compileFilters(many(MAX_CONDITIONS))).not.toThrow()
+    expect(() => compileFilters(many(MAX_CONDITIONS + 1))).toThrow(/at most 50/)
   })
 })

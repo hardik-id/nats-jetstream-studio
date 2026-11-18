@@ -206,6 +206,24 @@ export function MessageDetail({
                       {message.subject}
                     </span>
                     <CopyButton text={message.subject} label="Copy subject" />
+                    {onFilter && (
+                      <>
+                        <FilterButton
+                          exclude={false}
+                          text=""
+                          label={`Filter to subject ${message.subject}`}
+                          onClick={() => onFilter({ kind: 'subject', expr: message.subject })}
+                        />
+                        <FilterButton
+                          exclude
+                          text=""
+                          label={`Exclude subject ${message.subject}`}
+                          onClick={() =>
+                            onFilter({ kind: 'subject', expr: message.subject, exclude: true })
+                          }
+                        />
+                      </>
+                    )}
                   </span>
                 </Fact>
                 <div className="flex flex-wrap items-baseline gap-x-4 [@media(max-height:800px)]:contents">

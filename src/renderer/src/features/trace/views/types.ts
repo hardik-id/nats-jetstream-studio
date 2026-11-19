@@ -54,5 +54,6 @@ export interface TraceViewDef {
   icon: LucideIcon
   /** The controls of the view; the toolbar shows them while the view is active. */
   controls?: readonly ViewControl[]
+  /** The view. It may be `lazy`: the Trace tab renders it inside a Suspense boundary. */
   Component: ComponentType<TraceViewProps>
 }

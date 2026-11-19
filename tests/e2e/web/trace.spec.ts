@@ -164,3 +164,89 @@ test('PBI-138 Lanes view: lanes and dots for a three-stream trace, open a messag
       .filter({ hasText: `${ship}.pack` })
   ).toHaveAttribute('aria-selected', 'true')
 })
+
+test('PBI-138 Graph view: nodes for a three-stream trace, flowing dots, open a message from a node', async ({
+  page
+}) => {
+  await openStudio(page)
+  await go(page, 'Trace')
+  await page.getByRole('textbox', { name: 'Header name 1' }).fill('trace-id')
+  await page.getByRole('textbox', { name: 'Value 1' }).fill(tag)
+  await page.getByRole('button', { name: 'Run trace' }).click()
+  await expect(page.getByRole('table', { name: 'Trace timeline' })).toBeVisible()
+
+  // The view is loaded on first use (its own chunk), then draws one node per subject.
+  await page.getByRole('combobox', { name: 'View' }).selectOption('graph')
+  const graph = page.getByRole('application', { name: 'Trace graph' })
+  await expect(graph).toBeVisible()
+  for (const [subject, stream] of [
+    [`${orders}.new`, orders],
+    [`${pay}.charge`, pay],
+    [`${ship}.pack`, ship]
+  ])
+    await expect(
+      graph.getByRole('img', {
+        name: new RegExp(`^Subject ${subject}, stream ${stream}, 1 message`)
+      })
+    ).toBeVisible()
+  // The payments consumer has not received the message yet: a pending branch.
+  await expect(
+    graph.getByRole('img', { name: /^Consumer billing on .*1 not delivered$/ })
+  ).toBeVisible()
+  await expect(page.getByText(/^3 subjects, 1 consumer, 3 messages\./)).toBeVisible()
+
+  // Dots travel along the arrows (SVG animateMotion), and hovering an arrow holds them still.
+  const dots = page.getByTestId('graph-dot')
+  await expect(dots.first()).toBeAttached()
+  expect(await dots.count()).toBeGreaterThan(0)
+  const paused = (): Promise<boolean> =>
+    page.getByTestId('graph-dots').evaluate((svg) => (svg as SVGSVGElement).animationsPaused())
+  expect(await paused()).toBe(false)
+  // The label of the first hop: hovering it (or its line) pauses the dots.
+  await page.getByTestId('graph-edge-label').first().hover()
+  await expect.poll(paused).toBe(true)
+  await page.mouse.move(5, 5)
+  await expect.poll(paused).toBe(false)
+
+  // A click on a node opens its message in the detail pane.
+  await graph.getByRole('img', { name: new RegExp(`^Subject ${pay}\\.charge`) }).click()
+  const panel = page.getByRole('complementary', { name: 'Message detail' })
+  await expect(panel).toContainText(`${pay}.charge`)
+  await expect(
+    graph.getByRole('img', { name: new RegExp(`^Subject ${pay}\\.charge.*, selected$`) })
+  ).toBeVisible()
+  // The keyboard moves on; the pane follows.
+  await graph.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(panel).toContainText(`${ship}.pack`)
+
+  // Back to the Timeline: the same message stays selected.
+  await page.getByRole('combobox', { name: 'View' }).selectOption('timeline')
+  await expect(
+    page
+      .getByRole('table', { name: 'Trace timeline' })
+      .getByRole('row')
+      .filter({ hasText: `${ship}.pack` })
+  ).toHaveAttribute('aria-selected', 'true')
+})
+
+test.describe('with reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' })
+
+  test('PBI-138 Graph view draws no moving dots when the system asks for reduced motion', async ({
+    page
+  }) => {
+    await openStudio(page)
+    await go(page, 'Trace')
+    await page.getByRole('textbox', { name: 'Header name 1' }).fill('trace-id')
+    await page.getByRole('textbox', { name: 'Value 1' }).fill(tag)
+    await page.getByRole('button', { name: 'Run trace' }).click()
+    await page.getByRole('combobox', { name: 'View' }).selectOption('graph')
+    const graph = page.getByRole('application', { name: 'Trace graph' })
+    await expect(
+      graph.getByRole('img', { name: new RegExp(`^Subject ${ship}\\.pack`) })
+    ).toBeVisible()
+    await expect(page.getByText(/the system asks for reduced motion/)).toBeVisible()
+    await expect(page.getByTestId('graph-dot')).toHaveCount(0)
+  })
+})

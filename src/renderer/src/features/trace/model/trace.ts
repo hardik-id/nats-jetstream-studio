@@ -86,6 +86,27 @@ export function buildTrace(
   }
 }
 
+/**
+ * The index of the message after the slowest hop: the largest gap (the first one on a tie). Null
+ * unless there are two hops or more and the largest gap is longer than the smallest, because a
+ * single hop, or equal gaps, have no slowest one. The views that mark the slowest hop use this, so
+ * they always agree.
+ */
+export function slowestHop(hops: readonly Pick<TraceHop, 'gapMs'>[]): number | null {
+  let slowest: number | null = null
+  let most = 0
+  let least = Infinity
+  hops.forEach((h, i) => {
+    if (h.gapMs === null) return
+    least = Math.min(least, h.gapMs)
+    if (h.gapMs > most) {
+      most = h.gapMs
+      slowest = i
+    }
+  })
+  return hops.length < 3 || most <= least ? null : slowest
+}
+
 /** A span of time as text: `850 ms`, `1.4 s`, `2 min 5 s`, `1 h 3 min`, `2 d 4 h`. */
 export function formatSpan(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`

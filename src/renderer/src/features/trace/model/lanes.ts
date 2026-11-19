@@ -1,4 +1,4 @@
-import type { Trace, TraceHop } from './trace'
+import { slowestHop, type Trace, type TraceHop } from './trace'
 import { groupSubject } from './subjectGroup'
 
 /** What a lane is: one per subject, or one per stream. */
@@ -160,20 +160,7 @@ export function layoutLanes(
     x: xs[index]
   }))
 
-  // The slowest hop: the largest gap (the first one on a tie among several), but only when the
-  // hops differ: a single hop, or all gaps equal, has no slowest one.
-  let slowest: number | null = null
-  let most = 0
-  let least = Infinity
-  hops.forEach((h, i) => {
-    if (h.gapMs === null) return
-    least = Math.min(least, h.gapMs)
-    if (h.gapMs > most) {
-      most = h.gapMs
-      slowest = i
-    }
-  })
-  if (hops.length < 3 || most <= least) slowest = null
+  const slowest = slowestHop(hops)
   const links = hops.slice(1).map((hop, k): LaneLink => {
     const i = k + 1
     return {

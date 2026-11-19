@@ -1,4 +1,4 @@
-import type { TraceViewDef, ViewSettings } from './types'
+import type { ToggleControl, TraceViewDef, ViewSettings } from './types'
 
 /**
  * The settings a view runs with: each of its controls takes the stored value when that is valid
@@ -19,3 +19,18 @@ export function resolveSettings(
   }
   return out
 }
+
+/**
+ * "Group similar subjects", shared by the views that draw one thing per subject (Lanes, Graph).
+ * One id, so the choice carries over when the view changes; each view adds its own hint.
+ */
+export const GROUP_SUBJECTS: ToggleControl = {
+  kind: 'toggle',
+  id: 'groupSubjects',
+  label: 'Group similar subjects',
+  default: true,
+  placement: 'more'
+}
+
+/** Whether subjects are grouped, for resolved settings. */
+export const groupsSubjects = (settings: ViewSettings): boolean => settings.groupSubjects !== false

@@ -32,3 +32,11 @@ window.matchMedia ??= ((query: string) => ({
   onchange: null,
   dispatchEvent: () => false
 })) as unknown as typeof window.matchMedia
+
+// jsdom has no DOMMatrix; the graph library (Trace Graph view) reads the zoom from the viewport's
+// transform with it. A transform that cannot be read means zoom 1.
+class DOMMatrixReadOnlyStub {
+  m22 = 1
+  constructor(_transform?: string) {}
+}
+globalThis.DOMMatrixReadOnly ??= DOMMatrixReadOnlyStub as unknown as typeof DOMMatrixReadOnly

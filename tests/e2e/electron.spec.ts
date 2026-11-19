@@ -124,6 +124,35 @@ test('PBI-030/040 streams and messages load over IPC', async () => {
   await expect(detail).toHaveCount(0)
 })
 
+test("PBI-138 the Trace Graph view loads and draws under the desktop app's CSP", async () => {
+  const refused: string[] = []
+  page.on('console', (m) => {
+    if (m.type() === 'error' && /Content Security Policy|Refused to/.test(m.text()))
+      refused.push(m.text())
+  })
+  await page
+    .getByRole('navigation', { name: 'Connections' })
+    .getByRole('button', { name: 'Trace', exact: true })
+    .click()
+  await page.getByRole('textbox', { name: 'Header name 1' }).fill('Region')
+  await page.getByRole('textbox', { name: 'Value 1' }).fill('eu')
+  await page.getByRole('button', { name: 'Run trace' }).click()
+  await expect(page.getByRole('table', { name: 'Trace timeline' })).toBeVisible()
+  // The view and the graph library are a chunk of their own, loaded now.
+  await page.getByRole('combobox', { name: 'View' }).selectOption('graph')
+  const graph = page.getByRole('application', { name: 'Trace graph' })
+  await expect(graph.getByRole('img', { name: /^Subject orders\.eu\./ }).first()).toBeVisible()
+  // The library's styles apply, themed with the app's colours.
+  const colours = await graph.locator('.react-flow').evaluate((el) => ({
+    position: getComputedStyle(el).position,
+    background: getComputedStyle(el).getPropertyValue('--xy-background-color').trim(),
+    bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+  }))
+  expect(colours.position).toBe('relative')
+  expect(colours.background).toBe(colours.bg)
+  expect(refused).toEqual([])
+})
+
 test('PBI-014 secrets are stored through the OS keychain API, never in plain text', async () => {
   const result = await app.evaluate(async ({ safeStorage }) => ({
     available: safeStorage.isEncryptionAvailable()

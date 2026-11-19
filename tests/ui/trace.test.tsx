@@ -746,7 +746,7 @@ describe('PBI-138 phase 2: Lanes view', () => {
     )
     await waitFor(() => expect(labels()).toEqual(['orders.*.new', 'pay.charge', 'ship.pack']))
     // An unknown view id shows the first view.
-    act(() => useTabs.getState().patch('trace:dev:1', { view: 'graph' }))
+    act(() => useTabs.getState().patch('trace:dev:1', { view: 'flowmap' }))
     expect(await screen.findByRole('table', { name: 'Trace timeline' })).toBeInTheDocument()
   })
 

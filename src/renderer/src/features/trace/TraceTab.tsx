@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import type { ConsumerInfoDto } from '@shared/api'
@@ -17,7 +17,14 @@ import { useTabs } from '../../state/tabs'
 import { isSystemStream } from '../subjects/subjectTree'
 import type { StreamOption } from '../messages/StreamPicker'
 import { buildTrace, formatSpan, type ConsumersByStream } from './model/trace'
-import { cancelledText, NoMatches, NothingRun, ScanProgress, StreamNotices } from './TraceStates'
+import {
+  cancelledText,
+  NoMatches,
+  NothingRun,
+  ScanProgress,
+  StreamNotices,
+  ViewLoading
+} from './TraceStates'
 import { blankRule, DEFAULT_WINDOW, TraceToolbar } from './TraceToolbar'
 import { TraceDetail } from './TraceDetail'
 import { useTrace } from './useTrace'
@@ -145,7 +152,9 @@ export function TraceTab({
   const closePane = (): void => {
     setPaneOpen(false)
     // The pane (and the focus in it) goes away: keep the keyboard in the view.
-    tableBox.current?.querySelector<HTMLElement>('[role=table],[role=listbox]')?.focus()
+    tableBox.current
+      ?.querySelector<HTMLElement>('[role=table],[role=listbox],[role=application]')
+      ?.focus()
   }
 
   const cancelledNote = state.status === 'cancelled' ? ` · ${cancelledText(state.streams)}` : ''
@@ -173,17 +182,20 @@ export function TraceTab({
       <div className="@container min-h-0 flex-1">
         <div className="flex h-full min-h-0 flex-col @5xl:flex-row">
           <div ref={tableBox} className="min-h-32 min-w-0 flex-1">
-            <View
-              trace={trace}
-              selected={selected}
-              onSelect={select}
-              settings={viewSettings}
-              detailOpen={paneOpen && hop !== null}
-              onOpen={(id) => {
-                select(id)
-                setPaneOpen(true)
-              }}
-            />
+            {/* A view can be lazy (see the registry): it shows a loading state on first use. */}
+            <Suspense fallback={<ViewLoading />}>
+              <View
+                trace={trace}
+                selected={selected}
+                onSelect={select}
+                settings={viewSettings}
+                detailOpen={paneOpen && hop !== null}
+                onOpen={(id) => {
+                  select(id)
+                  setPaneOpen(true)
+                }}
+              />
+            </Suspense>
           </div>
           {hop && paneOpen && (
             <div className="h-[55%] shrink-0 @5xl:h-auto @5xl:w-[44%] @5xl:max-w-[720px] @5xl:min-w-[380px]">

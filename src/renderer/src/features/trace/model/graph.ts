@@ -304,3 +304,13 @@ export function cycleMessage(messages: readonly number[], selected: number | nul
   const at = selected === null ? -1 : messages.indexOf(selected)
   return at < 0 ? messages[0] : messages[(at + 1) % messages.length]
 }
+
+/**
+ * How many consumers the graph shows. A consumer that receives from several subjects has a node
+ * next to each of them, and counts once.
+ */
+export function consumerCount(graph: Pick<TraceGraph, 'nodes'>): number {
+  const seen = new Set<string>()
+  for (const n of graph.nodes) if (n.kind === 'consumer') seen.add(`${n.stream}/${n.name}`)
+  return seen.size
+}

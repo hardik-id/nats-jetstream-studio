@@ -3,6 +3,7 @@ import type { TraceMessage } from '@shared/trace'
 import type { MessageConsumerState } from '@shared/messageConsumers'
 import {
   buildGraph,
+  consumerCount,
   cycleMessage,
   DEFAULT_GRAPH_OPTIONS,
   type GraphOptions,
@@ -165,6 +166,9 @@ describe('PBI-138 graph model', () => {
         ['P', 'p.b', 12, ['c']]
       )
     )
+    // Two nodes for the one consumer, which the summary counts once.
+    expect(g.nodes.filter((n) => n.kind === 'consumer')).toHaveLength(2)
+    expect(consumerCount(g)).toBe(1)
     expect(g.nodes.find((n) => n.id === 'consumer:P/c@p.a')).toMatchObject({
       done: 1,
       waiting: 1,

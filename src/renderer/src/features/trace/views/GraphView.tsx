@@ -27,7 +27,7 @@ import { Maximize, Minus, Plus } from 'lucide-react'
 import { formatCount } from '@shared/format'
 import { Button } from '../../../components/ui'
 import { useDocumentVisible, usePrefersReducedMotion, useTabActive } from '../../../lib/hooks'
-import { buildGraph, cycleMessage, type TraceGraph } from '../model/graph'
+import { buildGraph, consumerCount, cycleMessage, type TraceGraph } from '../model/graph'
 import { layoutGraph, type GraphLayout } from '../model/layout'
 import { MAX_ANIMATED_EDGES, planMotion } from '../model/motion'
 import { formatSpan, type Trace } from '../model/trace'
@@ -330,7 +330,7 @@ function Overview({ layout }: { layout: GraphLayout }): ReactNode {
 /** The text alternative of the picture: what is in it, and the slowest hop. */
 function Summary({ trace, graph }: { trace: Trace; graph: TraceGraph }): ReactNode {
   const subjects = graph.nodes.filter((n) => n.kind === 'subject').length
-  const consumers = graph.nodes.length - subjects
+  const consumers = consumerCount(graph)
   const repeats = graph.edges.reduce((n, e) => n + (e.back ? e.repeats : 0), 0)
   const slow = graph.slowest === null ? null : trace.hops[graph.slowest]
   const plural = (n: number, one: string): string => `${formatCount(n)} ${one}${n === 1 ? '' : 's'}`

@@ -78,20 +78,20 @@ describe('PBI-138 graph model', () => {
     const g = buildGraph(request, opts({ group: false }))
     expect(g.nodes.map((n) => n.id)).toEqual([
       'subject:orders.created',
-      'consumer:ORD/order-svc',
+      'consumer:ORD/order-svc@orders.created',
       'subject:pay.requested',
-      'consumer:PAY/billing',
+      'consumer:PAY/billing@pay.requested',
       'subject:pay.charged',
-      'consumer:PAY/ledger',
+      'consumer:PAY/ledger@pay.charged',
       'subject:ship.pack'
     ])
     expect(ids(g)).toEqual([
-      'delivery:subject:orders.created->consumer:ORD/order-svc',
-      'hop:consumer:ORD/order-svc->subject:pay.requested',
-      'delivery:subject:pay.requested->consumer:PAY/billing',
-      'hop:consumer:PAY/billing->subject:pay.charged',
-      'delivery:subject:pay.charged->consumer:PAY/ledger',
-      'hop:consumer:PAY/ledger->subject:ship.pack'
+      'delivery:subject:orders.created->consumer:ORD/order-svc@orders.created',
+      'hop:consumer:ORD/order-svc@orders.created->subject:pay.requested',
+      'delivery:subject:pay.requested->consumer:PAY/billing@pay.requested',
+      'hop:consumer:PAY/billing@pay.requested->subject:pay.charged',
+      'delivery:subject:pay.charged->consumer:PAY/ledger@pay.charged',
+      'hop:consumer:PAY/ledger@pay.charged->subject:ship.pack'
     ])
     // A delivery is known and carries no delay; the hop after it is inferred and carries the gap.
     expect(edge(g, ids(g)[0])).toMatchObject({ kind: 'delivery', delays: [], delay: null })
@@ -104,9 +104,9 @@ describe('PBI-138 graph model', () => {
     })
     expect(g.arrivedBy).toEqual([null, ids(g)[1], ids(g)[3], ids(g)[5]])
     expect(g.receivers).toEqual([
-      ['consumer:ORD/order-svc'],
-      ['consumer:PAY/billing'],
-      ['consumer:PAY/ledger'],
+      ['consumer:ORD/order-svc@orders.created'],
+      ['consumer:PAY/billing@pay.requested'],
+      ['consumer:PAY/ledger@pay.charged'],
       []
     ])
     expect(g.path.map((s) => [s.from, s.to, s.branch])).toEqual([
@@ -128,10 +128,10 @@ describe('PBI-138 graph model', () => {
       opts()
     )
     expect(ids(g)).toEqual([
-      'delivery:subject:evt.placed->consumer:EVT/email',
-      'delivery:subject:evt.placed->consumer:EVT/sms',
-      'delivery:subject:evt.placed->consumer:EVT/audit',
-      'delivery:subject:evt.placed->consumer:EVT/search',
+      'delivery:subject:evt.placed->consumer:EVT/email@evt.placed',
+      'delivery:subject:evt.placed->consumer:EVT/sms@evt.placed',
+      'delivery:subject:evt.placed->consumer:EVT/audit@evt.placed',
+      'delivery:subject:evt.placed->consumer:EVT/search@evt.placed',
       'hop:subject:evt.placed->subject:ship.pack'
     ])
     expect(g.path.filter((s) => s.branch)).toHaveLength(4)
@@ -147,33 +147,41 @@ describe('PBI-138 graph model', () => {
     const g = buildGraph(trace(['A', 'a', 0], ['B', 'b', 5, ['done-one', 'late:not-delivered']]))
     expect(ids(g)).toEqual([
       'hop:subject:a->subject:b',
-      'delivery:subject:b->consumer:B/done-one',
-      'pending:subject:b->consumer:B/late'
+      'delivery:subject:b->consumer:B/done-one@b',
+      'pending:subject:b->consumer:B/late@b'
     ])
-    const late = g.nodes.find((n) => n.id === 'consumer:B/late')!
+    const late = g.nodes.find((n) => n.id === 'consumer:B/late@b')!
     expect(late).toMatchObject({ kind: 'consumer', done: 0, waiting: 0, undelivered: 1 })
     // A consumer waiting for its message did not receive it, so it does not route the request.
-    expect(g.receivers[1]).toEqual(['consumer:B/done-one'])
+    expect(g.receivers[1]).toEqual(['consumer:B/done-one@b'])
   })
 
-  it('counts where each consumer stands', () => {
+  it('counts where each consumer stands, with one node per subject it receives from', () => {
     const g = buildGraph(
       trace(
         ['P', 'p.a', 0, ['c']],
-        ['P', 'p.b', 5, ['c:waiting-ack']],
-        ['P', 'p.c', 9, ['c:not-delivered']]
+        ['P', 'p.a', 5, ['c:waiting-ack']],
+        ['P', 'p.a', 9, ['c:not-delivered']],
+        ['P', 'p.b', 12, ['c']]
       )
     )
-    expect(g.nodes.find((n) => n.id === 'consumer:P/c')).toMatchObject({
+    expect(g.nodes.find((n) => n.id === 'consumer:P/c@p.a')).toMatchObject({
       done: 1,
       waiting: 1,
       undelivered: 1,
-      messages: [0, 1, 2]
+      messages: [0, 1, 2],
+      shared: true
+    })
+    expect(g.nodes.find((n) => n.id === 'consumer:P/c@p.b')).toMatchObject({
+      done: 1,
+      messages: [3],
+      subject: 'p.b',
+      shared: true
     })
   })
 
-  it('makes same-subject repeats one retry edge back, not more nodes', () => {
-    // The charge is tried three times by billing.
+  it('makes same-subject repeats one repeat edge back, not more nodes', () => {
+    // Three charge requests in a row, each received by billing.
     const g = buildGraph(
       trace(
         ['PAY', 'pay.requested', 0, ['billing']],
@@ -183,22 +191,24 @@ describe('PBI-138 graph model', () => {
       )
     )
     expect(g.nodes).toHaveLength(3)
-    const retry = edge(g, 'hop:consumer:PAY/billing->subject:pay.requested')
-    expect(retry).toMatchObject({ back: true, retries: 2, count: 2, messages: [1, 2] })
-    expect(retry.delay).toEqual({ min: 300, median: 400, max: 500 })
-    expect(edgeLabel(retry)).toBe('retry ×2 · up to ~500 ms')
-    expect(edge(g, 'delivery:subject:pay.requested->consumer:PAY/billing').count).toBe(3)
+    const repeat = edge(g, 'hop:consumer:PAY/billing@pay.requested->subject:pay.requested')
+    expect(repeat).toMatchObject({ back: true, repeats: 2, count: 2, messages: [1, 2] })
+    expect(repeat.delay).toEqual({ min: 300, median: 400, max: 500 })
+    expect(edgeLabel(repeat)).toBe('repeat ×2 · up to ~500 ms')
+    expect(
+      edge(g, 'delivery:subject:pay.requested->consumer:PAY/billing@pay.requested').count
+    ).toBe(3)
 
     // Without consumers a repeat is a loop on the subject itself.
     const plain = buildGraph(trace(['A', 'a', 0], ['A', 'a', 10], ['B', 'b', 15]), opts())
-    expect(edge(plain, 'hop:subject:a->subject:a')).toMatchObject({ back: true, retries: 1 })
-    expect(edgeLabel(edge(plain, 'hop:subject:a->subject:a'))).toBe('retry · ~10 ms')
+    expect(edge(plain, 'hop:subject:a->subject:a')).toMatchObject({ back: true, repeats: 1 })
+    expect(edgeLabel(edge(plain, 'hop:subject:a->subject:a'))).toBe('repeat · ~10 ms')
   })
 
-  it('marks a revisit of an earlier subject as a back edge that is not a retry', () => {
+  it('marks a revisit of an earlier subject as a back edge that is not a repeat', () => {
     const g = buildGraph(trace(['A', 'a', 0], ['B', 'b', 10], ['A', 'a', 20]), opts())
     const back = edge(g, 'hop:subject:b->subject:a')
-    expect(back).toMatchObject({ back: true, retries: 0 })
+    expect(back).toMatchObject({ back: true, repeats: 0 })
     expect(edgeLabel(back)).toBe('back · ~10 ms')
   })
 
@@ -225,7 +235,7 @@ describe('PBI-138 graph model', () => {
     expect(g.slowest).toBe(slowestHop(request.hops))
     expect(g.slowest).toBe(layoutLanes(request).slowest)
     expect(g.edges.filter((e) => e.slowest).map((e) => e.id)).toEqual([
-      'hop:consumer:PAY/ledger->subject:ship.pack'
+      'hop:consumer:PAY/ledger@pay.charged->subject:ship.pack'
     ])
     // Two messages (one hop), or equal gaps, have no slowest hop.
     expect(buildGraph(trace(['A', 'a', 0], ['B', 'b', 9])).slowest).toBeNull()
@@ -392,7 +402,7 @@ describe('PBI-138 graph layout', () => {
     for (const e of crossing) expect(l.routes[e.id]?.kind).toBe('detour')
   })
 
-  it('routes retries and revisits around the nodes', () => {
+  it('routes repeats and revisits around the nodes', () => {
     const g = buildGraph(
       trace(
         ['PAY', 'pay.requested', 0, ['billing']],
@@ -504,5 +514,54 @@ describe('PBI-138 graph geometry', () => {
         { x: 100, y: 50 }
       ])
     ).toBe('M0 0L90 0Q100 0 100 10L100 50')
+  })
+})
+
+describe('PBI-138 graph review fixes', () => {
+  // One consumer receives from two subjects: hop 0 by worker and audit, hop 1 by worker only.
+  const shared = trace(
+    ['ORD', 'orders.new', 0, ['worker', 'audit']],
+    ['ORD', 'orders.paid', 20, ['worker']],
+    ['SHIP', 'ship', 50]
+  )
+
+  it('never marks a delivery as going back, also to a consumer seen before', () => {
+    const g = buildGraph(shared)
+    const deliveries = g.edges.filter((e) => e.kind !== 'hop')
+    expect(deliveries.length).toBeGreaterThan(0)
+    for (const e of deliveries) {
+      expect(e.back).toBe(false)
+      expect(edgeLabel(e) ?? '').not.toMatch(/back|repeat/)
+    }
+    const l = checkLayout(g)
+    for (const e of deliveries) expect(l.routes[e.id]?.kind).not.toBe('detour')
+  })
+
+  it('plays no dot towards a consumer that has not received the message', () => {
+    const g = buildGraph(trace(['A', 'a', 0, ['late:not-delivered']], ['B', 'b', 10]))
+    const pending = g.edges.find((e) => e.kind === 'pending')!
+    expect(pending).toBeDefined()
+    expect(planMotion(g).dots[pending.id]).toBeUndefined()
+  })
+
+  it('lays out a cycle A, B, A with consumers on', () => {
+    const g = buildGraph(
+      trace(['A', 'a', 0, ['ca']], ['B', 'b', 10, ['cb']], ['A', 'a', 20, ['ca']], ['B', 'b', 30])
+    )
+    expect(g.edges.filter((e) => e.back).every((e) => e.kind === 'hop')).toBe(true)
+    expect(g.edges.some((e) => e.back)).toBe(true)
+    checkLayout(g)
+  })
+
+  it('lays out messages with identical timestamps without NaN or overlap', () => {
+    const g = buildGraph(
+      trace(['A', 'a', 0, ['x']], ['B', 'b', 0, ['y', 'z']], ['C', 'c', 0], ['A', 'a', 0])
+    )
+    const l = checkLayout(g, { area: { width: 600, height: 400 } })
+    for (const n of Object.values(l.nodes))
+      for (const v of [n.x, n.y, n.width, n.height]) expect(Number.isFinite(v)).toBe(true)
+    for (const v of Object.values(l.bounds)) expect(Number.isFinite(v)).toBe(true)
+    const m = planMotion(g)
+    expect(Number.isFinite(m.cycle)).toBe(true)
   })
 })

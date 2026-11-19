@@ -1,12 +1,13 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ConsumerInfoDto } from '@shared/api'
 import { openNav } from '@renderer/features/shell/nav'
 import { TraceTab } from '@renderer/features/trace/TraceTab'
 import { TRACE_VIEWS } from '@renderer/features/trace/views/registry'
 import { createFakeGateway, type FakeGateway } from '@renderer/gateway/fake'
+import { TabActiveContext } from '@renderer/lib/hooks'
 import { useTabs } from '@renderer/state/tabs'
 import { renderWithGateway } from './render'
 import { reducedMotion, stubMotionPreference } from './graphEnv'
@@ -28,7 +29,7 @@ const consumer = (name: string, stream: string, filter: string): ConsumerInfoDto
 
 /**
  * One request across three streams: orders.new (received by order-svc), pay.charge (received by
- * billing), pay.charge again 4 s later (a retry), ship.pack.
+ * billing), pay.charge again 4 s later (a repeat), ship.pack.
  */
 function gatewayForGraph(): FakeGateway {
   const gateway = createFakeGateway({ connections: [{ id: 'dev', name: 'Dev' }] })
@@ -84,8 +85,11 @@ const tab = () =>
     { kind: 'trace' }
   >
 
-async function openGraph(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
-  renderWithGateway(<Host />, gatewayForGraph())
+async function openGraph(
+  user: ReturnType<typeof userEvent.setup>,
+  ui: ReactNode = <Host />
+): Promise<HTMLElement> {
+  renderWithGateway(<>{ui}</>, gatewayForGraph())
   act(() => openNav('dev', 'trace'))
   await user.type(screen.getByRole('textbox', { name: 'Header name 1' }), 'trace-id')
   await user.type(screen.getByRole('textbox', { name: 'Value 1' }), 'abc')
@@ -143,9 +147,9 @@ describe('PBI-138 phase 3: Graph view', () => {
     // The summary is the text alternative of the picture.
     const summary = document.getElementById(graph.getAttribute('aria-describedby')!)!
     expect(summary).toHaveTextContent(
-      '3 subjects, 2 consumers, 4 messages, 1 retry. Slowest hop: +4.0 s before pay.charge.'
+      '3 subjects, 2 consumers, 4 messages, 1 repeat. Slowest hop: +4.0 s before pay.charge.'
     )
-    // Edges are named too: known deliveries and inferred hops, with the retry.
+    // Edges are named too: known deliveries and inferred hops, with the repeat.
     expect(
       screen.getByRole('img', {
         name: 'orders.new to order-svc: delivered (known)'
@@ -153,11 +157,11 @@ describe('PBI-138 phase 3: Graph view', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('img', {
-        name: /^billing to pay\.charge: next message \(inferred from time\), a retry, about 4\.0 s, slowest hop$/
+        name: /^billing to pay\.charge: next message \(inferred from time\), a repeat, about 4\.0 s, slowest hop$/
       })
     ).toBeInTheDocument()
     expect(screen.getAllByTestId('graph-edge-label').map((e) => e.textContent)).toContain(
-      'retry · ~4.0 s'
+      'repeat · ~4.0 s'
     )
     expect(screen.getByText('SLOWEST')).toBeInTheDocument()
   })
@@ -235,6 +239,8 @@ describe('PBI-138 phase 3: Graph view', () => {
     expect(within(detail()).getAllByText('orders.new').length).toBeGreaterThan(0)
     await user.keyboard('{ArrowRight}')
     expect(within(detail()).getAllByText('pay.charge').length).toBeGreaterThan(0)
+    // One application role (the library's wrapper), not one inside another.
+    expect(screen.getAllByRole('application')).toHaveLength(1)
     // Nodes and edges are not tab stops of their own.
     expect(
       graph.querySelectorAll('.react-flow__node[tabindex], .react-flow__edge[tabindex]')
@@ -256,5 +262,51 @@ describe('PBI-138 phase 3: Graph view', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'graph')
     await screen.findByRole('application', { name: 'Trace graph' })
     expect(current()).toEqual([expect.stringMatching(/^Subject ship\.pack/)])
+  })
+
+  it('removes the dots while the page is hidden, and puts them back', async () => {
+    const user = userEvent.setup()
+    await openGraph(user)
+    expect(screen.getAllByTestId('graph-dot').length).toBeGreaterThan(0)
+    let state: DocumentVisibilityState = 'hidden'
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')!
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+    try {
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      expect(screen.queryAllByTestId('graph-dot')).toHaveLength(0)
+      state = 'visible'
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      expect(screen.getAllByTestId('graph-dot').length).toBeGreaterThan(0)
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState
+      expect(Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')).toEqual(
+        original
+      )
+    }
+  })
+
+  it('removes the dots while the Trace tab is not the active tab, and puts them back', async () => {
+    const user = userEvent.setup()
+    function Switchable(): ReactNode {
+      const [active, setActive] = useState(true)
+      return (
+        <>
+          <button onClick={() => setActive(!active)}>Switch tab</button>
+          <TabActiveContext.Provider value={active}>
+            <Host />
+          </TabActiveContext.Provider>
+        </>
+      )
+    }
+    await openGraph(user, <Switchable />)
+    expect(screen.getAllByTestId('graph-dot').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Switch tab' }))
+    expect(screen.queryAllByTestId('graph-dot')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Switch tab' }))
+    expect(screen.getAllByTestId('graph-dot').length).toBeGreaterThan(0)
   })
 })

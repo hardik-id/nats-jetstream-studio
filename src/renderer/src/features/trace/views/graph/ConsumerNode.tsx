@@ -27,7 +27,11 @@ function ConsumerNodeComponent({ data, width, height }: NodeProps<ConsumerFlowNo
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12.5px] leading-4 font-semibold text-fg">{node.name}</div>
-        <div className="truncate text-[10.5px] leading-4 text-muted">{node.stream}</div>
+        <div className="truncate text-[10.5px] leading-4 text-muted">
+          {node.stream}
+          {/* The same consumer has a node for each subject it receives from: say which. */}
+          {node.shared && <> · for {node.subject}</>}
+        </div>
         <div
           className={cx(
             'truncate text-[10.5px] leading-4 tabular-nums',

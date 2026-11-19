@@ -20,7 +20,7 @@ export function consumerSummary(node: ConsumerNode): string {
 
 export function nodeName(node: GraphNode): string {
   if (node.kind === 'consumer')
-    return `Consumer ${node.name} on ${node.stream}: ${consumerSummary(node)}`
+    return `Consumer ${node.name} on ${node.stream}${node.shared ? `, for ${node.subject}` : ''}: ${consumerSummary(node)}`
   return subjectName(node)
 }
 
@@ -41,11 +41,14 @@ export function delayText(edge: GraphEdge): string | null {
   return `~${formatSpan(edge.delay.median)}`
 }
 
-/** What an edge says next to its delay: `retry ×2`, `back`, `×3`, `not delivered`. */
+/**
+ * What an edge says next to its delay: `repeat ×2` (consecutive messages on one subject: distinct
+ * stored messages, not redeliveries), `back`, `×3`, `not delivered`.
+ */
 function countText(edge: GraphEdge): string | null {
   const times = edge.count > 1 ? ` ×${edge.count}` : ''
   if (edge.kind === 'pending') return 'not delivered'
-  if (edge.back) return edge.retries === edge.count ? `retry${times}` : `back${times}`
+  if (edge.back) return edge.repeats === edge.count ? `repeat${times}` : `back${times}`
   return edge.count > 1 ? `×${edge.count}` : null
 }
 
@@ -66,7 +69,7 @@ export function edgeName(edge: GraphEdge, nodes: ReadonlyMap<string, GraphNode>)
         : 'next message (inferred from time)'
   const parts = [`${from} to ${to}: ${what}`]
   if (edge.count > 1) parts.push(`${edge.count} times`)
-  if (edge.back) parts.push(edge.retries === edge.count ? 'a retry' : 'back to an earlier node')
+  if (edge.back) parts.push(edge.repeats === edge.count ? 'a repeat' : 'back to an earlier node')
   if (edge.delay)
     parts.push(
       edge.count > 1 && edge.delay.min !== edge.delay.max

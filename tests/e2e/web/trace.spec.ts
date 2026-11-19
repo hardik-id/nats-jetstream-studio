@@ -230,6 +230,35 @@ test('PBI-138 Graph view: nodes for a three-stream trace, flowing dots, open a m
   ).toHaveAttribute('aria-selected', 'true')
 })
 
+test("PBI-138 Graph view keeps the user's zoom when the detail pane opens", async ({ page }) => {
+  await openStudio(page)
+  await go(page, 'Trace')
+  await page.getByRole('textbox', { name: 'Header name 1' }).fill('trace-id')
+  await page.getByRole('textbox', { name: 'Value 1' }).fill(tag)
+  await page.getByRole('button', { name: 'Run trace' }).click()
+  await page.getByRole('combobox', { name: 'View' }).selectOption('graph')
+  const graph = page.getByRole('application', { name: 'Trace graph' })
+  const node = graph.getByRole('img', { name: new RegExp(`^Subject ${orders}\\.new`) })
+  await expect(node).toBeVisible()
+  const viewport = page.locator('.react-flow__viewport')
+  const scale = (): Promise<string> =>
+    viewport.evaluate((el) => /scale\(([^)]+)\)/.exec((el as HTMLElement).style.transform)![1])
+  const fitted = await scale()
+  await page.getByRole('button', { name: 'Zoom out' }).click()
+  await page.getByRole('button', { name: 'Zoom out' }).click()
+  const zoomed = await scale()
+  expect(zoomed).not.toBe(fitted)
+  // Opening the pane narrows the area and lays the graph out again: the zoom stays.
+  await node.click()
+  await expect(page.getByRole('complementary', { name: 'Message detail' })).toBeVisible()
+  await page.waitForTimeout(300)
+  expect(await scale()).toBe(zoomed)
+  await expect(node).toBeInViewport()
+  // Fit goes back to the fitted view.
+  await page.getByRole('button', { name: 'Fit', exact: true }).click()
+  expect(await scale()).not.toBe(zoomed)
+})
+
 test.describe('with reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
 

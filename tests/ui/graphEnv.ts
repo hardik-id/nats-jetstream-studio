@@ -1,9 +1,7 @@
-import { vi } from 'vitest'
-
 /**
  * A matchMedia whose "prefers-reduced-motion" answer a test can change, with change events, for
  * the Trace Graph view (the global stub in setup.ts always answers no and never changes).
- * `stubMotionPreference` returns a function that puts the previous globals back.
+ * `stubMotionPreference` returns a function that puts the previous matchMedia back.
  */
 let reduce = false
 const listeners = new Set<() => void>()
@@ -11,7 +9,8 @@ const listeners = new Set<() => void>()
 export function stubMotionPreference(): () => void {
   reduce = false
   listeners.clear()
-  vi.stubGlobal('matchMedia', (query: string) => ({
+  const original = window.matchMedia
+  window.matchMedia = ((query: string) => ({
     get matches() {
       return query.includes('reduced-motion') && reduce
     },
@@ -22,8 +21,11 @@ export function stubMotionPreference(): () => void {
     removeListener: () => {},
     onchange: null,
     dispatchEvent: () => false
-  }))
-  return () => vi.unstubAllGlobals()
+  })) as unknown as typeof window.matchMedia
+  // Only what this stubbed is put back, not globals other tests may have stubbed.
+  return () => {
+    window.matchMedia = original
+  }
 }
 
 /** Turns "prefers reduced motion" on, tells the listeners, and returns how to turn it off. */

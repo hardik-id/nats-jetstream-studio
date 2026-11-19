@@ -88,8 +88,8 @@ export function buildTrace(
 
 /**
  * The index of the message after the slowest hop: the largest gap (the first one on a tie). Null
- * unless there are two hops or more and the largest gap is longer than the smallest, because a
- * single hop, or equal gaps, have no slowest one. The views that mark the slowest hop use this, so
+ * unless there are at least three messages (two gaps) and the largest gap is longer than the
+ * smallest, because a single gap, or equal gaps, have no slowest one. The views that mark the slowest hop use this, so
  * they always agree.
  */
 export function slowestHop(hops: readonly Pick<TraceHop, 'gapMs'>[]): number | null {

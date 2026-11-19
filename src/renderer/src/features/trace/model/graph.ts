@@ -10,6 +10,11 @@ import { slowestHop, type ConsumerBadge, type Trace } from './trace'
  * inferred. When exactly one consumer received a message, the step goes through it (subject, the
  * consumer that received it, the next subject); otherwise it goes straight to the next subject and
  * the consumers hang off the subject as side branches.
+ *
+ * A consumer node stands for one consumer receiving from one subject node: a consumer that
+ * receives from several subjects (a filter such as `orders.>`) has a node next to each of them.
+ * So a delivery always runs forward, from a subject to its own consumers, and only a hop (the
+ * inferred step to the next message) can go back to an earlier node.
  */
 
 export interface GraphOptions {
@@ -42,6 +47,11 @@ export interface ConsumerNode extends NodeBase {
   kind: 'consumer'
   stream: string
   name: string
+  /** The subject node it hangs under (see `buildGraph`), and that node's subject key. */
+  parent: string
+  subject: string
+  /** The same consumer also has a node for another subject. */
+  shared: boolean
   /** Messages it is finished with (acknowledged, or delivered with ack policy none). */
   done: number
   /** Messages delivered and waiting for an acknowledgement. */
@@ -76,10 +86,13 @@ export interface GraphEdge {
   delay: DelayStats | null
   /** Indexes of the messages it leads to, one per step, in time order. */
   messages: number[]
-  /** The target was first seen before the source: a retry or a revisit of an earlier node. */
+  /**
+   * A hop whose target was first seen before its source: a repeat (the next message is on the
+   * same subject) or a revisit of an earlier node.
+   */
   back: boolean
   /** Steps that went back to the subject of the message they left from. */
-  retries: number
+  repeats: number
   /** It carries the slowest hop of the trace (see `slowestHop`). */
   slowest: boolean
 }
@@ -87,6 +100,7 @@ export interface GraphEdge {
 /** One move along the path. */
 export interface PathStep {
   edge: string
+  kind: EdgeKind
   /** The message the request is at when the step starts. */
   from: number
   /** The message the step leads to. */
@@ -113,7 +127,8 @@ export interface TraceGraph {
 }
 
 const subjectId = (key: string): string => `subject:${key}`
-const consumerId = (stream: string, name: string): string => `consumer:${stream}/${name}`
+const consumerId = (stream: string, name: string, subject: string): string =>
+  `consumer:${stream}/${name}@${subject}`
 const received = (b: ConsumerBadge): boolean => b.state === 'done' || b.state === 'waiting-ack'
 
 function median(sorted: readonly number[]): number {
@@ -154,8 +169,8 @@ export function buildGraph(
     }
     return node as SubjectNode
   }
-  const consumer = (stream: string, name: string): ConsumerNode => {
-    const id = consumerId(stream, name)
+  const consumer = (stream: string, name: string, parent: SubjectNode): ConsumerNode => {
+    const id = consumerId(stream, name, parent.key)
     let node = nodes.get(id)
     if (!node) {
       node = {
@@ -164,6 +179,9 @@ export function buildGraph(
         order: nodes.size,
         stream,
         name,
+        parent: parent.id,
+        subject: parent.key,
+        shared: false,
         messages: [],
         done: 0,
         waiting: 0,
@@ -194,7 +212,7 @@ export function buildGraph(
         delay: null,
         messages: [],
         back: false,
-        retries: 0,
+        repeats: 0,
         slowest: false
       }
       edges.set(id, edge)
@@ -205,10 +223,10 @@ export function buildGraph(
     if (delayMs !== null) edge.delays.push(delayMs)
     if (kind === 'hop') {
       arrivedBy[to] = id
-      if (nodeOf[to] === nodeOf[from]) edge.retries++
+      if (nodeOf[to] === nodeOf[from]) edge.repeats++
       if (to === slowest) edge.slowest = true
     }
-    path.push({ edge: id, from, to, delayMs, branch })
+    path.push({ edge: id, kind, from, to, delayMs, branch })
   }
 
   hops.forEach((hop, i) => {
@@ -221,7 +239,7 @@ export function buildGraph(
     const got: ConsumerNode[] = []
     const waitingFor: ConsumerNode[] = []
     for (const b of badges) {
-      const c = consumer(hop.message.stream, b.name)
+      const c = consumer(hop.message.stream, b.name, at)
       c.messages.push(i)
       if (b.state === 'done') c.done++
       else if (b.state === 'waiting-ack') c.waiting++
@@ -245,8 +263,20 @@ export function buildGraph(
     } else step(at.id, nextId, 'hop', i, next, false)
   })
 
+  const perConsumer = new Map<string, number>()
+  for (const n of nodes.values())
+    if (n.kind === 'consumer') {
+      const key = `${n.stream}/${n.name}`
+      perConsumer.set(key, (perConsumer.get(key) ?? 0) + 1)
+    }
+  for (const n of nodes.values())
+    if (n.kind === 'consumer') n.shared = perConsumer.get(`${n.stream}/${n.name}`)! > 1
+
   for (const edge of edges.values()) {
-    edge.back = nodes.get(edge.target)!.order <= nodes.get(edge.source)!.order
+    // Only a hop can go back: a consumer node is made for the subject it receives from (just
+    // above), so a delivery always points to a node made after its subject.
+    edge.back =
+      edge.kind === 'hop' && nodes.get(edge.target)!.order <= nodes.get(edge.source)!.order
     if (edge.delays.length) {
       const sorted = [...edge.delays].sort((a, b) => a - b)
       edge.delay = { min: sorted[0], median: median(sorted), max: sorted[sorted.length - 1] }

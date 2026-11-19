@@ -2,6 +2,7 @@ import '@xyflow/react/dist/style.css'
 import './graph/graph.css'
 import {
   useCallback,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useMemo,
@@ -101,26 +102,19 @@ function Graph({ trace, selected, onSelect, onOpen, settings }: TraceViewProps):
 
   const flow = useReactFlow()
   const dots = useRef<SVGSVGElement>(null)
-  // The user panned or zoomed: then the view is not fitted again on its own.
+  // The user panned or zoomed: then a resize leaves the view alone (see below).
   const moved = useRef(false)
-
-  // The selected message, for the fits that run on a resize (outside a render).
-  const current = useRef<number | null>(null)
-  useLayoutEffect(() => {
-    current.current = index
-  }, [index])
 
   /** Moves the view, if needed, so that the node of the selected message is in it. */
   const reveal = useCallback(
     (viewport: Viewport): void => {
       const el = box.current
-      const i = current.current
-      const node = i === null ? undefined : layout.nodes[graph.nodeOf[i]]
+      const node = index === null ? undefined : layout.nodes[graph.nodeOf[index]]
       if (!el || !node) return
       const next = revealViewport(viewport, node, el.clientWidth, el.clientHeight)
       if (next) void flow.setViewport(next)
     },
-    [flow, layout, graph]
+    [flow, layout, graph, index]
   )
 
   const fit = useCallback((): void => {
@@ -131,24 +125,28 @@ function Graph({ trace, selected, onSelect, onOpen, settings }: TraceViewProps):
     reveal(viewport)
   }, [flow, layout, reveal])
 
-  // Fit when the graph changes and whenever the area changes size (the detail pane opening or
-  // closing, a window resize), unless the user has moved the view since.
+  // A new graph (a new result, a setting that changes the nodes) is fitted, whatever the user
+  // did with the previous one. Runs before the effect below.
   useLayoutEffect(() => {
     moved.current = false
-    fit()
-    const el = box.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      if (!moved.current) fit()
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [fit])
+  }, [graph])
+
+  // The layout follows the size of the area (`useElementSize`, the one observer of it), so it
+  // also changes when the detail pane opens or closes. Fit then, unless the user has panned or
+  // zoomed: their view is kept, and only the selected node is brought back into it if needed.
+  const onLayout = useEffectEvent((): void => {
+    if (moved.current) reveal(flow.getViewport())
+    else fit()
+  })
+  useLayoutEffect(() => {
+    onLayout()
+  }, [layout])
 
   // Keeps the node of the selected message in view as the selection moves.
+  const onSelection = useEffectEvent((): void => reveal(flow.getViewport()))
   useLayoutEffect(() => {
-    reveal(flow.getViewport())
-  }, [index, reveal, flow])
+    onSelection()
+  }, [index])
 
   const open = (i: number | null): void => {
     if (i !== null && trace.hops[i]) onOpen(trace.hops[i].id)
@@ -258,20 +256,19 @@ function Graph({ trace, selected, onSelect, onOpen, settings }: TraceViewProps):
       <p className="sr-only" aria-live="polite">
         {index !== null && selectionText(trace, graph, index)}
       </p>
-      <div
-        ref={box}
-        role="application"
-        aria-roledescription="trace graph"
-        aria-label="Trace graph"
-        aria-describedby={summaryId}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        className="relative min-h-0 flex-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-        data-testid="trace-graph"
-      >
+      <div className="relative min-h-0 flex-1">
         <GraphActions.Provider value={actions}>
+          {/* The library's wrapper is the view's one tab stop: it already has role="application",
+              which it does not let us change, so it gets the names and the keys too. */}
           <ReactFlow
-            className="trace-graph"
+            ref={box}
+            aria-roledescription="trace graph"
+            aria-label="Trace graph"
+            aria-describedby={summaryId}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            data-testid="trace-graph"
+            className="trace-graph focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
             id={`trace-graph-${uid}`}
             nodes={nodes}
             edges={edges}
@@ -334,14 +331,14 @@ function Overview({ layout }: { layout: GraphLayout }): ReactNode {
 function Summary({ trace, graph }: { trace: Trace; graph: TraceGraph }): ReactNode {
   const subjects = graph.nodes.filter((n) => n.kind === 'subject').length
   const consumers = graph.nodes.length - subjects
-  const retries = graph.edges.reduce((n, e) => n + (e.back ? e.retries : 0), 0)
+  const repeats = graph.edges.reduce((n, e) => n + (e.back ? e.repeats : 0), 0)
   const slow = graph.slowest === null ? null : trace.hops[graph.slowest]
   const plural = (n: number, one: string): string => `${formatCount(n)} ${one}${n === 1 ? '' : 's'}`
   return (
     <>
       {plural(subjects, 'subject')}, {plural(consumers, 'consumer')},{' '}
       {plural(trace.hops.length, 'message')}
-      {retries > 0 && <>, {retries === 1 ? '1 retry' : `${formatCount(retries)} retries`}</>}.
+      {repeats > 0 && <>, {repeats === 1 ? '1 repeat' : `${formatCount(repeats)} repeats`}</>}.
       {slow && (
         <>
           {' '}

@@ -6,7 +6,7 @@ import type { GraphEdge, GraphNode, TraceGraph } from './graph'
  *
  * - Rank: the longest path from the first node over forward edges. Nodes are numbered by first
  *   appearance in time, so forward edges (to a later node) never form a cycle, and an edge back
- *   to an earlier node (a retry, a revisit) is left out of the ranking.
+ *   to an earlier node (a repeat, a revisit) is left out of the ranking.
  * - Side branches: a consumer that leads nowhere hangs below the subject it received from, like
  *   a branch of a tree, instead of taking a column of its own.
  * - Bands: ranks run left to right in columns. When the whole row would have to be shown too
@@ -41,6 +41,8 @@ export const DETOUR_STUB = 18
 export const DETOUR_STUB_PER_LEVEL = 6
 /** Width of a monospace character of the node titles, in pixels. */
 const CHAR_WIDTH = 7.3
+/** Width of a character of the small second line of a consumer. */
+const SMALL_CHAR_WIDTH = 6
 
 export interface Size {
   width: number
@@ -57,7 +59,16 @@ export function nodeSize(node: GraphNode): Size {
       width: clamp(node.key.length * CHAR_WIDTH + (node.messages.length > 1 ? 86 : 52), 150, 290),
       height: SUBJECT_HEIGHT
     }
-  return { width: clamp(node.name.length * CHAR_WIDTH + 76, 170, 250), height: CONSUMER_HEIGHT }
+  // A consumer with a node per subject also says which subject, after its stream (smaller text).
+  const detail = node.shared ? `${node.stream} · for ${node.subject}`.length * SMALL_CHAR_WIDTH : 0
+  return {
+    width: clamp(
+      Math.max(node.name.length * CHAR_WIDTH, detail) + 76,
+      170,
+      node.shared ? 330 : 250
+    ),
+    height: CONSUMER_HEIGHT
+  }
 }
 
 export interface PlacedNode extends Size {

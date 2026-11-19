@@ -143,7 +143,8 @@ test("PBI-138 the Trace Graph view loads and draws under the desktop app's CSP",
   const graph = page.getByRole('application', { name: 'Trace graph' })
   await expect(graph.getByRole('img', { name: /^Subject orders\.eu\./ }).first()).toBeVisible()
   // The library's styles apply, themed with the app's colours.
-  const colours = await graph.locator('.react-flow').evaluate((el) => ({
+  // The graph's application element is the library's own wrapper.
+  const colours = await graph.evaluate((el) => ({
     position: getComputedStyle(el).position,
     background: getComputedStyle(el).getPropertyValue('--xy-background-color').trim(),
     bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()

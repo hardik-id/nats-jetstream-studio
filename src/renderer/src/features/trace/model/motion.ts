@@ -9,7 +9,7 @@ import type { TraceGraph } from './graph'
  * its real delay, kept between `MIN_TRAVEL` and `MAX_TRAVEL` so that it neither blurs nor stalls.
  * A short path then pauses and loops. A long one (more than `MAX_CYCLE` seconds) loops every
  * `MAX_CYCLE` seconds instead, so several requests are on their way at once and every edge keeps
- * moving.
+ * moving. A message not delivered yet to a consumer has no dot: the dots are the request moving.
  */
 
 export const MIN_TRAVEL = 0.8
@@ -51,6 +51,8 @@ export function planMotion(graph: Pick<TraceGraph, 'path'>): Motion {
   const all: Record<string, Dot[]> = {}
   let t = 0
   for (const s of graph.path) {
+    // Nothing travels to a consumer that has not received the message.
+    if (s.kind === 'pending') continue
     const travel = travelTime(s.delayMs)
     ;(all[s.edge] ??= []).push({ start: t, travel })
     if (!s.branch) t += travel

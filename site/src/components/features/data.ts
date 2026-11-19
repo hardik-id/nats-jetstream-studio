@@ -109,6 +109,39 @@ export const featureContent = {
     ],
     docs: [{ path: '/docs/getting-started/', label: 'Getting started: read your first message' }]
   },
+  trace: {
+    card: 'Follow one request across subjects, streams and consumers.',
+    problem:
+      'A single request often leaves messages in several streams, and NATS does not record which message caused the next. Finding the whole path by hand means searching each stream for the same id. Trace does that search for you and draws the result.',
+    shot: {
+      name: 'features-trace'
+    },
+    capabilities: [
+      {
+        title: 'Follow a value across all streams',
+        text: 'Give a rule: a header (name and value), a JSON field with a JSONPath comparison, or text in the payload. Trace scans the streams of the connection with the same get-message reads as the message browser, so no consumer is created. Pick a window (around a message, or the last hours or days) and which streams to include. Up to three streams are scanned at once, with progress and a Cancel button. A scan that hits its limit (10,000 messages per stream by default) says the result is partial and offers Scan more. A stream that cannot be read shows its own error and the others still count.'
+      },
+      {
+        title: 'Start from a message',
+        text: 'On a header or a JSON value of an open message, in Messages or in Live tail, choose Follow this value. A new Trace tab opens with the rule filled in and a window of 15 minutes either side of the message, and runs at once.'
+      },
+      {
+        title: 'Timeline, Lanes and Graph',
+        text: 'A View menu switches between three pictures of the same result, and the selected message stays selected. The Timeline lists the messages in time order with the time since the previous one, a badge for each consumer that received a message, and a flag on the slowest hop. Lanes draws one lane per subject or per stream, spaced evenly or by time, with ids in subjects grouped into one lane. The Graph draws subjects and consumers as nodes with arrows between them, and dots that travel along the arrows.',
+        note: 'Lanes draws the first 1,000 messages. The Graph turns the dots off above 80 arrows and is dense above about 36.'
+      },
+      {
+        title: 'Open the message behind a dot or node',
+        text: 'Click a row, dot or node to read the message in a detail pane, with Open in Messages for the full view. The arrow keys move the selection. The Animate switch stops the dots, and they are not drawn when the system asks for reduced motion.'
+      },
+      {
+        title: 'What is known and what is guessed',
+        text: 'NATS does not record who published a message. The link from one message to the next is inferred from time order, and the Graph draws those links dashed. What a consumer received or acknowledged comes from the consumer state on the server and is drawn solid. A busy system where many requests overlap in time is a good case for a trace id header, which Trace can match exactly.',
+        note: 'Not verified: a screen reader, touch input, traces over streams with millions of messages, the packaged Windows and macOS apps, and the CPU use of the animation outside headless Chromium. Server-side tracing for very large streams is not built.'
+      }
+    ],
+    docs: []
+  },
   streams: {
     card: 'List, create, edit, purge and export streams.',
     problem:
@@ -123,7 +156,7 @@ export const featureContent = {
       },
       {
         title: 'Stream detail',
-        text: 'Tabs for Overview, Messages, Consumers, Subjects and Configuration. State shows sequences, byte size and deleted messages. The cluster view shows the leader and each replica, and mirrors and sources show their lag.',
+        text: 'Tabs for Overview, Consumers, Subjects and Configuration, and a Browse messages button that opens the Messages screen on this stream. State shows sequences, byte size and deleted messages. The cluster view shows the leader and each replica, and mirrors and sources show their lag.',
         extra: {
           name: 'docs-first-stream'
         }

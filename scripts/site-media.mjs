@@ -4,10 +4,10 @@
 //
 // Starts its own nats-server (free port, temp dir), seeds demo data and traffic, starts web mode on
 // a free port, drives it with Playwright and writes into site/public/media/ (WebP screenshots in
-// dark and light, a manifest.json, a home recording) plus docs/images/demo.gif and
-// docs/images/social-preview.png. Only the processes started here are stopped, also on Ctrl+C.
+// dark and light, a manifest.json, a home recording and a Trace recording) plus docs/images/demo.gif,
+// docs/images/trace.gif and docs/images/social-preview.png. Only the processes started here are stopped, also on Ctrl+C.
 //
-// ffmpeg (FFMPEG env var, else PATH) is needed for the recording (MP4, still, demo.gif) only; without it
+// ffmpeg (FFMPEG env var, else PATH) is needed for the recordings (MP4, still, GIF) only; without it
 // the screenshots and the social card are still made and the recording step is skipped with a note.
 // dist/ is not built here: if it is missing the script stops and says to run "npm run build:web".
 import { spawn, spawnSync } from 'node:child_process'
@@ -88,6 +88,7 @@ function ffmpeg(bin, cwd, args) {
 }
 
 const manifest = []
+const demo = {} // facts about the seeded data the scenes need, set in main()
 const kb = (f) => `${Math.round(statSync(f).size / 1024)} KB`
 
 // ---- the scenes ---------------------------------------------------------------------------
@@ -114,6 +115,44 @@ async function openStudio(page, url) {
       .click()
   await streams.waitFor()
   await dismissToasts(page)
+}
+/** Messages is a screen of its own: choose the stream in its picker (see openMessages in the e2e helpers). */
+async function openMessages(page, stream) {
+  await nav(page, 'Messages')
+  const picker = page.getByRole('combobox', { name: 'Stream', exact: true })
+  await picker.click()
+  await picker.fill(stream)
+  await page
+    .getByRole('listbox', { name: 'Streams' })
+    .getByRole('option')
+    .filter({ has: page.getByText(stream, { exact: true }) })
+    .click()
+  await page.getByRole('table', { name: `Messages in ${stream}` }).waitFor()
+}
+/** The rows of the open stream's messages; `subject` keeps only rows of that subject. */
+const messageRows = (page, stream, subject) => {
+  const rows = page.getByRole('table', { name: `Messages in ${stream}` }).getByRole('row')
+  return subject ? rows.filter({ hasText: subject }) : rows
+}
+/** From an open message: "Follow this value" on its Trace-Id header opens the Trace screen. */
+async function followTraceId(page) {
+  const detail = page.getByRole('complementary', { name: 'Message detail' })
+  const toggle = detail.getByRole('button', { name: /^Headers \(/ })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  await detail.getByRole('button', { name: /^Follow trace-id .* across streams$/i }).click()
+  await page.getByRole('table', { name: 'Trace timeline' }).waitFor()
+}
+// The collapsed state is kept by the server, so each use is paired with expandSidebar.
+const collapseSidebar = (page) => page.getByRole('button', { name: 'Collapse sidebar' }).click()
+const expandSidebar = (page) => page.getByRole('button', { name: 'Expand sidebar' }).click()
+const pickView = (page, view) => page.getByRole('combobox', { name: 'View' }).selectOption(view)
+/** The Trace screen, filled in by hand with the Trace-Id header of a demo request, and run. */
+async function runTrace(page, traceId) {
+  await nav(page, 'Trace')
+  await page.getByRole('textbox', { name: 'Header name 1' }).fill('Trace-Id')
+  await page.getByRole('textbox', { name: 'Value 1' }).fill(traceId)
+  await page.getByRole('button', { name: 'Run trace' }).click()
+  await page.getByRole('table', { name: 'Trace timeline' }).waitFor()
 }
 async function openStream(page, stream, tab) {
   await nav(page, 'Streams')
@@ -144,10 +183,9 @@ const scenes = [
     group: 'features',
     alt: 'Messages of the ORDERS stream filtered by a condition chip made from a JSON value, with the detail panel showing a JSON payload',
     async run(page) {
-      await openStream(page, 'ORDERS', 'Messages')
+      await openMessages(page, 'ORDERS')
       await sleep(1500)
-      const rows = page.getByRole('table', { name: 'Messages in ORDERS' }).getByRole('row')
-      await rows.nth(2).getByRole('cell').nth(2).click()
+      await messageRows(page, 'ORDERS').nth(2).getByRole('cell').nth(2).click()
       await sleep(1500)
       // One condition made from a JSON value of the open message, shown as a chip.
       const add = page.getByRole('button', { name: /^Filter to .* equals / }).first()
@@ -155,6 +193,17 @@ const scenes = [
         await add.click()
         await sleep(1500)
       }
+    }
+  },
+  {
+    name: 'trace',
+    group: 'features',
+    alt: 'Graph view of one shop request: subjects and consumers as nodes across three streams, arrows between them with the time each step took, and dots travelling along the arrows',
+    async run(page) {
+      await runTrace(page, demo.traceId)
+      await pickView(page, 'graph')
+      await page.getByRole('application', { name: 'Trace graph' }).waitFor()
+      await sleep(4000)
     }
   },
   {
@@ -316,8 +365,11 @@ system_account: SYS
     const { seed, startTraffic } = await import(
       pathToFileURL(join(root, 'scripts', 'seed.mjs')).href
     )
-    handles = await seed({ url: natsUrl, quiet: true, history: 400 })
-    stopTraffic = startTraffic(handles, { rate: 5 })
+    handles = await seed({ url: natsUrl, quiet: true, history: 400, shop: true })
+    stopTraffic = startTraffic(handles, { rate: 5, shop: true, shopRate: 2 })
+    // The Trace-Id of one finished shop request (from the history), for the Trace pictures.
+    const sample = await handles.jsm.streams.getMessage('SHOP_PAYMENTS', { seq: 12 })
+    demo.traceId = sample.header.get('Trace-Id')
 
     const conn = (name, envLabel, color) => ({
       name,
@@ -398,9 +450,9 @@ system_account: SYS
     const ff = findFfmpeg()
     if (!ff)
       console.warn(
-        'ffmpeg not found: skipping the home recording (MP4, still, demo.gif). Install ffmpeg or set FFMPEG=/path/to/ffmpeg.'
+        'ffmpeg not found: skipping the recordings (MP4, still, GIF). Install ffmpeg or set FFMPEG=/path/to/ffmpeg.'
       )
-    else await record(browser, studioUrl, work, ff, helper)
+    else for (const rec of recordings) await record(rec, browser, studioUrl, work, ff, helper)
 
     await helper.close()
     manifest.sort((a, b) => a.file.localeCompare(b.file))
@@ -418,40 +470,97 @@ system_account: SYS
   }
 }
 
-async function record(browser, studioUrl, work, ff, helper) {
-  const videoDir = join(work, 'video')
+/**
+ * The recordings. `steps` drives the page and calls `still()` when the picture for the poster is on
+ * screen. The GIF settings trade size for smoothness: more fps makes the travelling dots smoother.
+ */
+const recordings = [
+  {
+    name: 'home',
+    gif: { file: 'demo.gif', fps: 15, width: 1100, colors: 128 },
+    alt: 'Tour of the studio: overview, streams, a message of a shop request with its Trace-Id header, then Trace following that request across three streams in the timeline, lanes and graph views',
+    async steps(page, still) {
+      await nav(page, 'Overview')
+      await sleep(2200)
+      await nav(page, 'Streams')
+      await sleep(2200)
+      await openMessages(page, 'SHOP_ORDERS')
+      await sleep(1500)
+      // A request that has finished (the newest ones are still on their way), with its detail open.
+      await messageRows(page, 'SHOP_ORDERS', 'shop.orders.created').nth(10).click()
+      const detail = page.getByRole('complementary', { name: 'Message detail' })
+      await detail.getByRole('button', { name: /^Headers \(/ }).waitFor()
+      await sleep(2200)
+      await followTraceId(page)
+      await sleep(2800)
+      // Narrower sidebar for the wide views, so the graph is drawn larger.
+      await collapseSidebar(page)
+      await pickView(page, 'lanes')
+      await sleep(2800)
+      await pickView(page, 'graph')
+      await page.getByRole('application', { name: 'Trace graph' }).waitFor()
+      await sleep(1000)
+      still()
+      await sleep(4500)
+      await expandSidebar(page)
+    }
+  },
+  {
+    name: 'trace',
+    gif: { file: 'trace.gif', fps: 15, width: 1100, colors: 128 },
+    alt: 'Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message',
+    async steps(page, still) {
+      await nav(page, 'Trace')
+      await sleep(1200)
+      await collapseSidebar(page)
+      await page.getByRole('textbox', { name: 'Header name 1' }).fill('Trace-Id')
+      await page.getByRole('textbox', { name: 'Value 1' }).fill(demo.traceId)
+      await sleep(1000)
+      await page.getByRole('button', { name: 'Run trace' }).click()
+      await page.getByRole('table', { name: 'Trace timeline' }).waitFor()
+      await sleep(2300)
+      await pickView(page, 'lanes')
+      await sleep(2300)
+      await pickView(page, 'graph')
+      const graph = page.getByRole('application', { name: 'Trace graph' })
+      await graph.waitFor()
+      await sleep(1200)
+      still()
+      await sleep(3500)
+      await graph.getByRole('img', { name: /^Subject shop\.payments\.charged/ }).click()
+      await sleep(2200)
+      await expandSidebar(page)
+    }
+  }
+]
+
+async function record(rec, browser, studioUrl, work, ff, helper) {
+  const videoDir = join(work, `video-${rec.name}`)
   const ctx = await browser.newContext({
     viewport: VIDEO,
     colorScheme: 'dark',
     recordVideo: { dir: videoDir, size: VIDEO }
   })
   const page = await ctx.newPage()
+  const t0 = Date.now() // the video starts with the page
+  let stillAt = 0
   await openStudio(page, studioUrl)
-  await nav(page, 'Overview')
-  await sleep(2500)
-  await nav(page, 'Streams')
-  await sleep(2500)
-  await page
-    .getByRole('table', { name: 'Streams' })
-    .getByRole('button', { name: 'ORDERS', exact: true })
-    .click()
-  await page.getByRole('tab', { name: 'Messages' }).click()
-  await sleep(2000)
-  const rows = page.getByRole('table', { name: 'Messages in ORDERS' }).getByRole('row')
-  await rows.nth(2).getByRole('cell').nth(2).click()
-  await sleep(3000)
-  await page.keyboard.press('Escape')
-  await sleep(500)
-  await page.getByRole('tab', { name: 'Consumers', exact: true }).click()
-  await sleep(3000)
+  // Only for the recordings: the travelling dots of the Graph are 3.6 px, too faint once the video is
+  // scaled down. A larger radius makes them easy to follow; nothing else is changed.
+  await page.addStyleTag({ content: '[data-testid="graph-dot"] { r: 6px }' })
+  await rec.steps(page, () => (stillAt = (Date.now() - t0) / 1000))
   await page.close()
   await ctx.close()
   const webm = readdirSync(videoDir).find((f) => f.endsWith('.webm'))
   if (!webm) throw new Error('Playwright wrote no video')
-  await copyFile(join(videoDir, webm), join(work, 'in.webm'))
+  const input = `${rec.name}.webm`
+  await copyFile(join(videoDir, webm), join(work, input))
+
+  // The same three encodes for each recording: MP4 for the site, a poster frame, a GIF for the README.
+  const { fps, width, colors, file } = rec.gif
   ffmpeg(ff, work, [
     '-i',
-    'in.webm',
+    input,
     '-an',
     '-c:v',
     'libx264',
@@ -463,37 +572,42 @@ async function record(browser, studioUrl, work, ff, helper) {
     'slow',
     '-movflags',
     '+faststart',
-    'home.mp4'
+    `${rec.name}.mp4`
   ])
   ffmpeg(ff, work, [
     '-i',
-    'in.webm',
+    `${rec.name}.mp4`, // the MP4 is smoother than the raw recording, which makes a much smaller GIF
     '-vf',
-    'fps=8,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5',
-    'home.gif'
+    `fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=${colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5`,
+    file
   ])
-  ffmpeg(ff, work, ['-ss', '8', '-i', 'in.webm', '-frames:v', '1', 'still.png'])
-  await copyFile(join(work, 'home.mp4'), join(mediaDir, 'home.mp4'))
-  await copyFile(join(work, 'home.gif'), join(imagesDir, 'demo.gif'))
+  ffmpeg(ff, work, ['-ss', String(stillAt), '-i', input, '-frames:v', '1', `${rec.name}-still.png`])
+  await copyFile(join(work, `${rec.name}.mp4`), join(mediaDir, `${rec.name}.mp4`))
+  await copyFile(join(work, file), join(imagesDir, file))
   await writeFile(
-    join(mediaDir, 'home-still.webp'),
-    await toWebp(helper, await readFile(join(work, 'still.png')))
+    join(mediaDir, `${rec.name}-still.webp`),
+    await toWebp(helper, await readFile(join(work, `${rec.name}-still.png`)))
   )
-  const alt =
-    'Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers'
   manifest.push(
     {
-      file: 'home.mp4',
+      file: `${rec.name}.mp4`,
       kind: 'video',
       width: VIDEO.width,
       height: VIDEO.height,
-      alt,
-      poster: 'home-still.webp'
+      alt: rec.alt,
+      poster: `${rec.name}-still.webp`
     },
-    { file: 'home-still.webp', kind: 'still', width: VIDEO.width, height: VIDEO.height, alt }
+    {
+      file: `${rec.name}-still.webp`,
+      kind: 'still',
+      width: VIDEO.width,
+      height: VIDEO.height,
+      alt: rec.alt
+    }
   )
-  for (const f of ['home.mp4', 'home-still.webp']) console.log(`  ${f} ${kb(join(mediaDir, f))}`)
-  console.log(`  docs/images/demo.gif ${kb(join(imagesDir, 'demo.gif'))}`)
+  for (const f of [`${rec.name}.mp4`, `${rec.name}-still.webp`])
+    console.log(`  ${f} ${kb(join(mediaDir, f))}`)
+  console.log(`  docs/images/${file} ${kb(join(imagesDir, file))}`)
 }
 
 function socialHtml(shotB64) {

@@ -221,19 +221,54 @@
       "alt": "Subjects screen: a tree of subjects with stored and live message counts, and a details pane with labelled actions"
     },
     {
+      "file": "features-trace-dark.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "trace",
+      "theme": "dark",
+      "width": 1440,
+      "height": 860,
+      "alt": "Graph view of one shop request: subjects and consumers as nodes across three streams, arrows between them with the time each step took, and dots travelling along the arrows"
+    },
+    {
+      "file": "features-trace-light.webp",
+      "kind": "screenshot",
+      "group": "features",
+      "name": "trace",
+      "theme": "light",
+      "width": 1440,
+      "height": 860,
+      "alt": "Graph view of one shop request: subjects and consumers as nodes across three streams, arrows between them with the time each step took, and dots travelling along the arrows"
+    },
+    {
       "file": "home-still.webp",
       "kind": "still",
       "width": 1100,
       "height": 660,
-      "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers"
+      "alt": "Tour of the studio: overview, streams, a message of a shop request with its Trace-Id header, then Trace following that request across three streams in the timeline, lanes and graph views"
     },
     {
       "file": "home.mp4",
       "kind": "video",
       "width": 1100,
       "height": 660,
-      "alt": "Tour of the studio: overview, streams, the messages of ORDERS with a message open, and consumers",
+      "alt": "Tour of the studio: overview, streams, a message of a shop request with its Trace-Id header, then Trace following that request across three streams in the timeline, lanes and graph views",
       "poster": "home-still.webp"
+    },
+    {
+      "file": "trace-still.webp",
+      "kind": "still",
+      "width": 1100,
+      "height": 660,
+      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message"
+    },
+    {
+      "file": "trace.mp4",
+      "kind": "video",
+      "width": 1100,
+      "height": 660,
+      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message",
+      "poster": "trace-still.webp"
     }
   ]
 }

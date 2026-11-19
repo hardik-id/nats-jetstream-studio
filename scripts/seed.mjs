@@ -4,7 +4,8 @@
 //   npm run traffic              the same, then keep publishing and consuming until Ctrl+C
 //   NATS_URL=nats://host:4222 NATS_USER=app NATS_PASS=app npm run seed
 //
-// What it creates:
+// What it creates (the shop pipeline only when the "shop" option is on, which the two npm scripts
+// and scripts/site-media.mjs do; the end-to-end tests call seed() without it):
 //   ORDERS     limits stream, JSON orders on orders.<region>.<event>, three consumers
 //                (billing keeps up, shipping is slow and falls behind, audit never acks -> redeliveries)
 //   EVENTS     interest stream with mixed JSON and plain-text payloads
@@ -12,6 +13,14 @@
 //   TELEMETRY  memory stream of small binary readings
 //   KV app-config, KV feature-flags, Object Store "artifacts"
 //   a responder on "svc.echo" and "svc.time" for trying request/reply
+//   shop       a request that crosses three streams, to try Trace. Each request carries one Trace-Id
+//                header through all its messages, and the services below really consume and ack:
+//                SHOP_ORDERS   shop.orders.created (order-service) -> consumer billing
+//                SHOP_PAYMENTS shop.payments.requested -> ledger (the slow step) -> shop.payments.charged
+//                              -> warehouse
+//                SHOP_SHIPPING shop.shipping.pack -> packer -> shop.shipping.packed -> consumers
+//                              order-service and notifier -> shop.orders.completed (in SHOP_ORDERS)
+//                a few dozen finished requests as history, a few new ones per second under traffic
 import { connect, headers } from '@nats-io/transport-node'
 import { jetstream, jetstreamManager } from '@nats-io/jetstream'
 import { Kvm } from '@nats-io/kv'
@@ -48,6 +57,142 @@ function order() {
     tags: Math.random() < 0.1 ? ['urgent'] : []
   }
   return { subject: `orders.${region}.${event}`, body: JSON.stringify(body), hdrs }
+}
+
+// ---- the shop pipeline: one request, six messages, three streams ------------------------------
+const SHOP_STREAMS = [
+  { name: 'SHOP_ORDERS', description: 'Shop: order requests', subjects: ['shop.orders.>'] },
+  { name: 'SHOP_PAYMENTS', description: 'Shop: payments', subjects: ['shop.payments.>'] },
+  { name: 'SHOP_SHIPPING', description: 'Shop: shipping', subjects: ['shop.shipping.>'] }
+].map((s) => ({ ...s, max_msgs: 5000, allow_direct: true }))
+
+// Each step is a durable consumer that waits `delay` ms (a range), publishes the next message with the
+// same Trace-Id and acknowledges. ledger is the clearly slower step.
+const SHOP_STEPS = [
+  {
+    stream: 'SHOP_ORDERS',
+    durable: 'billing',
+    filter: 'shop.orders.created',
+    delay: [30, 80],
+    next: 'shop.payments.requested',
+    body: (p) => ({ order: { id: p.order.id, total: p.order.total, currency: p.order.currency } })
+  },
+  {
+    stream: 'SHOP_PAYMENTS',
+    durable: 'ledger',
+    filter: 'shop.payments.requested',
+    delay: [450, 800],
+    next: 'shop.payments.charged',
+    body: (p) => ({
+      order: { id: p.order.id },
+      payment: {
+        id: `PAY-${Math.floor(Math.random() * 1e6)}`,
+        status: 'captured',
+        amount: p.order.total
+      }
+    })
+  },
+  {
+    stream: 'SHOP_PAYMENTS',
+    durable: 'warehouse',
+    filter: 'shop.payments.charged',
+    delay: [80, 160],
+    next: 'shop.shipping.pack',
+    body: (p) => ({ order: { id: p.order.id }, items: 1 + Math.floor(Math.random() * 5) })
+  },
+  {
+    stream: 'SHOP_SHIPPING',
+    durable: 'packer',
+    filter: 'shop.shipping.pack',
+    delay: [150, 300],
+    next: 'shop.shipping.packed',
+    body: (p) => ({
+      order: { id: p.order.id },
+      parcel: { id: `PK-${Math.floor(Math.random() * 1e6)}`, items: p.items }
+    })
+  },
+  {
+    // Two consumers read shop.shipping.packed: this one carries the request on, notifier only acks.
+    stream: 'SHOP_SHIPPING',
+    durable: 'order-service',
+    filter: 'shop.shipping.packed',
+    delay: [40, 90],
+    next: 'shop.orders.completed',
+    body: (p) => ({ order: { id: p.order.id }, status: 'completed' })
+  },
+  {
+    stream: 'SHOP_SHIPPING',
+    durable: 'notifier',
+    filter: 'shop.shipping.packed',
+    delay: [20, 60]
+  }
+]
+
+let shopOrder = 5000
+let shopDone = 0
+function shopRequest(js) {
+  const hdrs = headers()
+  hdrs.set('Trace-Id', Math.random().toString(16).slice(2, 14))
+  hdrs.set('Content-Type', 'application/json')
+  hdrs.set('Service', 'order-service')
+  const body = {
+    order: {
+      id: `SHOP-${shopOrder++}`,
+      total: Math.round(Math.random() * 20000) / 100,
+      currency: pick(['EUR', 'USD'])
+    },
+    customer: { id: `C-${Math.floor(Math.random() * 500)}` }
+  }
+  return js.publish('shop.orders.created', JSON.stringify(body), { headers: hdrs })
+}
+
+/** Starts the shop services (consumers that publish the next step). Returns a stop function. */
+function startShop({ js }) {
+  let running = true
+  const messagesOpen = new Set()
+  const loops = SHOP_STEPS.map(async (step) => {
+    while (running) {
+      try {
+        const consumer = await js.consumers.get(step.stream, step.durable)
+        const messages = await consumer.consume({ max_messages: 20 })
+        messagesOpen.add(messages)
+        for await (const m of messages) {
+          ;(async () => {
+            await sleep(step.delay[0] + Math.random() * (step.delay[1] - step.delay[0]))
+            if (step.next) {
+              const hdrs = headers()
+              hdrs.set('Trace-Id', m.headers?.get('Trace-Id') ?? '')
+              hdrs.set('Content-Type', 'application/json')
+              hdrs.set('Service', step.durable)
+              await js.publish(step.next, JSON.stringify(step.body(m.json())), { headers: hdrs })
+              if (step.next === 'shop.orders.completed') shopDone++
+            }
+            m.ack()
+          })().catch(() => {})
+        }
+        messagesOpen.delete(messages)
+      } catch {
+        await sleep(500)
+      }
+    }
+  })
+  return async () => {
+    running = false
+    for (const m of messagesOpen) m.stop()
+    await Promise.allSettled(loops)
+  }
+}
+
+/** Runs `count` requests through the services, a new one every 120 ms, and waits until they finish. */
+async function shopHistory(handles, count) {
+  const stop = startShop(handles)
+  const target = shopDone + count
+  for (let i = 0; i < count; i++) {
+    await shopRequest(handles.js)
+    await sleep(120)
+  }
+  for (let i = 0; i < 300 && shopDone < target; i++) await sleep(100)
+  await stop()
 }
 
 async function ensureStream(jsm, config) {
@@ -173,6 +318,19 @@ export async function seed(opts = {}) {
     new Uint8Array(randomBytes(300_000))
   )
 
+  if (opts.shop ?? false) {
+    for (const config of SHOP_STREAMS) await ensureStream(jsm, config)
+    for (const step of SHOP_STEPS)
+      await ensureConsumer(jsm, step.stream, {
+        durable_name: step.durable,
+        ack_policy: 'explicit',
+        ack_wait: 10e9,
+        filter_subject: step.filter
+      })
+    if ((await jsm.streams.info('SHOP_ORDERS')).state.messages === 0)
+      await shopHistory({ js }, opts.shopHistory ?? 40)
+  }
+
   const state = (await jsm.streams.info('ORDERS')).state
   if (state.messages < history) {
     const acks = []
@@ -203,7 +361,7 @@ export async function seed(opts = {}) {
   await nc.flush()
 
   log(
-    `Seeded ${url}: streams ORDERS, EVENTS, JOBS, TELEMETRY; KV app-config, feature-flags; Object Store artifacts`
+    `Seeded ${url}: streams ORDERS, EVENTS, JOBS, TELEMETRY${opts.shop ? ', SHOP_ORDERS, SHOP_PAYMENTS, SHOP_SHIPPING' : ''}; KV app-config, feature-flags; Object Store artifacts`
   )
   return { nc, jsm, js }
 }
@@ -213,6 +371,17 @@ export function startTraffic({ nc, js }, opts = {}) {
   const rate = opts.rate ?? Number(process.env.TRAFFIC_RATE ?? 20)
   let running = true
   const loops = []
+  // Needs the streams and consumers that seed({ shop: true }) creates.
+  const stopShop = opts.shop ? startShop({ js }) : null
+  if (stopShop)
+    loops.push(
+      (async () => {
+        while (running) {
+          await shopRequest(js).catch(() => {})
+          await sleep(1000 / (opts.shopRate ?? 3) + Math.random() * 200)
+        }
+      })()
+    )
 
   const responders = [
     nc.subscribe('svc.echo', { callback: (_e, m) => m.respond(m.data, { headers: m.headers }) }),
@@ -272,14 +441,15 @@ export function startTraffic({ nc, js }, opts = {}) {
   return async () => {
     running = false
     for (const sub of responders) sub.unsubscribe()
+    await stopShop?.()
     await Promise.allSettled(loops)
   }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const handles = await seed()
+  const handles = await seed({ shop: true })
   if (process.argv.includes('--traffic')) {
-    const stop = startTraffic(handles)
+    const stop = startTraffic(handles, { shop: true })
     console.log('Publishing and consuming. Press Ctrl+C to stop.')
     process.on('SIGINT', async () => {
       await stop()

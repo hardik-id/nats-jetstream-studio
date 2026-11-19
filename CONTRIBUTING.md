@@ -14,7 +14,7 @@ To work without a NATS server of your own, run these in two more terminals (both
 
 ```bash
 npm run nats             # local nats-server on 4222 (users app/app, viewer/viewer, sys/sys)
-npm run traffic          # demo streams, consumers, KV, objects, plus live publishers and consumers
+npm run traffic          # demo streams, consumers, KV, objects, a shop request that crosses three streams (for Trace), plus live traffic
 ```
 
 Then add a connection to `nats://127.0.0.1:4222` with user `app`, password `app`. The first

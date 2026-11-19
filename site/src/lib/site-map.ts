@@ -33,6 +33,11 @@ export const featurePages: SitePage[] = [
     description: 'Read stream messages without a consumer, filter and export.'
   },
   {
+    path: '/features/trace/',
+    title: 'Trace',
+    description: 'Follow one request across subjects, streams and consumers.'
+  },
+  {
     path: '/features/streams/',
     title: 'Streams',
     description: 'List, create, edit, purge and export streams.'

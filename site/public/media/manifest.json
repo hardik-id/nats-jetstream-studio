@@ -260,14 +260,14 @@
       "kind": "still",
       "width": 1100,
       "height": 660,
-      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message"
+      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers"
     },
     {
       "file": "trace.mp4",
       "kind": "video",
       "width": 1100,
       "height": 660,
-      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message",
+      "alt": "Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers",
       "poster": "trace-still.webp"
     }
   ]

@@ -3,7 +3,8 @@ import { ViewportPortal } from '@xyflow/react'
 import type { Dot, Motion } from '../../model/motion'
 import type { GraphFlowEdge } from './elements'
 
-const DOT_RADIUS = 3.6
+/** Large enough to follow at a glance, also when the graph is zoomed out to fit. */
+const DOT_RADIUS = 5
 /** Seconds a dot takes to fade in at the start of its trip and out at the end. */
 const FADE = 0.12
 

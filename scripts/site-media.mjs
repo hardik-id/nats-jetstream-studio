@@ -508,7 +508,7 @@ const recordings = [
   {
     name: 'trace',
     gif: { file: 'trace.gif', fps: 15, width: 1100, colors: 128 },
-    alt: 'Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers, and a click on a node to open its message',
+    alt: 'Following one shop request across three streams: run a trace on its Trace-Id header, then the timeline, lanes and graph views with dots travelling between subjects and consumers',
     async steps(page, still) {
       await nav(page, 'Trace')
       await sleep(1200)
@@ -526,9 +526,7 @@ const recordings = [
       await graph.waitFor()
       await sleep(1200)
       still()
-      await sleep(3500)
-      await graph.getByRole('img', { name: /^Subject shop\.payments\.charged/ }).click()
-      await sleep(2200)
+      await sleep(5500)
       await expandSidebar(page)
     }
   }
@@ -545,9 +543,6 @@ async function record(rec, browser, studioUrl, work, ff, helper) {
   const t0 = Date.now() // the video starts with the page
   let stillAt = 0
   await openStudio(page, studioUrl)
-  // Only for the recordings: the travelling dots of the Graph are 3.6 px, too faint once the video is
-  // scaled down. A larger radius makes them easy to follow; nothing else is changed.
-  await page.addStyleTag({ content: '[data-testid="graph-dot"] { r: 6px }' })
   await rec.steps(page, () => (stillAt = (Date.now() - t0) / 1000))
   await page.close()
   await ctx.close()

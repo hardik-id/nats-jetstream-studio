@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import type { AppInfo, ConnectionSummary } from '@shared/api'
 import { errorMessage } from '../components/ui'
@@ -10,6 +18,36 @@ export const TabActiveContext = createContext(true)
 export const useTabActive = (): boolean => useContext(TabActiveContext)
 
 export const REFRESH_MS = 5000
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+const subscribeReducedMotion = (onChange: () => void): (() => void) => {
+  const media = window.matchMedia?.(REDUCED_MOTION)
+  media?.addEventListener('change', onChange)
+  return () => media?.removeEventListener('change', onChange)
+}
+
+/** True while the system asks for reduced motion; follows changes to the setting. */
+export function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    () => window.matchMedia?.(REDUCED_MOTION).matches ?? false,
+    () => false
+  )
+}
+
+const subscribeVisibility = (onChange: () => void): (() => void) => {
+  document.addEventListener('visibilitychange', onChange)
+  return () => document.removeEventListener('visibilitychange', onChange)
+}
+
+/** False while the page is hidden (a minimised window, another browser tab). */
+export function useDocumentVisible(): boolean {
+  return useSyncExternalStore(
+    subscribeVisibility,
+    () => document.visibilityState !== 'hidden',
+    () => true
+  )
+}
 
 /** Polling interval for the current tab, or false to pause while it is hidden. */
 export function useRefetchInterval(ms = REFRESH_MS, enabled = true): number | false {

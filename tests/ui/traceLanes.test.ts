@@ -283,8 +283,8 @@ describe('PBI-138 lanes navigation and arrows', () => {
 describe('PBI-138 view settings', () => {
   const lanes = TRACE_VIEWS.find((v) => v.id === 'lanes')!
 
-  it('the registry has Timeline and Lanes, and only Lanes declares controls', () => {
-    expect(TRACE_VIEWS.map((v) => v.id)).toEqual(['timeline', 'lanes'])
+  it('the registry has Timeline, Lanes and Graph; Timeline declares no controls', () => {
+    expect(TRACE_VIEWS.map((v) => v.id)).toEqual(['timeline', 'lanes', 'graph'])
     expect(TRACE_VIEWS[0].controls).toBeUndefined()
     expect(lanes.controls?.map((c) => [c.id, c.placement ?? 'bar'])).toEqual([
       ['laneBy', 'bar'],

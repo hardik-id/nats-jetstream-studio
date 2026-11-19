@@ -2,7 +2,7 @@ import { type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, Route, XCircle } from 'lucide-react'
 import { formatCount } from '@shared/format'
 import { scanLimitOf, type TraceQuery } from '@shared/trace'
-import { Button, EmptyState, Notice } from '../../components/ui'
+import { Button, EmptyState, Notice, Spinner } from '../../components/ui'
 import type { StreamProgress } from './model/collect'
 
 /** What a trace is, with an example: shown before the first run. */
@@ -29,6 +29,15 @@ export function NothingRun(): ReactNode {
         they were stored.
       </p>
     </EmptyState>
+  )
+}
+
+/** While a view that is loaded on first use (see the registry) is on its way. */
+export function ViewLoading(): ReactNode {
+  return (
+    <div className="flex h-full items-center justify-center p-6" data-testid="trace-view-loading">
+      <Spinner label="Loading the view" />
+    </div>
   )
 }
 

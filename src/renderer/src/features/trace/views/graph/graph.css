@@ -1,0 +1,79 @@
+/* The graph library's variables, mapped to the studio's theme tokens. The tokens change with
+   the theme (see main.css), so this one block covers dark and light. Only the Graph view loads
+   this file, together with the library's own styles. */
+.trace-graph.react-flow {
+  --graph-known: var(--muted);
+  --graph-hop: var(--faint);
+  --graph-node-border: color-mix(in srgb, var(--faint) 55%, transparent);
+
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-color: var(--line);
+  --xy-edge-stroke: var(--graph-hop);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-edge-label-background-color: var(--bg);
+  --xy-edge-label-color: var(--muted);
+  --xy-node-color: var(--fg);
+  --xy-node-background-color: transparent;
+  --xy-node-border: none;
+  --xy-node-border-radius: 0;
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-handle-background-color: transparent;
+  --xy-handle-border-color: transparent;
+  --xy-minimap-background-color: var(--panel);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  --xy-minimap-mask-stroke-color: var(--accent);
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: var(--raised);
+  --xy-minimap-node-stroke-color: var(--faint);
+  --xy-controls-button-background-color: var(--panel);
+  --xy-controls-button-background-color-hover: var(--hover);
+  --xy-controls-button-color: var(--fg);
+  --xy-controls-button-color-hover: var(--fg);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: none;
+  --xy-attribution-background-color: transparent;
+  --xy-selection-background-color: var(--accent-soft);
+  --xy-selection-border: 1px dotted var(--accent);
+}
+
+/* The view draws nothing on connection points: nodes cannot be connected. */
+.trace-graph .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+  min-width: 0;
+  min-height: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+}
+
+.trace-graph .react-flow__node {
+  cursor: pointer;
+}
+
+.trace-graph .react-flow__edge {
+  cursor: pointer;
+}
+
+.trace-graph .react-flow__attribution a {
+  color: var(--faint);
+}
+
+.trace-graph .react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* Hidden whenever the system asks for less motion, even if a dot was drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .trace-graph .trace-graph-dots {
+    display: none;
+  }
+}
+
+/* Edge labels stay above the lines, also above the highlighted edge (which is raised). */
+.trace-graph .react-flow__edgelabel-renderer {
+  z-index: 2;
+}

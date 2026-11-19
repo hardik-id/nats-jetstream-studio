@@ -494,7 +494,10 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   await expect(rail).toBeVisible()
   await rail.getByRole('button', { name: 'Expand message panel' }).click()
   await expect(detail).toBeVisible()
-  expect(Math.round((await frame.boundingBox())!.width)).toBe(Math.round(framed))
+  // The panel is back before the frame has its width again (seen on the macOS runner), so wait.
+  await expect
+    .poll(async () => Math.round((await frame.boundingBox())!.width))
+    .toBe(Math.round(framed))
 
   // Expand to read: the split is resized (the table shrinks), Escape restores the width.
   const separator = page.getByRole('separator', { name: 'Resize message detail' })
@@ -508,7 +511,10 @@ test('PBI-125 sections collapse and stay collapsed, the panel collapses to a rai
   await detail.getByRole('button', { name: 'Restore panel size' }).focus()
   await page.keyboard.press('Escape')
   await expect(detail).toBeVisible()
-  expect(Math.round((await frame.boundingBox())!.width)).toBe(Math.round(framed))
+  // The panel is back before the frame has its width again (seen on the macOS runner), so wait.
+  await expect
+    .poll(async () => Math.round((await frame.boundingBox())!.width))
+    .toBe(Math.round(framed))
   await expect(separator).toHaveAttribute('aria-valuenow', saved!)
   // The column resize handles of the table (PBI-124) are still there.
   await expect(table(page).getByRole('separator').first()).toBeAttached()

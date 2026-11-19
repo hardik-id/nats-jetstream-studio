@@ -79,7 +79,10 @@ export interface Nats {
 /** A plain NATS client for arranging data and checking what the UI did on the server. */
 export async function nats(user = 'app', pass = 'app'): Promise<Nats> {
   const nc = await connect({ servers: process.env.NATS_E2E_URL!, user, pass })
-  return { nc, jsm: await jetstreamManager(nc), js: jetstream(nc) }
+  // The JetStream API's default timeout is 5 s. On the Windows runner a stream delete under the
+  // demo traffic has taken longer, so the tests' own setup and clean-up get more time.
+  const opts = { timeout: 30_000 }
+  return { nc, jsm: await jetstreamManager(nc, opts), js: jetstream(nc, opts) }
 }
 
 export function unique(prefix: string): string {

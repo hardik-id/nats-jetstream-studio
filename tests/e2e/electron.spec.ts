@@ -152,6 +152,11 @@ test("PBI-138 the Trace Graph view loads and draws under the desktop app's CSP",
   expect(colours.position).toBe('relative')
   expect(colours.background).toBe(colours.bg)
   expect(refused).toEqual([])
+  // Close the tab again. The tests below count the tabs in the tab bar, and on a small screen
+  // (the Windows and macOS runners) a fifth tab goes into the "more tabs" menu instead.
+  const tabs = page.getByRole('tablist', { name: 'Open tabs' })
+  await tabs.getByRole('button', { name: /^Close Trace/ }).click()
+  await expect(tabs.getByRole('tab', { name: /^Trace/ })).toHaveCount(0)
 })
 
 test('PBI-014 secrets are stored through the OS keychain API, never in plain text', async () => {

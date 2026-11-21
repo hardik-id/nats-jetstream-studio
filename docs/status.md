@@ -57,7 +57,7 @@ the React compiler). Type-check: clean.
 | 054 | Highlight unhealthy consumers | Tested | |
 | 060 | Live tail | Tested | 5,000 messages per second, worst frame under 250 ms in headless Chromium. |
 | 061 | Subject tree | Tested | Shows the 5,000 busiest subjects per stream. |
-| 062 | Publish and request | Tested | |
+| 062 | Publish and request | Tested | Subject shows the stream that stores it, Send as says what each mode waits for, and a core result says whether a stream should keep the message (`features/publish/coverage.ts`: 7 unit tests, 2 UI tests, and the web e2e against a real server). Checked in the web build at 1440 x 900 (dark) and 1000 x 700 (light). Fixed a one-column overlap: below 1024 px the reply panel was drawn over the form. Not verified: a screen reader, Windows and macOS. |
 | 070 | Key-value buckets | Tested | 100,000 keys. |
 | 071 | Object Store buckets | Tested | |
 | 080 | Time-series charts | Tested | History for up to 500 streams and 2,000 consumers per connection. |

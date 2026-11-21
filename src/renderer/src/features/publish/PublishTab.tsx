@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { BookmarkPlus, CheckCircle2, Eraser, Send, Trash2 } from 'lucide-react'
 import type { Header, PublishResult, RequestResult } from '@shared/api'
 import { textToBase64, utf8Encode } from '@shared/encoding'
@@ -23,6 +24,7 @@ import {
 import { useGateway } from '../../gateway'
 import { useDecoders } from '../../lib/decoders'
 import { useConnection, useSetting } from '../../lib/hooks'
+import { capturedBy, coverageHint, coverageSentence, type Capture } from './coverage'
 
 type Mode = 'core' | 'jetstream' | 'request'
 
@@ -42,19 +44,37 @@ interface HistoryEntry extends Draft {
   at: number
 }
 
+// `capture` is the stream that stores the subject, or null for none; undefined when the stream list
+// was not loaded when the message was sent.
 type Outcome =
-  | { kind: 'sent'; subject: string; bytes: number }
+  | { kind: 'sent'; subject: string; bytes: number; capture: Capture | null | undefined }
   | { kind: 'ack'; subject: string; ack: NonNullable<PublishResult['ack']> }
   | { kind: 'reply'; reply: RequestResult }
 
 const EMPTY: Draft = { subject: '', headers: [], payload: '', mode: 'core', timeoutMs: 2000 }
 const HISTORY_LIMIT = 20
+/** What each way of sending does, shown under "Send as". */
+const MODE_HELP: Record<Mode, string> = {
+  core: 'Sent without waiting. No confirmation comes back.',
+  jetstream: 'Waits until a stream stores it, and shows the sequence number.',
+  request: 'Waits for a reply, up to the timeout below.'
+}
 
 /** Publish a message or send a request (PBI-062), with templates and a short history. */
 export function PublishTab({ connId, subject }: { connId: string; subject?: string }): ReactNode {
   const gateway = useGateway()
   const conn = useConnection(connId)
   const decoders = useDecoders(connId)
+  // The stream list, shared with the Streams screen: each stream's subject patterns. Undefined until
+  // it has loaded, so the hints stay quiet meanwhile.
+  const streams = useQuery({
+    queryKey: ['streams', connId],
+    queryFn: () => gateway.listStreams(connId)
+  })
+  const patterns = useMemo(
+    () => streams.data?.map((s) => ({ name: s.config.name, subjects: s.config.subjects ?? [] })),
+    [streams.data]
+  )
   const [draft, setDraft] = useState<Draft>({ ...EMPTY, subject: subject ?? '' })
   const [busy, setBusy] = useState(false)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
@@ -66,6 +86,11 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
     setDraft((d) => ({ ...d, [key]: value }))
 
   const subjectError = draft.subject.trim() ? validateSubject(draft.subject.trim(), false) : null
+  // Which stream stores the subject: undefined until the stream list loads, or with no subject.
+  const coverage =
+    draft.subject.trim() && patterns ? capturedBy(draft.subject.trim(), patterns) : undefined
+  const subjectHint =
+    coverage === undefined ? undefined : coverageHint(coverage, draft.mode === 'jetstream')
   const json = useMemo(() => {
     const text = draft.payload.trim()
     if (!/^[[{]/.test(text)) return null
@@ -106,7 +131,12 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
         setOutcome(
           result.ack
             ? { kind: 'ack', subject: subjectText, ack: result.ack }
-            : { kind: 'sent', subject: subjectText, bytes: utf8Encode(draft.payload).length }
+            : {
+                kind: 'sent',
+                subject: subjectText,
+                bytes: utf8Encode(draft.payload).length,
+                capture: patterns ? capturedBy(subjectText, patterns) : undefined
+              }
         )
       }
       const entry: HistoryEntry = { ...draft, subject: subjectText, headers, at: Date.now() }
@@ -158,7 +188,9 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
       {/* Wide: the editor and the reply sit side by side and each scrolls inside its own box, so
           the reply is never below the fold. Narrow: one column and the page scrolls. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden">
-        <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto lg:pr-1">
+        {/* min-h-0 only on wide screens: there the column scrolls inside its box. On narrow screens
+            it must size to its content, or the reply below overlaps the form. */}
+        <div className="flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <Card title="Message">
             <form
               className="flex flex-col gap-3"
@@ -180,7 +212,7 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
                 </Notice>
               )}
               <div className="grid grid-cols-[1fr_220px] gap-3">
-                <Field label="Subject" error={subjectError}>
+                <Field label="Subject" error={subjectError} hint={subjectHint}>
                   {(id) => (
                     <Input
                       id={id}
@@ -194,7 +226,7 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
                     />
                   )}
                 </Field>
-                <Field label="Send as">
+                <Field label="Send as" hint={MODE_HELP[draft.mode]}>
                   {(id) => (
                     <Select
                       id={id}
@@ -393,16 +425,21 @@ export function PublishTab({ connId, subject }: { connId: string; subject?: stri
             {outcome?.kind === 'sent' && (
               <Notice tone="ok" className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                Published {formatBytes(outcome.bytes)} to{' '}
-                <span className="font-mono">{outcome.subject}</span>. Core NATS does not confirm
-                delivery.
+                <span>
+                  Published {formatBytes(outcome.bytes)} to{' '}
+                  <span className="font-mono">{outcome.subject}</span>. Core NATS does not confirm
+                  delivery.
+                  {outcome.capture !== undefined && ` ${coverageSentence(outcome.capture)}`}
+                </span>
               </Notice>
             )}
             {outcome?.kind === 'ack' && (
               <Notice tone="ok" className="flex flex-wrap items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                Stored in stream <span className="font-mono">{outcome.ack.stream}</span> as sequence{' '}
-                <strong>{outcome.ack.seq}</strong>.
+                <span>
+                  Stored in stream <span className="font-mono">{outcome.ack.stream}</span> as
+                  sequence <strong>{outcome.ack.seq}</strong>.
+                </span>
                 {outcome.ack.duplicate && (
                   <Badge tone="warn">Duplicate: the stream already had this message ID</Badge>
                 )}

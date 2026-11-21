@@ -136,6 +136,7 @@ test('PBI-062 publish, JetStream publish with ack, request/reply, templates and 
 
   // JetStream publish shows the acknowledgement.
   await form.getByLabel('Subject', { exact: true }).fill(`${stream}.created`)
+  await expect(form.getByText(`Stored by ${stream} (${stream}.>).`)).toBeVisible()
   await form.getByLabel('Send as').selectOption('jetstream')
   await form.getByRole('button', { name: 'Add header' }).click()
   await form.getByLabel('Header 1 name').fill('Nats-Msg-Id')
@@ -166,6 +167,9 @@ test('PBI-062 publish, JetStream publish with ack, request/reply, templates and 
   await form.getByRole('button', { name: 'Publish', exact: true }).click()
   await expect(
     page.getByText(/Published 10 B to .*\. Core NATS does not confirm delivery\./)
+  ).toBeVisible()
+  await expect(
+    page.getByText(`${stream} captures this subject (${stream}.>), so it should be stored.`)
   ).toBeVisible()
 
   // Request shows the reply and its round-trip time.
